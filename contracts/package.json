@@ -14,7 +14,8 @@
     "node": "hardhat node --network hardhat",
     "deploy": "hardhat run scripts/deploy.ts --network localhost",
     "deploy:ganache": "hardhat run scripts/deploy.ts --network ganache",
-    "simulate": "node --experimental-strip-types scripts/simulate.ts"
+    "simulate": "node --experimental-strip-types scripts/simulate.ts",
+    "simulation:server": "node --experimental-strip-types scripts/simulation-server.ts"
   },
   "devDependencies": {
     "@nomicfoundation/hardhat-toolbox-mocha-ethers": "4.0.0",

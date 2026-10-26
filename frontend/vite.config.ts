@@ -7,11 +7,13 @@ export default defineConfig({
   publicDir: "../shared",
   server: {
     port: 3000,
+    proxy: { "/api/simulation": "http://127.0.0.1:8787" },
   },
   build: {
     outDir: "build",
   },
   preview: {
+    proxy: { "/api/simulation": "http://127.0.0.1:8787" },
     port: 4173,
     strictPort: true,
   },
