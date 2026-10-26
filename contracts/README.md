@@ -1,46 +1,44 @@
 # MiniDEX 合约工程
 
-使用 Hardhat 3、ethers 6 和 TypeScript。`contracts/MiniDEX.sol` 目前仅是 Demo，DEX 功能尚待实现。
+使用 Hardhat 3、ethers 6 和 OpenZeppelin 5.4，Solidity 0.8.20。测试网络默认提供 20 个已解锁且预充值 ETH 的账户。
 
-## 安装与检查
+## 运行
 
-建议使用 Node.js 24。在 `contracts/` 目录执行：
+建议 Node.js 24 或项目 `package.json` 指定的兼容版本。在本目录执行：
 
 ```bash
-nvm install
-nvm use
 npm ci
 npm run compile
 npm run typecheck
 npm test
-```
-
-`npm run build` 与 `npm run compile` 等效。类型检查会先编译合约并生成类型。当前 Solidity 编译器为 0.8.20，OpenZeppelin 使用兼容该编译器的稳定版 5.4.0。
-
-## 在本地 Hardhat 节点上部署
-
-先启动节点，并保持该终端开启：
-
-```bash
 npm run node
 ```
 
-在另一个终端进入 `contracts/`，使用相同的 Node.js 版本后执行：
+保持节点运行，在另一终端执行：
 
 ```bash
 npm run deploy
 ```
 
-默认 RPC 地址为 `http://127.0.0.1:8545`，Chain ID 为 `31337`。部署脚本输出 MiniDEX 合约地址；ABI 位于 `artifacts/contracts/MiniDEX.sol/MiniDEX.json`。
+部署创建两种测试 ERC20、WETH、两个独立交易所和套利合约。每个测试地址通过公开 faucet 领取代币；两个交易所各建立一个初始 10000 TKA / 10000 TKB 的池。地址、ABI 和创建测试代币所需字节码导出到 `../shared/deployment.json`，供前端和模拟脚本共享。部署者拥有两个初始流动性 NFT。
 
-## 在 Ganache 上部署
+默认 RPC 为 `http://127.0.0.1:8545`，Chain ID 为 `31337`。可设置 `LOCAL_RPC_URL`。本地账户由节点签名，仅用于本地教学链。重新启动节点后应重新部署；地址文件本身不代表链上仍有合约。
 
-启动 Ganache，在 `hardhat.config.ts` 中调整 `ganache.url` 以匹配其 RPC 地址，然后执行：
+## 合约入口
 
-```bash
-npm run deploy:ganache
-```
+- `TestToken.faucet()`：每次给调用者发放 10000 代币，无权限限制，仅用于测试。
+- `WrappedEther.deposit/withdraw`：ETH 与 WETH 按 1:1 兑换，交易池统一处理 ERC20。
+- `MiniDEX.createPool`：按代币地址排序，一个交易所内每种代币对只允许一个池。
+- `MiniDEX.addLiquidity/removeLiquidity`：按池中比例注入、以 ERC721 NFT 记录份额；销毁 NFT 按当前储备赎回。NFT 转让也转让赎回权，获授权的操作员赎回时资产仍发给当前所有者。
+- `MiniDEX.quote/swap`：恒定乘积兑换，收取 0.3% 手续费并留在池中，由份额共同享有。
+- `AtomicArbitrage.execute`：调用者先授权本金，一笔交易完成两个池的往返兑换；利润不足则全部回滚。利润以本金代币计，不扣除 ETH Gas。
 
-也可以通过环境变量 `LOCAL_RPC_URL` 或 `GANACHE_RPC_URL` 覆盖对应的 RPC 地址。部署使用节点提供的已解锁测试账户。
+所有金额均为 ERC20 原始整数，演示代币精度为 18。流动性与交易操作支持截止时间和最低接收金额。初始 1000 个原始份额单位永久锁定，防止池完全清空后重置。流动性 NFT 的 `tokenURI` 是自包含 JSON，记录池、份额、初始金额、时间及代币地址。
 
-使用临时内存链测试部署脚本时，可执行 `npx hardhat run scripts/deploy.ts --network hardhat`。
+支持普通、无转账税、非 rebasing 的 ERC20；收款不足会回滚。直接向交易所转账不会增加池储备，也不会自动铸造流动性份额。
+
+## 验证
+
+`npm test` 通过公开合约入口执行完整链上流程，覆盖兑换、流动性份额、NFT 转让赎回、WETH、多账户和套利失败回滚。`npm run simulate` 在已部署的本地节点上执行可复现模拟；详见仓库根 README。
+
+Ganache 也可以运行 `npm run deploy:ganache`，需要至少 20 个已解锁账户，RPC 用 `GANACHE_RPC_URL` 指定；合约目标 EVM 为 Paris。

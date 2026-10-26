@@ -8,6 +8,8 @@ export default defineConfig({
     settings: {
       // 兼容教学中使用的 Ganache 节点。
       evmVersion: "paris",
+      optimizer: { enabled: true, runs: 200 },
+      viaIR: true,
     },
   },
   networks: {
