@@ -1,5 +1,6 @@
 import { formatAmount, shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
+import { OnboardingGuide } from "./OnboardingGuide";
 
 export function WalletBar() {
   const { wallet, session, accounts, snapshot, tokens, pending, run, refresh } =
@@ -8,6 +9,11 @@ export function WalletBar() {
     <>
       <section className="wallet card">
         <div>
+          <strong>
+            {wallet.source === "local"
+              ? "Local demo account"
+              : "Browser wallet"}
+          </strong>
           <label htmlFor="account">
             Test account · {accounts.data?.length ?? 0} funded addresses
           </label>
@@ -39,11 +45,36 @@ export function WalletBar() {
               · {session.kind === "local" ? "Local RPC" : "Browser wallet"}
             </small>
           )}
+          {session?.kind === "local" && (
+            <small>
+              Transactions use this node's public test account. No wallet
+              extension or private key import is needed.
+            </small>
+          )}
+          {session?.kind === "injected" && (
+            <small>
+              Your browser wallet approves transactions. Only use the local
+              teaching network and test assets here.
+            </small>
+          )}
           {wallet.state.kind === "connecting" && (
             <small>Connecting wallet…</small>
           )}
           {wallet.state.kind === "unavailable" && (
-            <p role="alert">{wallet.state.message}</p>
+            <div>
+              <p role="alert">{wallet.state.message}</p>
+              {wallet.state.reason === "wrong-network" && (
+                <button
+                  className="secondary"
+                  disabled={pending}
+                  onClick={() => {
+                    void wallet.switchNetwork();
+                  }}
+                >
+                  Add / switch local network
+                </button>
+              )}
+            </div>
           )}
         </div>
         <button disabled={pending} onClick={wallet.connectInjected}>
@@ -59,6 +90,7 @@ export function WalletBar() {
           Refresh
         </button>
       </section>
+      <OnboardingGuide />
       {accounts.error && (
         <p role="alert">Local accounts unavailable: {accounts.error.message}</p>
       )}

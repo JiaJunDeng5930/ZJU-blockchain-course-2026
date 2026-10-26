@@ -30,7 +30,12 @@ export type WalletSession = {
 type WalletState =
   | { kind: "connecting" }
   | { kind: "ready"; session: WalletSession }
-  | { kind: "unavailable"; message: string; source: "local" | "injected" };
+  | {
+      kind: "unavailable";
+      message: string;
+      source: "local" | "injected";
+      reason?: "wrong-network";
+    };
 
 export function useWallet(client: ExchangeClient) {
   const [state, setState] = useState<WalletState>({ kind: "connecting" });
@@ -70,10 +75,16 @@ export function useWallet(client: ExchangeClient) {
           const chainId = Number(
             await injected.request({ method: "eth_chainId" }),
           );
-          if (chainId !== client.deployment.chainId)
-            throw new Error(
-              `Wrong wallet network. Switch to chain ${client.deployment.chainId}.`,
-            );
+          if (chainId !== client.deployment.chainId) {
+            if (current && pending === revision)
+              setState({
+                kind: "unavailable",
+                source: "injected",
+                reason: "wrong-network",
+                message: `Wrong wallet network. Switch to chain ${client.deployment.chainId}.`,
+              });
+            return;
+          }
           const provider = new BrowserProvider(injected);
           session = {
             kind: "injected",
@@ -122,8 +133,62 @@ export function useWallet(client: ExchangeClient) {
       }
     };
   }, [client, source, localAddress, connectionAttempt]);
+  async function switchNetwork() {
+    const injected = window.ethereum;
+    if (!injected) return;
+    const chainId = `0x${client.deployment.chainId.toString(16)}`;
+    setState({ kind: "connecting" });
+    try {
+      try {
+        await injected.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId }],
+        });
+      } catch (error) {
+        // DEFENSE: EIP-3326 wallets reject unknown networks with 4902; add this deployment before retrying.
+        if (!(
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === 4902
+        ))
+          throw error;
+        await injected.request({
+          method: "wallet_addEthereumChain",
+          params: [
+            {
+              chainId,
+              chainName: "TwoPool Local Ethereum",
+              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+              rpcUrls: [client.deployment.rpcUrl],
+            },
+          ],
+        });
+        await injected.request({
+          method: "wallet_switchEthereumChain",
+          params: [{ chainId }],
+        });
+      }
+      setConnectionAttempt((attempt) => attempt + 1);
+    } catch (error) {
+      setState({
+        kind: "unavailable",
+        source: "injected",
+        reason: "wrong-network",
+        message:
+          error &&
+          typeof error === "object" &&
+          "code" in error &&
+          error.code === 4001
+            ? "Network change rejected. You can retry or choose a local test account."
+            : `Network change failed: ${errorMessage(error)}`,
+      });
+    }
+  }
   return {
     state,
+    source,
+    switchNetwork,
     selectLocal(address: string) {
       setSource("local");
       setLocalAddress(address);
