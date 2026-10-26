@@ -63,6 +63,10 @@ test("complete browser workflow uses real local blockchain transactions", async 
     .getByRole("button", { name: /Burn NFT #/ })
     .last()
     .click();
+  await page
+    .getByRole("dialog", { name: "Review position redemption" })
+    .getByRole("button", { name: "Confirm redemption", exact: true })
+    .click();
   await expectStatus(page, "Redeem position confirmed");
   await expect(page.getByRole("alert")).toHaveCount(0);
 
