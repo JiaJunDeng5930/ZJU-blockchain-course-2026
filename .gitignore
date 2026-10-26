@@ -1,0 +1,7 @@
+node_modules/
+shared/deployment.json
+shared/simulation-report.json
+*.log
+.DS_Store
+frontend/test-results/
+frontend/playwright-report/

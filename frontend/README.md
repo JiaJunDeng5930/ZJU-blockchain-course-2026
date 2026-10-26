@@ -1,37 +1,20 @@
-# DApp 前端起始框架
+# TwoPool DEX 前端
 
-使用 React、TypeScript 和 Vite，保留基础示例页面，供后续实现 DApp 功能。
-
-## 安装与运行
-
-建议使用 Node.js 24。使用 nvm 时，在 `frontend/` 目录执行：
-
-```bash
-nvm install
-nvm use
-```
-
-也可以自行安装满足 `package.json` 中 `engines` 要求的 Node.js 版本。
-
-首次安装依赖并启动：
+运行、钱包配置、模拟交易和截图说明见[项目 README](../README.md)。
 
 ```bash
 npm ci
-npm start
+npm run dev
 ```
 
-访问终端显示的地址（默认 [http://localhost:3000](http://localhost:3000)，端口占用时自动选择其他端口），修改 `src/App.tsx` 即可开始开发。`npm run dev` 与 `npm start` 等效。
-
-## 检查与构建
+先运行本地链和部署；Vite 从 `../shared/` 读取实际部署配置。生产构建也会复制该配置，因此换链或重新部署后应重新构建。
 
 ```bash
-npm run typecheck
-npm test
 npm run build
+npx playwright install chromium
+npm test
 ```
 
-`npm test` 使用 Vitest 执行一次测试；`npm run test:watch` 持续监听修改。测试配置在 `vite.config.ts`，测试示例在 `src/App.test.tsx`。
+浏览器端到端测试通过真实 RPC 执行交易，要求本地节点已部署、前端已在 3000 端口运行。测试会改变链状态、创建测试代币，并生成 `docs/screenshots/` 中的截图。不要同时运行模拟脚本。
 
-生产文件输出到 `build/`。执行 `npm run preview`，在 [http://localhost:4173](http://localhost:4173) 本地预览生产构建。
-
-HTML 入口位于 `frontend/index.html`；图片、图标等静态资源放在 `public/`，代码和样式放在 `src/`。
+前端使用合约编译生成的 TypeChain 类型，因此需先在 `contracts/` 完成编译和部署。钱包会话响应账户、网络和断开事件；交易日志与链上读取分别处理。运行 `npm test` 会执行完整业务流程及钱包故障恢复的七个黑盒场景。
