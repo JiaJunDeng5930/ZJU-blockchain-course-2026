@@ -3,7 +3,13 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 
 async function main() {
-  const { ethers } = await hre.network.create();
+  const { ethers, networkConfig } = await hre.network.create();
+  // DEFENSE: a transient Hardhat network disappears after this script exits, so its
+  // addresses cannot be exported as a usable browser/simulator deployment.
+  if (networkConfig.type !== "http") {
+    throw new Error("Deployment requires a persistent HTTP node; use npm run deploy or npm run deploy:ganache");
+  }
+  const rpcUrl = await networkConfig.url.getUrl();
   const signers = await ethers.getSigners();
   if (signers.length < 20) throw new Error("Deployment requires at least 20 unlocked teaching accounts");
   const [deployer] = signers;
@@ -43,12 +49,13 @@ async function main() {
   const contractNames = ["TestToken", "WrappedEther", "MiniDEX", "AtomicArbitrage"] as const;
   const artifacts = await Promise.all(contractNames.map((name) => hre.artifacts.readArtifact(name)));
   const deployment = {
+    schemaVersion: 1,
     chainId: Number((await ethers.provider.getNetwork()).chainId),
-    rpcUrl: process.env.LOCAL_RPC_URL ?? process.env.GANACHE_RPC_URL ?? "http://127.0.0.1:8545",
+    rpcUrl,
     tokens: [
-      { address: tokenAAddress, name: "Token A", symbol: "TKA" },
-      { address: tokenBAddress, name: "Token B", symbol: "TKB" },
-      { address: await weth.getAddress(), name: "Wrapped Ether", symbol: "WETH" },
+      { address: tokenAAddress, name: "Token A", symbol: "TKA", kind: "faucet" },
+      { address: tokenBAddress, name: "Token B", symbol: "TKB", kind: "faucet" },
+      { address: await weth.getAddress(), name: "Wrapped Ether", symbol: "WETH", kind: "wrapped" },
     ],
     exchanges: [
       { address: await exchangeA.getAddress(), name: "Harbor DEX" },
