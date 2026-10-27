@@ -98,3 +98,35 @@ in that local directory. Cleanup stops only the runner's node; the development
 RPC, deployment file and browser are untouched. These checks exercise public
 behavior and adapter assumptions; they do not prove React rendering, RPC honesty,
 the compiler, or EVM semantics.
+
+## Swap route selection
+
+After building the production frontend and contract artifacts:
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/routing-public.mts
+```
+
+The runner uses a real isolated ledger, the production extracted route controller,
+and the public wallet/writer SDK. A thin mixed-precision pool has a better initial
+exchange ratio than a deeper pool. Public contract quotes establish that the
+best output changes with the input size; the expected outputs do not come from
+a second AMM formula in the test. Actual execution is checked against token
+balance deltas, pool reserves, and the submitted contract/arguments.
+
+The scenarios also cover anonymous and unfunded-wallet quoting, pair choices
+before entering an amount, pair deduplication, manual selection including an
+unavailable pool, reverse and exact Max, unrelated or unregistered pools,
+unverified metadata, deterministic equal quotes, and resetting a manual choice
+on a new pair. A recording RPC endpoint delays the response to a real approval
+while an independent account changes another market. The captured effect,
+pending display, and submitted swap must retain the original route and minimum.
+Another scenario changes wallets after approval and requires the old operation
+to stop before any swap is sent.
+
+The runner does not read the new route model, bridge, SDK implementation or React
+to choose its assertions. It does not use a browser, replace business logic, or
+touch the development node. Each `.local/routing-public-*/result.json` retains
+the production program hash, raw quotes, submitted calls, and scenario results.
+These are external-behavior checks; they do not prove RPC honesty, React
+rendering, compilers, or EVM semantics.
