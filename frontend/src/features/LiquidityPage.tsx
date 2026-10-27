@@ -987,6 +987,8 @@ function ConfirmedLiquidityAction({
         <dd>
           <code>{receipt.from}</code>
         </dd>
+        <dt>Execution fee</dt>
+        <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
         <dt>Confirmed block</dt>
         <dd>{String(receipt.blockNumber)}</dd>
         <dt>Transaction</dt>
@@ -994,17 +996,21 @@ function ConfirmedLiquidityAction({
           <code>{receipt.transactionHash}</code>
         </dd>
       </dl>
+      <p>
+        The executing account pays the ETH fee for this transaction. Any earlier
+        ERC20 approvals have separate fees. Token quantities and ETH fees are
+        reported separately.
+      </p>
       {result.kind === "deposit" && (
         <p>
           Token amounts come from this receipt; unused budget stayed in your
-          wallet. Gas is paid separately in ETH.
+          wallet.
         </p>
       )}
       {result.kind === "redeem" && (
         <p>
           Received tokens include this position's share of retained pool fees.
-          Changes from the initial deposit also reflect market prices. Gas is
-          paid separately in ETH.
+          Changes from the initial deposit also reflect market prices.
         </p>
       )}
     </section>

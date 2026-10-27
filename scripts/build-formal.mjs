@@ -77,6 +77,12 @@ try {
     throw new Error(`Expected Coq 8.20.1, got ${version}`);
   const profiles = [
     {
+      extract: "theories/Frontend/ReceiptFeesExtract.v",
+      cwd: work,
+      directory: "receiptfees",
+      bridges: ["ReceiptFeesBridge"],
+    },
+    {
       extract: "theories/Frontend/WalletExtract.v",
       cwd: work,
       directory: "wallet",

@@ -1,6 +1,6 @@
 From Coq Require Import ZArith Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
 From DEXFormal.Spec Require Import Types Units AMM Assets Arbitrage.
-From DEXFormal.Frontend Require Import ArbitrageCapital.
+From DEXFormal.Frontend Require Import ArbitrageCapital ReceiptFees.
 Local Open Scope Z_scope.
 
 Record execution_summary := ExecutionSummary {
@@ -13,7 +13,7 @@ Record execution_summary := ExecutionSummary {
 (* Amounts come from one execution event; gas fields come from its receipt.
    ETH cost is separate from the ERC20 settlement, without an exchange rate. *)
 Definition summarize_execution amount_in amount_out profit gas_used gas_price :=
-  ExecutionSummary amount_in amount_out profit (gas_used * gas_price).
+  ExecutionSummary amount_in amount_out profit (ReceiptFees.execution_fee gas_used gas_price).
 
 Theorem execution_summary_settlement capital returned minimum profit gas_used gas_price :
   Arbitrage.settlement capital returned minimum = Some profit ->
@@ -28,7 +28,7 @@ Qed.
 Theorem execution_summary_fee_nonnegative capital returned profit gas_used gas_price :
   0 <= gas_used -> 0 <= gas_price ->
   0 <= execution_gas_cost_wei (summarize_execution capital returned profit gas_used gas_price).
-Proof. cbn. apply Z.mul_nonneg_nonneg. Qed.
+Proof. cbn. apply ReceiptFees.execution_fee_nonnegative. Qed.
 
 Theorem execution_summary_token_amounts_independent_of_gas capital returned profit used price used' price' :
   let before := summarize_execution capital returned profit used price in

@@ -1,6 +1,6 @@
 From Coq Require Import ZArith String List Bool Lia.
 From DEXFormal.Spec Require Import Types.
-From DEXFormal.Frontend Require Import Wallet ReplacementSearch.
+From DEXFormal.Frontend Require Import Wallet ReplacementSearch ReceiptFees.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -89,8 +89,8 @@ Definition advance (p : phase) (event : entry_event) : phase :=
   | Submitted hash error => match event with
       | Receipt received _ success block gas_used gas_price =>
           if string_dec hash received then
-            if success then Confirmed hash block (gas_used * gas_price)
-            else Reverted hash block (gas_used * gas_price)
+            if success then Confirmed hash block (ReceiptFees.execution_fee gas_used gas_price)
+            else Reverted hash block (ReceiptFees.execution_fee gas_used gas_price)
           else p
       | ObservationFailed message => Submitted hash (Some message)
       | _ => p
@@ -477,7 +477,7 @@ Lemma matching_receipt_records_original_identity s id e hash error block gas_use
   find_entry id (journal s) = Some e ->
   entry_phase e = Submitted hash error ->
   find_entry id (journal (receipt s id hash (sender_of e) true block gas_used gas_price)) =
-    Some (changed_phase e (Confirmed hash block (gas_used * gas_price))).
+    Some (changed_phase e (Confirmed hash block (ReceiptFees.execution_fee gas_used gas_price))).
 Proof.
   intros Hfind Hphase. rewrite receipt_journal, find_entry_after_event, Hfind. cbn.
   assert (Hid : Z.eqb id (entry_id e) = true).

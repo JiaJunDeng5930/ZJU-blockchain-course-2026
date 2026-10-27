@@ -1,4 +1,5 @@
 import { importAsset } from "./assets";
+import { executionFeeWei } from "../logic/receipts";
 import { assertSupportedPool } from "../logic/assets";
 import { getAddress, parseEventLogs } from "viem";
 import { miniDexAbi, testTokenAbi } from "../generated/abis";
@@ -114,6 +115,7 @@ export async function addLiquidity(
     amount0: event.args.amount0,
     amount1: event.args.amount1,
     shares: event.args.shares,
+    gasCostWei: executionFeeWei(receipt),
     receipt,
   };
 }
@@ -180,6 +182,7 @@ export async function removeLiquidity(
     amount0: event.args.amount0,
     amount1: event.args.amount1,
     shares: event.args.shares,
+    gasCostWei: executionFeeWei(receipt),
     receipt,
   };
 }
@@ -222,6 +225,7 @@ export async function transferPosition(
     positionId: event.args.tokenId,
     from: event.args.from,
     to: event.args.to,
+    gasCostWei: executionFeeWei(receipt),
     receipt,
   };
 }

@@ -97,6 +97,7 @@ export type SwapResult = {
   receipt: TransactionReceipt;
 };
 export type LiquidityConfirmation = {
+  gasCostWei: bigint;
   pool: Pool;
   positionId: bigint;
   receipt: TransactionReceipt;
