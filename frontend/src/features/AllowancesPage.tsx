@@ -3,10 +3,10 @@ import { formatUnits } from "../logic/units";
 import { AllowanceController } from "../chain/allowances";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
-import { shorten } from "../chain/amounts";
+import { shorten, tokenLabel } from "../chain/amounts";
 
 export function AllowancesPage() {
-  const { client, wallet, tokens, session } = useDex();
+  const { client, wallet, tokens, session, symbol } = useDex();
   const controller = useMemo(
     () => new AllowanceController(client, wallet.controller, tokens),
     [client, wallet.controller, tokens]
@@ -18,9 +18,6 @@ export function AllowancesPage() {
   useEffect(() => {
     void controller.refresh();
   }, [controller, session?.epoch]);
-  const tokenName = (address: string) =>
-    tokens.find((token) => token.address === address)?.symbol ??
-    shorten(address);
   const spenderName = (address: string) =>
     client.deployment.exchanges.find((exchange) => exchange.address === address)
       ?.name ?? "Atomic arbitrage";
@@ -28,15 +25,17 @@ export function AllowancesPage() {
     <section className="card">
       <h2>Token approvals</h2>
       <p>
-        Review the amounts these contracts can spend. Revoking an approval sets
-        its remaining amount to zero; earlier trades remain confirmed.
+        These approvals let this deployment's contracts spend the named ERC20
+        token on chain {client.deployment.chainId}. An allowance is a spending
+        limit, not a token balance. Revoking sets it to zero; earlier trades
+        remain confirmed.
       </p>
       {view.owner ? (
         <p>
           Account <code>{view.owner}</code>
         </p>
       ) : (
-        <p>Connect a wallet to view its approvals.</p>
+        <p>Connect a wallet on this chain to view its approvals.</p>
       )}
       <button
         type="button"
@@ -74,7 +73,9 @@ export function AllowancesPage() {
               {view.rows.map((row) => (
                 <tr key={`${row.token}:${row.spender}`}>
                   <td>
-                    <span title={row.token}>{tokenName(row.token)}</span>
+                    <span title={row.token}>
+                      {tokenLabel(row.token, symbol(row.token))}
+                    </span>
                   </td>
                   <td>
                     <span title={row.spender}>{spenderName(row.spender)}</span>{" "}
@@ -123,18 +124,28 @@ export function AllowancesPage() {
           <dl>
             <dt>Token</dt>
             <dd>
-              {tokenName(view.review.token)} <code>{view.review.token}</code>
+              {symbol(view.review.token)} <code>{view.review.token}</code>
             </dd>
             <dt>Account</dt>
             <dd>
               <code>{view.review.owner}</code>
             </dd>
+            <dt>Wallet</dt>
+            <dd>
+              {view.review.identity.source === "local"
+                ? "Local test account"
+                : "Browser wallet"}
+            </dd>
+            <dt>Chain</dt>
+            <dd>{view.review.identity.chain}</dd>
             <dt>Spender</dt>
             <dd>
               {spenderName(view.review.spender)}{" "}
               <code>{view.review.spender}</code>
             </dd>
-            <dt>Current allowance</dt>
+            <dt>Allowance observed at block</dt>
+            <dd>{view.block}</dd>
+            <dt>Observed allowance</dt>
             <dd title={view.review.allowance}>
               {view.review.unlimited
                 ? "Unlimited"
@@ -150,6 +161,11 @@ export function AllowancesPage() {
             <dt>New allowance</dt>
             <dd>0</dd>
           </dl>
+          <p>
+            Spending can change the remaining allowance after this observation.
+            This transaction sets it to zero, transfers no tokens and requires
+            ETH for gas.
+          </p>
           <div className="actions">
             <button type="button" onClick={() => controller.cancel()}>
               Cancel
