@@ -167,9 +167,6 @@ export function AllowancesPage() {
             ETH for gas.
           </p>
           <div className="actions">
-            <button type="button" onClick={() => controller.cancel()}>
-              Cancel
-            </button>
             <button
               type="button"
               disabled={!view.canConfirm}
