@@ -139,6 +139,13 @@ pending display, and submitted swap must retain the original route and minimum.
 Another scenario changes wallets after approval and requires the old operation
 to stop before any swap is sent.
 
+Successful results are checked against the actual receipt's Swap event and
+sender token balance changes for both six- and eighteen-decimal inputs. A real
+trade changes the captured pool during approval, improving the eventual output;
+the returned actual amount must differ from the old quote while retaining the
+original quote and minimum. This checks the execution evidence passed to the UI
+without treating a quote as a settlement oracle.
+
 The runner does not read the new route model, bridge, SDK implementation or React
 to choose its assertions. It does not use a browser, replace business logic, or
 touch the development node. Each `.local/routing-public-*/result.json` retains
