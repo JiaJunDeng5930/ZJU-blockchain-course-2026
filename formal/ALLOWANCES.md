@@ -75,7 +75,10 @@ allowance observations remain necessary.
 `frontend/src/chain/allowances.ts` exports `AllowanceController(client, wallet,
 tokens)`. Its public methods are `refresh`, `review`, `cancel`, `confirm`,
 `getSnapshot`, `subscribe` and `dispose`. `getSnapshot` retains a stable reference
-between publications for React's external-store contract. The controller
+between changes for React's external-store contract. Wallet subscriptions are owned
+by external-store subscribe/cleanup, not by construction during render. A new
+subscription after cleanup reconnects to wallet events. A non-React caller can
+also read the current projection without subscribing. The controller
 interprets RPC and wallet effects; decisions come from the extracted model.
 
 The independent acceptance runner uses a real isolated chain and the public SDK.
