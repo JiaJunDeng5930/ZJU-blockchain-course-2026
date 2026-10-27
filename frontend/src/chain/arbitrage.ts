@@ -1,6 +1,10 @@
 import { getAddress, parseEventLogs } from "viem";
 import { arbitrageAbi, testTokenAbi } from "../generated/abis";
-import { prepareArbitrage, scanArbitrage } from "../logic/arbitrage";
+import {
+  prepareArbitrage,
+  scanArbitrage,
+  summarizeArbitrageExecution,
+} from "../logic/arbitrage";
 import { importAsset } from "./assets";
 import { assertSupportedPool } from "../logic/assets";
 import type { WalletSession } from "../wallet/session";
@@ -146,8 +150,14 @@ export async function executeArbitrage(
     };
   });
   return {
-    tokenIn: route.tokenIn,
-    profit: event.args.profit,
+    tokenIn: event.args.tokenIn,
+    ...summarizeArbitrageExecution({
+      amountIn: event.args.amountIn,
+      amountOut: event.args.amountOut,
+      profit: event.args.profit,
+      gasUsed: receipt.gasUsed,
+      gasPrice: receipt.effectiveGasPrice,
+    }),
     receipt,
     before: evidence.map((snapshot) => snapshot.before),
     after: evidence.map((snapshot) => snapshot.after),

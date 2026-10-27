@@ -70,6 +70,29 @@ Adding liquidity and executing arbitrage retain their captured request throughou
 
 This adapter correction was exercised through the public simulation endpoint (20 rounds, 20 active accounts, completed report and rollback check) and the public writer SDK (successful swap, add and redeem). The observed transaction deadlines were respectively 300 and 1200 seconds after their actual mined timestamps. These results exercise the time adapter; RPC and mining remain external assumptions.
 
+The arbitrage execution summary consumes `amountIn`, `amountOut` and `profit`
+from `ArbitrageExecuted` in the confirmed execute receipt. Its ETH execution
+cost is that receipt's `gasUsed * effectiveGasPrice`, following the
+[Ethereum receipt fields](https://ethereum.org/developers/docs/apis/json-rpc/#eth_gettransactionreceipt)
+and [transaction fee definition](https://glossary.ethereum.org/style-guide/gas-fee).
+Prior ERC20 approval transactions are excluded. `summarize_execution` performs
+this arithmetic in extracted Rocq; TypeScript only decodes event/receipt fields
+and transports exact integers. The UI keeps ERC20 capital, returned amount and
+profit separate from ETH cost, and labels each pool's reserve order and price
+direction with its token units.
+
+`Contracts/ArbitrageExtract.v` is a frontend extraction adapter; this summary
+adds no Solidity or EVM refinement. `execution_summary_settlement` reuses
+`settlement_sound` to establish returned capital equals input capital plus
+positive profit meeting the minimum, **conditional on the observed amounts
+satisfying the shared settlement predicate**. The other summary theorems prove
+the ETH fee is nonnegative for nonnegative receipt fields, and changing gas
+cannot change ERC20 quantities or profit. Authentic event/receipt fields, their
+association with the submitted execute transaction, the RPC and ABI decoder
+remain external assumptions. Public-entry real-chain acceptance checks that
+association against token transfers, balances and native ETH expenditure; it
+does not turn the frontend theorem into a proof of whole-EVM execution.
+
 ## Actual Solidity evidence
 
 SMTChecker harnesses import production helper code rather than a second arithmetic implementation:

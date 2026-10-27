@@ -94,6 +94,17 @@ let preview value =
       `Assoc ["canExecute", `Bool false; "error", `String (error why)]
   | Some (A.Prepared _) -> `Assoc ["canExecute", `Bool true; "error", `Null]
 
+let execution value =
+  let summary = summarize_execution
+    (integer "amountIn" value) (integer "amountOut" value) (integer "profit" value)
+    (integer "gasUsed" value) (integer "gasPrice" value) in
+  `Assoc [
+    "amountIn", z summary.execution_amount_in;
+    "amountOut", z summary.execution_amount_out;
+    "profit", z summary.execution_profit;
+    "gasCostWei", z summary.execution_gas_cost_wei;
+  ]
+
 let callback function_value = Js.wrap_callback (fun input ->
   Js.to_string input |> Json.from_string |> function_value |> Json.to_string |> Js.string)
 
@@ -101,4 +112,5 @@ let () = Js.Unsafe.set Js.Unsafe.global "DEXArbitrage" (Js.Unsafe.obj [|
   "scan", Js.Unsafe.inject (callback scan);
   "prepare", Js.Unsafe.inject (callback prepare);
   "preview", Js.Unsafe.inject (callback preview);
+  "execution", Js.Unsafe.inject (callback execution);
 |])

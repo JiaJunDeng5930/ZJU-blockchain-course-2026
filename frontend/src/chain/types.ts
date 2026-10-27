@@ -60,10 +60,24 @@ export type Opportunity = {
 };
 export type ArbitrageResult = {
   tokenIn: string;
+  amountIn: bigint;
+  amountOut: bigint;
   profit: bigint;
+  /** Execute transaction only; excludes preceding ERC20 approval fees. */
+  gasCostWei: bigint;
   receipt: TransactionReceipt;
   before: Pool[];
   after: Pool[];
+};
+export type SwapResult = {
+  pool: Pool;
+  tokenIn: string;
+  tokenOut: string;
+  amountIn: bigint;
+  amountOut: bigint;
+  quoted: bigint;
+  minimum: bigint;
+  receipt: TransactionReceipt;
 };
 export type JournalEntry = {
   descriptor: TransactionDescriptor | null;

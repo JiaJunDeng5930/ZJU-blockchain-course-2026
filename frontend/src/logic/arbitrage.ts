@@ -31,9 +31,39 @@ type Kernel = {
   scan: (input: string) => string;
   prepare: (input: string) => string;
   preview: (input: string) => string;
+  execution: (input: string) => string;
 };
 const kernel = () =>
   (globalThis as unknown as { DEXArbitrage: Kernel }).DEXArbitrage;
+
+export function summarizeArbitrageExecution(input: {
+  amountIn: bigint;
+  amountOut: bigint;
+  profit: bigint;
+  gasUsed: bigint;
+  gasPrice: bigint;
+}) {
+  const output = JSON.parse(
+    kernel().execution(JSON.stringify({
+      amountIn: input.amountIn.toString(),
+      amountOut: input.amountOut.toString(),
+      profit: input.profit.toString(),
+      gasUsed: input.gasUsed.toString(),
+      gasPrice: input.gasPrice.toString(),
+    }))
+  ) as {
+    amountIn: string;
+    amountOut: string;
+    profit: string;
+    gasCostWei: string;
+  };
+  return {
+    amountIn: BigInt(output.amountIn),
+    amountOut: BigInt(output.amountOut),
+    profit: BigInt(output.profit),
+    gasCostWei: BigInt(output.gasCostWei),
+  };
+}
 
 function poolWire(pool: Pool): WirePool {
   return {

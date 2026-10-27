@@ -1,6 +1,6 @@
-import { useState } from "react";
+import { Fragment, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { poolKey } from "../chain/amounts";
+import { poolKey, poolLabel, tokenDecimals } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { ArbitrageResult, Pool } from "../chain/types";
 import {
@@ -11,6 +11,7 @@ import {
 } from "../components/Forms";
 import { poolAssetsSupported } from "../logic/assets";
 import { arbitragePreview } from "../logic/arbitrage";
+import { formatUnits } from "../logic/units";
 
 export function ArbitragePage({
   pool,
@@ -100,7 +101,7 @@ export function ArbitragePage({
         {opportunity && (
           <div className="quote">
             <p>
-              {opportunity.buy.exchange.name} → {opportunity.sell.exchange.name}
+              {poolLabel(opportunity.buy, symbol)} → {poolLabel(opportunity.sell, symbol)}
             </p>
             <strong>
               +{amount(opportunity.profit, tokenIn)} {symbol(tokenIn)}
@@ -108,7 +109,7 @@ export function ArbitragePage({
             <p>
               Capital: {amount(opportunity.amountIn, tokenIn)} {symbol(tokenIn)}
               <br />
-              Expected return: {amount(opportunity.amountOut, tokenIn)}
+              Expected return: {amount(opportunity.amountOut, tokenIn)} {symbol(tokenIn)}
               <br />
               Quoted at block {opportunity.quotedAtBlock}
             </p>
@@ -147,51 +148,58 @@ export function ArbitragePage({
   );
 }
 function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
-  const { symbol, amount, price } = useDex();
+  const { symbol, amount, price, tokens } = useDex();
+  const decimals = tokenDecimals(tokens, result.tokenIn);
   return (
     <div data-testid="arbitrage-result">
-      <h3>
-        Realized token profit: {amount(result.profit, result.tokenIn)}{" "}
-        {symbol(result.tokenIn)}
-      </h3>
-      <p>
-        Confirmed in block {result.receipt.blockNumber.toString()}. Gas
-        excluded.
-      </p>
+      <dl className="details">
+        <dt>Trader</dt>
+        <dd>{result.receipt.from}</dd>
+        <dt>Capital sent</dt>
+        <dd>{formatUnits(result.amountIn, decimals)} {symbol(result.tokenIn)}</dd>
+        <dt>Returned</dt>
+        <dd>{formatUnits(result.amountOut, decimals)} {symbol(result.tokenIn)}</dd>
+        <dt>Realized token profit</dt>
+        <dd>{formatUnits(result.profit, decimals)} {symbol(result.tokenIn)}</dd>
+        <dt>Execution fee</dt>
+        <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
+      </dl>
+      <p>Confirmed in block {result.receipt.blockNumber.toString()}.</p>
       <code>{result.receipt.transactionHash}</code>
-      <table>
-        <thead>
-          <tr>
-            <th>Exchange</th>
-            <th>Reserves before / after</th>
-            <th>Price before / after</th>
-          </tr>
-        </thead>
-        <tbody>
-          {result.before.map((before) => {
-            const next = result.after.find(
-              (p) => poolKey(p) === poolKey(before)
-            )!;
-            return (
-              <tr key={poolKey(before)}>
-                <td>{before.exchange.name}</td>
-                <td>
-                  {amount(before.reserve0, before.token0)} /{" "}
-                  {amount(before.reserve1, before.token1)}
-                  <br />
-                  {amount(next.reserve0, next.token0)} /{" "}
-                  {amount(next.reserve1, next.token1)}
-                </td>
-                <td>
-                  {price(before)}
-                  <br />
-                  {price(next)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Pool</th>
+              <th>State</th>
+              <th>Reserves</th>
+              <th>Price</th>
+            </tr>
+          </thead>
+          <tbody>
+            {result.before.map((before) => {
+              const next = result.after.find(
+                (p) => poolKey(p) === poolKey(before)
+              )!;
+              return (
+                <Fragment key={poolKey(before)}>
+                  {[{ state: "Before", pool: before }, { state: "After", pool: next }].map(({ state, pool }) => (
+                    <tr key={state}>
+                      {state === "Before" && <td rowSpan={2}>{poolLabel(before, symbol)}</td>}
+                      <td>{state}</td>
+                      <td>
+                        {amount(pool.reserve0, pool.token0)} {symbol(pool.token0)} /{" "}
+                        {amount(pool.reserve1, pool.token1)} {symbol(pool.token1)}
+                      </td>
+                      <td>{price(pool)} {symbol(pool.token1)} per {symbol(pool.token0)}</td>
+                    </tr>
+                  ))}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
