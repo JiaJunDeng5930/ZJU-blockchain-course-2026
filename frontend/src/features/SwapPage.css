@@ -30,14 +30,12 @@
   font-weight: 500;
 }
 .trade-market {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 4px;
   margin-bottom: 15px;
 }
 .trade-market select {
-  flex: 1 1 0;
   min-width: 0;
   width: 100%;
   max-width: 100%;
@@ -125,6 +123,8 @@
 }
 .trade-token-selector {
   display: flex;
+  min-width: 0;
+  max-width: 100%;
   align-items: center;
   gap: 6px;
   border: 1px solid #e4e7ed;
@@ -135,7 +135,7 @@
 
 .trade-token-selector select {
   width: auto;
-  max-width: 112px;
+  max-width: 200px;
   padding: 0 2px 0 0;
   border: 0;
   border-radius: 0;
@@ -326,6 +326,12 @@
   .trade-amount-box {
     padding: 12px;
   }
+  .trade-amount-row {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .trade-token-selector {
+    justify-self: end;
+  }
   .trade-amount-row > input,
   .trade-output {
     font-size: 30px;
@@ -340,7 +346,7 @@
     padding: 6px 8px;
   }
   .trade-token-selector select {
-    max-width: 85px;
+    max-width: 200px;
     font-size: 14px;
   }
   .trade-amount-label {

@@ -7,6 +7,10 @@ export const sameAddress = (a: string, b: string) =>
 export const poolKey = (pool: Pool) => `${pool.exchange.address}:${pool.id}`;
 export const shorten = (value: string) =>
   `${value.slice(0, 6)}…${value.slice(-4)}`;
+export const tokenLabel = (address: string, symbol: string) =>
+  `${symbol} · ${shorten(address)}`;
+export const poolLabel = (pool: Pool, symbol: (address: string) => string) =>
+  `${pool.exchange.name} #${pool.id} · ${tokenLabel(pool.token0, symbol(pool.token0))} / ${tokenLabel(pool.token1, symbol(pool.token1))}`;
 export const tokenDecimals = (
   tokens: readonly Token[],
   address: string

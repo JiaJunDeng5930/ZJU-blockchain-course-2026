@@ -1,4 +1,4 @@
-import { poolKey } from "../chain/amounts";
+import { poolKey, poolLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { Pool } from "../chain/types";
 export function PoolSelector({
@@ -19,9 +19,12 @@ export function PoolSelector({
           onChange={(event) => onChange(event.target.value)}
         >
           {snapshot.data?.pools.map((p) => (
-            <option key={poolKey(p)} value={poolKey(p)}>
-              {p.exchange.name} #{String(p.id)} · {symbol(p.token0)}/
-              {symbol(p.token1)}
+            <option
+              key={poolKey(p)}
+              value={poolKey(p)}
+              title={`${p.exchange.address} · ${p.token0} / ${p.token1}`}
+            >
+              {poolLabel(p, symbol)}
             </option>
           ))}
         </select>

@@ -6,10 +6,12 @@ import { AmountField, FormError, toleranceError } from "../components/Forms";
 import {
   minimumReceived,
   poolKey,
+  poolLabel,
   positiveAmount,
   sameAddress,
   shorten,
   slippageBps,
+  tokenLabel,
 } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { Pool, Position } from "../chain/types";
@@ -110,9 +112,12 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
             onChange={(event) => setInspectedPool(event.target.value)}
           >
             {pools.map((candidate) => (
-              <option key={poolKey(candidate)} value={poolKey(candidate)}>
-                {symbol(candidate.token0)} / {symbol(candidate.token1)} ·{" "}
-                {candidate.exchange.name}
+              <option
+                key={poolKey(candidate)}
+                value={poolKey(candidate)}
+                title={`${candidate.exchange.address} · ${candidate.token0} / ${candidate.token1}`}
+              >
+                {poolLabel(candidate, symbol)}
               </option>
             ))}
           </select>
@@ -181,12 +186,16 @@ function CreatePosition({
       {reviewing && used ? (
         <div className="liquidity-create-review">
           <p className="liquidity-market-name">
-            {symbol(pool.token0)} / {symbol(pool.token1)} · {pool.exchange.name}
+            {poolLabel(pool, symbol)}
           </p>
           <dl className="liquidity-review-amounts">
-            <dt>{symbol(pool.token0)}</dt>
+            <dt title={pool.token0}>
+              {tokenLabel(pool.token0, symbol(pool.token0))}
+            </dt>
             <dd>{amount(used[0], pool.token0, 8)}</dd>
-            <dt>{symbol(pool.token1)}</dt>
+            <dt title={pool.token1}>
+              {tokenLabel(pool.token1, symbol(pool.token1))}
+            </dt>
             <dd>{amount(used[1], pool.token1, 8)}</dd>
           </dl>
           <p>
@@ -194,7 +203,9 @@ function CreatePosition({
             including retained trading fees, can be redeemed later.
           </p>
           <dl className="liquidity-detail-list">
-            <dt>Minimum {symbol(pool.token0)} deposited</dt>
+            <dt title={pool.token0}>
+              Minimum {tokenLabel(pool.token0, symbol(pool.token0))} deposited
+            </dt>
             <dd>
               {amount(
                 minimumReceived(used[0], slippageBps(slippage)),
@@ -202,7 +213,9 @@ function CreatePosition({
                 8
               )}
             </dd>
-            <dt>Minimum {symbol(pool.token1)} deposited</dt>
+            <dt title={pool.token1}>
+              Minimum {tokenLabel(pool.token1, symbol(pool.token1))} deposited
+            </dt>
             <dd>
               {amount(
                 minimumReceived(used[1], slippageBps(slippage)),
@@ -264,9 +277,12 @@ function CreatePosition({
               }}
             >
               {pools.map((candidate) => (
-                <option key={poolKey(candidate)} value={poolKey(candidate)}>
-                  {symbol(candidate.token0)} / {symbol(candidate.token1)} ·{" "}
-                  {candidate.exchange.name}
+                <option
+                  key={poolKey(candidate)}
+                  value={poolKey(candidate)}
+                  title={`${candidate.exchange.address} · ${candidate.token0} / ${candidate.token1}`}
+                >
+                  {poolLabel(candidate, symbol)}
                 </option>
               ))}
             </select>
@@ -279,7 +295,7 @@ function CreatePosition({
           )}
           <div className="liquidity-deposit-token">
             <AmountField
-              label={symbol(pool.token0)}
+              label={tokenLabel(pool.token0, symbol(pool.token0))}
               name="Liquidity token 0"
               value={amount0}
               onChange={(value) => changeAmount(value, 0)}
@@ -292,7 +308,7 @@ function CreatePosition({
           </div>
           <div className="liquidity-deposit-token">
             <AmountField
-              label={symbol(pool.token1)}
+              label={tokenLabel(pool.token1, symbol(pool.token1))}
               name="Liquidity token 1"
               value={amount1}
               onChange={(value) => changeAmount(value, 1)}
@@ -509,11 +525,11 @@ function SupportedPositionCard({
           <code className="liquidity-recipient">{position.owner}</code>
           <dl className="liquidity-detail-list">
             <dt title={pool.token0}>
-              Expected {symbol(pool.token0)} · {shorten(pool.token0)}
+              Expected {tokenLabel(pool.token0, symbol(pool.token0))}
             </dt>
             <dd>{amount(amounts[0], pool.token0)}</dd>
             <dt title={pool.token1}>
-              Expected {symbol(pool.token1)} · {shorten(pool.token1)}
+              Expected {tokenLabel(pool.token1, symbol(pool.token1))}
             </dt>
             <dd>{amount(amounts[1], pool.token1)}</dd>
           </dl>

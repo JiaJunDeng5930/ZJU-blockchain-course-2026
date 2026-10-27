@@ -1,5 +1,5 @@
 import type { ReactNode } from "react";
-import { shorten } from "../chain/amounts";
+import { tokenLabel } from "../chain/amounts";
 export { amountError, toleranceError } from "../logic/units";
 import { useDex } from "../chain/DexProvider";
 
@@ -47,7 +47,7 @@ export function TokenSelect({
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         {(addresses ?? tokens.map((token) => token.address)).map((address) => (
           <option key={address} value={address} title={address}>
-            {symbol(address)} · {shorten(address)}
+            {tokenLabel(address, symbol(address))}
           </option>
         ))}
       </select>

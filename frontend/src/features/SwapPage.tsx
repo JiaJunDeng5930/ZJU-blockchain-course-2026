@@ -1,4 +1,5 @@
 import { useReducer, useState } from "react";
+import { tokenLabel } from "../chain/amounts";
 import { formatUnits } from "../logic/units";
 import {
   createRoutedSwapController,
@@ -85,8 +86,13 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           >
             {view.pairKey === null && <option value="">Select a pair</option>}
             {view.pairs.map((pair) => (
-              <option key={pair.key} value={pair.key}>
-                {symbol(pair.token0)}/{symbol(pair.token1)}
+              <option
+                key={pair.key}
+                value={pair.key}
+                title={`${pair.token0} / ${pair.token1}`}
+              >
+                {tokenLabel(pair.token0, symbol(pair.token0))} /{" "}
+                {tokenLabel(pair.token1, symbol(pair.token1))}
               </option>
             ))}
           </select>
@@ -336,13 +342,14 @@ function TokenSelector({
     <div className="trade-token-selector">
       <select
         aria-label={label}
+        title={value}
         value={value}
         disabled={disabled}
         onChange={(event) => onChange(event.target.value)}
       >
         {addresses.map((address) => (
-          <option key={address} value={address}>
-            {symbol(address)}
+          <option key={address} value={address} title={address}>
+            {tokenLabel(address, symbol(address))}
           </option>
         ))}
       </select>
