@@ -1,5 +1,10 @@
-import { BrowserProvider, type Eip1193Provider, type Signer } from "ethers";
-import { useEffect, useState } from "react";
+import {
+  BrowserProvider,
+  JsonRpcSigner,
+  type Eip1193Provider,
+  type Signer,
+} from "ethers";
+import { useEffect, useRef, useState } from "react";
 import type { ExchangeClient } from "../chain/client";
 import { errorMessage, sameAddress } from "../chain/amounts";
 
@@ -39,8 +44,14 @@ type WalletState =
 
 export function useWallet(client: ExchangeClient) {
   const [state, setState] = useState<WalletState>({ kind: "connecting" });
-  const [source, setSource] = useState<"local" | "injected">("local");
-  const [localAddress, setLocalAddress] = useState("");
+  const preferenceKey = `twopool:wallet:${client.deployment.chainId}:${client.deployment.rpcUrl}`;
+  const [source, setSource] = useState<"local" | "injected">(() =>
+    localStorage.getItem(preferenceKey) === "injected" ? "injected" : "local",
+  );
+  const [localAddress, setLocalAddress] = useState(
+    () => localStorage.getItem(`${preferenceKey}:local-address`) ?? "",
+  );
+  const requestAccess = useRef(false);
   const [connectionAttempt, setConnectionAttempt] = useState(0);
   useEffect(() => {
     let current = true;
@@ -89,7 +100,8 @@ export function useWallet(client: ExchangeClient) {
           session = {
             kind: "injected",
             address: accounts[0],
-            signer: await provider.getSigner(accounts[0]),
+            // Constructing the signer cannot request fresh account access during restoration.
+            signer: new JsonRpcSigner(provider, accounts[0]),
           };
         }
         if (current && pending === revision)
@@ -103,7 +115,9 @@ export function useWallet(client: ExchangeClient) {
           });
       }
     }
-    void synchronize(source === "injected");
+    const authorize = requestAccess.current;
+    requestAccess.current = false;
+    void synchronize(authorize);
     const onAccounts = () => {
       void synchronize();
     };
@@ -190,10 +204,15 @@ export function useWallet(client: ExchangeClient) {
     source,
     switchNetwork,
     selectLocal(address: string) {
+      localStorage.setItem(preferenceKey, "local");
+      localStorage.setItem(`${preferenceKey}:local-address`, address);
+      requestAccess.current = false;
       setSource("local");
       setLocalAddress(address);
     },
     connectInjected() {
+      localStorage.setItem(preferenceKey, "injected");
+      requestAccess.current = true;
       setSource("injected");
       setLocalAddress("");
       setConnectionAttempt((attempt) => attempt + 1);
