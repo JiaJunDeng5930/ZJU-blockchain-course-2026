@@ -51,6 +51,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Frontend/LiquidityBalances.v` | Balance-bounded preparation for an existing pool, preserving original spending limits and requiring an explicit price for the first deposit |
 | `theories/Frontend/ReceiptFees.v` | One exact execution-fee definition shared by transaction states, arbitrage summaries and liquidity confirmations |
+| `theories/Frontend/SwapSettlement.v` | Realized swap rate and signed output-token difference from the captured quote |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
 | `theories/Frontend/ArbitrageCapital.v` | Exact user-entered capital for manual route comparison, reusing the shared arbitrage candidate calculation |
@@ -146,6 +147,23 @@ its receipt-interface assumptions.
 nonnegative receipt fields. Existing arbitrage and transaction proofs reuse the
 same definition. Exact multiplication is established by construction, while the
 public chain scenarios check which receipt and payer supply its inputs.
+
+`swapSettlementView` combines the confirmed swap amounts with the captured
+quote. `Frontend/SwapSettlement.v` classifies the signed difference in raw output
+units and reuses `Units.price_text` for the actual received/paid rate at each
+token's precision. It does not substitute the current reserve ratio or a later
+quote for the historical execution. The existing small-nonzero price display is
+retained rather than presenting a truncated rate as exact equality.
+`SwapResult.gasCostWei` comes from the same shared receipt-fee adapter. Events,
+the original quote and minimum, token metadata and the receipt's sender remain
+the external binding checked by public real-chain acceptance. No ETH/ERC20
+conversion or profit calculation is implied by the output-token difference.
+
+`quote_difference_reconstructs_received` connects the signed difference to the
+original quote and actual received amount; `quote_comparison_matches_received`
+connects its classification to the ordering of those observed quantities. Both
+are closed under the global context. Rate formatting reuses the existing units
+specification rather than introducing another price formula.
 
 `Contracts/ArbitrageExtract.v` is a frontend extraction adapter; this summary
 adds no Solidity or EVM refinement. `execution_summary_settlement` reuses

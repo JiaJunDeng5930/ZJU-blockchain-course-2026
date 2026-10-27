@@ -204,6 +204,24 @@ RPC, deployment file and browser are untouched. These checks exercise public
 behavior and adapter assumptions; they do not prove React rendering, RPC honesty,
 the compiler, or EVM semantics.
 
+## Realized swap price and quote comparison
+
+Run `npm run test:swap-settlement`, or run
+`contracts/node_modules/.bin/tsx frontend/acceptance/swap-settlement-public.mts`
+after building the production kernel and contract artifacts.
+
+The public routed-swap flow captures a quote before actual execution. Another
+actor can move the market between those steps, producing unchanged, improved or
+worse output while the original minimum remains binding. Actual events and token
+balances establish the settlement amounts and signed output-token difference.
+The realized rate is checked with token-specific precision, separately from the
+pool's reserve price. Historical sender ETH balances establish the execution fee
+and exclude approvals in earlier blocks; the public journal must agree.
+
+The runner does not copy the production AMM or fee formula. These observations
+accept the public result and rendering-data adapters, not DOM behavior, RPC
+honesty or EVM semantics. A quote difference is not a cross-currency profit.
+
 ## Swap route selection
 
 After building the production frontend and contract artifacts:
