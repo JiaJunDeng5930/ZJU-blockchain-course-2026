@@ -8,6 +8,7 @@ import { HistoryStatus } from "./components/HistoryStatus";
 import { ChainDataStatus } from "./components/ChainDataStatus";
 import type { Deployment } from "./chain/types";
 import { poolKey } from "./chain/amounts";
+import { resolvePoolSelection } from "./logic/poolSelection";
 import { WalletMenu } from "./components/WalletMenu";
 import { PoolSelector } from "./components/PoolSelector";
 import { SwapPage } from "./features/SwapPage";
@@ -101,16 +102,16 @@ function Workspace() {
   const [search, setSearch] = useSearchParams();
   const [walletOpen, setWalletOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  const [creatingPosition, setCreatingPosition] = useState(false);
+  // History navigation must not carry an open position form to a different pool.
+  const [creatingPositionFor, setCreatingPositionFor] = useState<string>();
   const tools = useRef<HTMLDivElement>(null);
   const toolsButton = useRef<HTMLButtonElement>(null);
   const page =
     workspaces.find((workspace) => workspace.route === search.get("view"))
       ?.name ?? "Swap";
   const selected = search.get("pool");
-  const pool =
-    snapshot.data?.pools.find((item) => poolKey(item) === selected) ??
-    snapshot.data?.pools[0];
+  const selection = resolvePoolSelection(selected, snapshot.data?.pools ?? []);
+  const pool = selection.kind === "selected" ? selection.pool : undefined;
   function goTo(name: WorkspaceName, nextPool?: string) {
     const route = workspaces.find(
       (workspace) => workspace.name === name,
@@ -123,17 +124,23 @@ function Workspace() {
     });
     setToolsOpen(false);
     setWalletOpen(false);
-    setCreatingPosition(false);
+    setCreatingPositionFor(undefined);
   }
   function selectPool(key: string) {
-    setSearch(
-      (previous) => {
-        const next = new URLSearchParams(previous);
-        next.set("pool", key);
-        return next;
-      },
-      { replace: true },
-    );
+    setCreatingPositionFor(undefined);
+    setSearch((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("pool", key);
+      return next;
+    });
+  }
+  function selectDefaultPool() {
+    setCreatingPositionFor(undefined);
+    setSearch((previous) => {
+      const next = new URLSearchParams(previous);
+      next.delete("pool");
+      return next;
+    });
   }
   useEffect(() => {
     if (!toolsOpen) return;
@@ -268,9 +275,25 @@ function Workspace() {
             onSelect={(next) => goTo("Swap", poolKey(next))}
             onProvideLiquidity={(next) => {
               goTo("Liquidity", poolKey(next));
-              setCreatingPosition(true);
+              setCreatingPositionFor(poolKey(next));
             }}
           />
+        ) : selection.kind === "missing" ? (
+          <section className="empty-state missing-pool">
+            <h1>Requested pool unavailable</h1>
+            <p>
+              This target is not present in the market snapshot at block{" "}
+              {snapshot.data.block}. Refresh chain data above to check again, or
+              choose a pool from this deployment.
+            </p>
+            <code className="missing-pool-key">
+              {selection.requested || "(empty pool parameter)"}
+            </code>
+            <PoolSelector pool={undefined} onChange={selectPool} />
+            <button className="button-primary" onClick={selectDefaultPool}>
+              Use default pool
+            </button>
+          </section>
         ) : !pool ? (
           <section className="empty-state">
             <h1>No pools yet</h1>
@@ -293,8 +316,10 @@ function Workspace() {
           <LiquidityPage
             key={poolKey(pool)}
             pool={pool}
-            creating={creatingPosition}
-            onCreatingChange={setCreatingPosition}
+            creating={creatingPositionFor === poolKey(pool)}
+            onCreatingChange={(creating) =>
+              setCreatingPositionFor(creating ? poolKey(pool) : undefined)
+            }
           />
         ) : (
           <>

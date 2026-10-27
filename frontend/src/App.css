@@ -247,6 +247,15 @@ pre {
   text-align: center;
   padding: 56px 20px;
 }
+.missing-pool-key {
+  display: block;
+  margin: 20px 0;
+  overflow-wrap: anywhere;
+}
+.missing-pool .pool-strip {
+  grid-template-columns: minmax(0, 1fr);
+  text-align: left;
+}
 .card {
   background: var(--surface);
   border: 1px solid var(--line);

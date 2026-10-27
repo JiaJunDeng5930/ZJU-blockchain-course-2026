@@ -18,6 +18,7 @@ export function PoolSelector({
           value={pool ? poolKey(pool) : ""}
           onChange={(event) => onChange(event.target.value)}
         >
+          {!pool && <option value="" disabled>Select a pool</option>}
           {snapshot.data?.pools.map((p) => (
             <option
               key={poolKey(p)}

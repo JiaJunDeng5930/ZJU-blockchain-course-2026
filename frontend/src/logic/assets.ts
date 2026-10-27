@@ -3,6 +3,7 @@ import { getAddress } from "viem";
 import type { Exchange, Pool, Token } from "../chain/types";
 
 type AssetsRuntime = {
+  poolSelection(value: string): string;
   poolAssetsSupported(value: string): boolean;
   runtimeCodeMatches(actual: string, expected: string): boolean;
   unsupportedPoolError: string;

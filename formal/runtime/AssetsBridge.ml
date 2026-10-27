@@ -131,12 +131,25 @@ let deployed name symbol token =
 let receipt raw =
   let address = match parse raw with `Null -> None | value -> K.canonical_address (F.to_string value) in
   object_ ["address", optional text address; "error", optional text (match address with Some _ -> None | None -> Some K.deployment_receipt_error)] |> emit
+let pool_selection json =
+  let value = parse json in
+  let requested = match member "requested" value with
+    | `Null -> None
+    | raw -> Some (F.to_string raw)
+  in
+  let result = match K.select_pool requested (strings "available" value) with
+    | K.SelectedPool key -> object_ ["kind", text "selected"; "key", text key]
+    | K.MissingPool key -> object_ ["kind", text "missing"; "requested", text key]
+    | K.NoPools -> object_ ["kind", text "empty"]
+  in
+  emit result
 let pool_price first second decimals0 decimals1 symbol0 symbol1 = Js.string (K.pool_price_text (Integer.of_string (Js.to_string first)) (Integer.of_string (Js.to_string second)) (Integer.of_string (Js.to_string decimals0)) (Integer.of_string (Js.to_string decimals1)) (Js.to_string symbol0) (Js.to_string symbol1))
 let pool_supported json =
   let value = parse json in
   Js.bool (K.pool_assets_supported (strings "tokens" value) (string "first" value) (string "second" value))
 let runtime_matches actual expected = Js.bool (K.runtime_code_matches (Js.to_string actual) (Js.to_string expected))
 let () = Js.Unsafe.set Js.Unsafe.global "DEXAssets" (Js.Unsafe.obj [|
+  "poolSelection", Js.Unsafe.inject (Js.wrap_callback pool_selection);
   "poolAssetsSupported", Js.Unsafe.inject (Js.wrap_callback pool_supported);
   "runtimeCodeMatches", Js.Unsafe.inject (Js.wrap_callback runtime_matches);
   "unsupportedPoolError", Js.Unsafe.inject (Js.string K.unsupported_pool_error);
