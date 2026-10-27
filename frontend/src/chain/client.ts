@@ -21,6 +21,7 @@ import {
 } from "../generated/abis";
 import { activeOwners } from "../logic/ledger";
 import { aggregateActivity } from "../logic/liquidity";
+import { executionFeeWei } from "../logic/receipts";
 import { approvalNeeded } from "../logic/units";
 import { makeSwapParameters } from "../logic/trade";
 import type { RoutedSwapPlan } from "../logic/routing";
@@ -430,6 +431,7 @@ class ExchangeWriter {
     if (!event)
       throw new Error("Confirmed swap is missing its settlement event.");
     return {
+      gasCostWei: executionFeeWei(receipt),
       pool: plan.pool,
       tokenIn: event.args.tokenIn,
       tokenOut: plan.outputToken,

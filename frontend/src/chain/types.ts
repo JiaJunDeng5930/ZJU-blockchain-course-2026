@@ -87,6 +87,7 @@ export type ArbitrageResult = {
   after: Pool[];
 };
 export type SwapResult = {
+  gasCostWei: bigint;
   pool: Pool;
   tokenIn: string;
   tokenOut: string;
