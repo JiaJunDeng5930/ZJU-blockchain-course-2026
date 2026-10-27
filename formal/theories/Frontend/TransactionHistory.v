@@ -1,12 +1,13 @@
 From Coq Require Import ZArith String Ascii List Bool Lia.
 From DEXFormal.Spec Require Import Types Assets.
-From DEXFormal.Frontend Require Import Wallet Transactions.
+From DEXFormal.Frontend Require Import Wallet Transactions ReplacementSearch.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
 Module TransactionHistory.
 Module T := Transactions.
+Module R := ReplacementSearch.
 Inductive availability := Loading | Available | Unavailable (reason : string).
 Inductive response := NoResponse | AcceptedId (id : Z) | AcceptedUnit
   | AcceptedIdentity (identity : Wallet.identity) | Refused (message : string).
@@ -50,14 +51,37 @@ Definition valid_phase phase :=
   match phase with
   | T.AwaitingPreflight | T.AwaitingSignature | T.Rejected _ | T.SubmissionUnknown _ => true
   | T.Submitted hash _ => valid_hash hash
+  | T.Superseded hash receipt _ => valid_hash hash && match receipt with
+      | None => true | Some (block,gas) => (0 <=? block) && (0 <=? gas) end
   | T.Confirmed hash block gas | T.Reverted hash block gas =>
       valid_hash hash && (0 <=? block) && (0 <=? gas)
   end.
+Fixpoint valid_lineage (links : list R.replacement) : bool := match links with
+  | [] => true
+  | link :: rest => valid_hash (R.previous_hash link) && valid_hash (R.replacement_hash link) &&
+      negb (String.eqb (R.previous_hash link) (R.replacement_hash link)) &&
+      (match rest with [] => true | next :: _ => String.eqb (R.replacement_hash link) (R.previous_hash next) end) &&
+      valid_lineage rest end.
+Definition has_different_call links := existsb (fun link => match R.replacement_type link with
+  | R.Repriced => false | R.DifferentCall => true end) links.
+Definition valid_observations entry :=
+  (match T.entry_descriptor entry with
+    | None => true
+    | Some value => R.valid_descriptor value && String.eqb (R.tx_from value) (T.sender_of entry) &&
+        match T.phase_hash (T.entry_phase entry) with Some hash => String.eqb (R.tx_hash value) hash | None => false end end) &&
+  valid_lineage (T.entry_replacements entry) &&
+  (match rev (T.entry_replacements entry) with
+    | [] => true
+    | last :: _ => match T.phase_hash (T.entry_phase entry) with
+        | Some hash => String.eqb (R.replacement_hash last) hash | None => false end end) &&
+  match T.entry_phase entry with
+    | T.Superseded _ _ _ => has_different_call (T.entry_replacements entry)
+    | _ => negb (has_different_call (T.entry_replacements entry)) end.
 Definition valid_entry chain serial (entry : T.entry) :=
   (0 <? T.entry_id entry) && (T.entry_id entry <=? serial) &&
   Z.eqb (Wallet.identity_chain (T.entry_identity entry)) chain &&
   valid_address (Wallet.identity_address (T.entry_identity entry)) &&
-  valid_address (T.sender_of entry) && valid_phase (T.entry_phase entry).
+  valid_address (T.sender_of entry) && valid_phase (T.entry_phase entry) && valid_observations entry.
 Fixpoint unique_ids (entries : list T.entry) :=
   match entries with
   | [] => true
@@ -70,6 +94,7 @@ Definition valid_archive chain serial entries :=
 Definition restore_entry (entry : T.entry) := T.changed_phase entry (match T.entry_phase entry with
   | T.AwaitingPreflight | T.AwaitingSignature => T.SubmissionUnknown restore_without_hash
   | T.Submitted hash _ | T.Confirmed hash _ _ | T.Reverted hash _ _ => T.Submitted hash (Some restore_receipt)
+  | T.Superseded hash _ _ => T.Superseded hash None (Some restore_receipt)
   | other => other end).
 Definition restore_transactions serial entries := T.State serial None (map restore_entry entries) None.
 Fixpoint instance_characters (name : string) : bool := match name with
@@ -144,7 +169,7 @@ Definition visible_entries s :=
   (flat_map (fun archive => map (fun entry => (owner archive, entry)) (T.journal (observed archive))) (previous s)).
 Definition pending_receipts s := flat_map (fun item =>
   match T.entry_phase (snd item) with
-  | T.Submitted hash _ => [(fst item, (T.entry_id (snd item), hash))]
+  | T.Submitted hash _ | T.Superseded hash None _ => [(fst item, (T.entry_id (snd item), hash))]
   | _ => [] end) (visible_entries s).
 Definition can_refresh s := negb (Nat.eqb (List.length (pending_receipts s)) 0).
 
@@ -169,14 +194,34 @@ Definition receipt_unavailable s page id message :=
   if String.eqb page (instance s) then stage s (T.observation_failed (transactions s) id message) NoResponse
   else (observation_failed s page id message, NoResponse).
 
+Definition receive_descriptor s page id descriptor :=
+  if String.eqb page (instance s) then stage s (T.describe (transactions s) id descriptor) AcceptedUnit
+  else (observe_archive s page (fun tx => T.describe tx id descriptor), NoResponse).
+Definition receive_replacement s page id original candidate hash sender success block used price :=
+  if String.eqb page (instance s) then
+    let next := T.replacement (transactions s) id original candidate hash sender success block used price in
+    stage s next (unit_response (T.settlement_decision next id))
+  else (observe_archive s page (fun tx => T.replacement tx id original candidate hash sender success block used price), NoResponse).
+Definition receive_metadata_error s page id message :=
+  if String.eqb page (instance s) then stage s (T.apply_journal (transactions s) id (T.ObservationFailed message)) AcceptedUnit
+  else (observe_archive s page (fun tx => T.apply_journal tx id (T.ObservationFailed message)), NoResponse).
+Definition observing_active s page id := String.eqb page (instance s) &&
+  match T.active (transactions s) with
+  | Some operation => match T.operation_status operation with T.Waiting waiting => Z.eqb waiting id | _ => false end
+  | None => false end.
+Definition find_visible s page id :=
+  find (fun item => String.eqb (fst item) page && Z.eqb (T.entry_id (snd item)) id) (visible_entries s).
+Definition saved_descriptor s page id := match find_visible s page id with
+  | Some item => T.entry_descriptor (snd item) | None => None end.
+
 Theorem restore_has_no_operation serial entries : T.active (restore_transactions serial entries) = None.
 Proof. reflexivity. Qed.
 Theorem restored_identity_unchanged entry : T.entry_identity (restore_entry entry) = T.entry_identity entry.
-Proof. destruct entry as [id label identity authority phase]; destruct phase; reflexivity. Qed.
+Proof. destruct entry as [id label identity authority phase descriptor replacements]; destruct phase; reflexivity. Qed.
 Theorem restored_authority_unchanged entry : T.entry_authority (restore_entry entry) = T.entry_authority entry.
-Proof. destruct entry as [id label identity authority phase]; destruct phase; reflexivity. Qed.
+Proof. destruct entry as [id label identity authority phase descriptor replacements]; destruct phase; reflexivity. Qed.
 Theorem restored_id_unchanged entry : T.entry_id (restore_entry entry) = T.entry_id entry.
-Proof. destruct entry as [id label identity authority phase]; destruct phase; reflexivity. Qed.
+Proof. destruct entry as [id label identity authority phase descriptor replacements]; destruct phase; reflexivity. Qed.
 Theorem restored_sender_unchanged entry : T.sender_of (restore_entry entry) = T.sender_of entry.
 Proof. unfold T.sender_of; rewrite restored_identity_unchanged, restored_authority_unchanged; reflexivity. Qed.
 Theorem restored_signature_is_unknown entry : T.entry_phase entry = T.AwaitingSignature ->
@@ -188,7 +233,7 @@ Theorem restored_preflight_is_unknown entry :
 Proof. intro H; unfold restore_entry; rewrite H; reflexivity. Qed.
 Theorem restore_never_waits_for_signature entry :
   T.entry_phase (restore_entry entry) <> T.AwaitingSignature /\ T.entry_phase (restore_entry entry) <> T.AwaitingPreflight.
-Proof. destruct entry as [id label identity authority phase]; destruct phase; simpl; split; discriminate. Qed.
+Proof. destruct entry as [id label identity authority phase descriptor replacements]; destruct phase; simpl; split; discriminate. Qed.
 Theorem archive_chain_and_scope_checked s namespace actual saved :
   valid_saved s namespace actual saved = true -> saved_scope saved = namespace /\ saved_instance saved = actual.
 Proof.
@@ -203,7 +248,9 @@ Proof.
   pose proof (proj1 (@List.forallb_forall T.entry (valid_entry chain serial) entries) Hall) as HallEntries.
   apply in_map_iff in Hin as [original [<- Hin]]. rewrite restored_id_unchanged.
   specialize (HallEntries original Hin). unfold valid_entry in HallEntries.
-  repeat rewrite andb_true_iff in HallEntries. destruct HallEntries as [[[[[Hpositive Hbound] _] _] _] _].
+  repeat rewrite andb_true_iff in HallEntries.
+  assert (Hpositive : (0 <? T.entry_id original) = true) by tauto.
+  assert (Hbound : (T.entry_id original <=? serial) = true) by tauto.
   apply Z.ltb_lt in Hpositive; apply Z.leb_le in Hbound; lia.
 Qed.
 Theorem loading_does_not_replace_current_operation s namespace raw :
@@ -264,4 +311,25 @@ Theorem restored_archive_cannot_authorize serial entries wallet op tx accounts c
   exists reason, snd (T.authorize (restore_transactions serial entries) wallet op tx accounts chain) = T.Denied reason.
 Proof. unfold T.authorize, T.authorization_identity, restore_transactions; simpl; eexists; reflexivity. Qed.
 
+Theorem restored_replaced_remains_replaced entry hash receipt error id event :
+  T.entry_phase entry = T.Superseded hash receipt error ->
+  T.replaced_phase (T.entry_phase (T.apply_entry id event (restore_entry entry))) = true.
+Proof. intro Hphase. apply T.replaced_entry_never_confirms_original.
+  unfold restore_entry; rewrite Hphase; reflexivity. Qed.
+Theorem restored_public_observations_preserved entry :
+  T.entry_descriptor (restore_entry entry) = T.entry_descriptor entry /\
+  T.entry_replacements (restore_entry entry) = T.entry_replacements entry.
+Proof. unfold restore_entry; destruct (T.entry_phase entry); split; reflexivity. Qed.
+Theorem foreign_descriptor_is_read_only s page id descriptor :
+  page <> instance s -> queued s = None ->
+  transactions (fst (receive_descriptor s page id descriptor)) = transactions s /\
+  needs_save (fst (receive_descriptor s page id descriptor)) = false.
+Proof. intros Hpage Hqueue; unfold receive_descriptor; apply String.eqb_neq in Hpage; rewrite Hpage.
+  split; [reflexivity|]. unfold needs_save,observe_archive; cbn; rewrite Hqueue; reflexivity. Qed.
+Theorem foreign_replacement_is_read_only s page id original candidate hash sender success block used price :
+  page <> instance s -> queued s = None ->
+  transactions (fst (receive_replacement s page id original candidate hash sender success block used price)) = transactions s /\
+  needs_save (fst (receive_replacement s page id original candidate hash sender success block used price)) = false.
+Proof. intros Hpage Hqueue; unfold receive_replacement; apply String.eqb_neq in Hpage; rewrite Hpage.
+  split; [reflexivity|]. unfold needs_save,observe_archive; cbn; rewrite Hqueue; reflexivity. Qed.
 End TransactionHistory.

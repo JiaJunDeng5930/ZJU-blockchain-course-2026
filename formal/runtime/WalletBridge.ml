@@ -4,6 +4,7 @@ module Integer = Z
 module K = WalletKernel
 module W = K.Wallet
 module T = K.Transactions
+module R = K.ReplacementSearch
 module H = K.TransactionHistory
 module A = K.Activity
 module Json = Yojson.Safe
@@ -88,6 +89,24 @@ let effect_json = function
   | W.AddNetwork request -> object_ ["kind", text "add-network"; "request", integer request]
   | W.PersistPreference preference -> object_ ["kind", text "persist"; "preference", preference_json preference]
 
+let descriptor_json value = object_ [
+  "hash", text value.R.tx_hash; "from", text value.R.tx_from; "nonce", integer value.R.tx_nonce;
+  "to", optional text value.R.tx_to; "input", text value.R.tx_input; "value", integer value.R.tx_value;
+  "observedBlock", integer value.R.observed_block]
+let descriptor_exn value : R.descriptor = {
+  tx_hash = string_exn "hash" value; tx_from = string_exn "from" value; tx_nonce = number_exn "nonce" value;
+  tx_to = optional_string_exn "to" value; tx_input = string_exn "input" value;
+  tx_value = number_exn "value" value; observed_block = number_exn "observedBlock" value }
+let replacement_json value = object_ ["hash", text value.R.previous_hash;
+  "replacementHash", text value.R.replacement_hash;
+  "kind", text (match value.R.replacement_type with R.Repriced -> "repriced" | R.DifferentCall -> "replaced")]
+let replacement_exn value : R.replacement = { previous_hash = string_exn "hash" value;
+  replacement_hash = string_exn "replacementHash" value;
+  replacement_type = (match string_exn "kind" value with "repriced" -> R.Repriced | "replaced" -> R.DifferentCall
+    | _ -> invalid_arg "Unknown replacement kind") }
+let receipt_pair_json (block,gas) = object_ ["block", integer block; "gas", integer gas]
+let receipt_pair_exn value = number_exn "block" value, number_exn "gas" value
+let optional_exn decode = function `Null -> None | value -> Some (decode value)
 let entry_json page entry =
   let common = ["id", text (page ^ ":" ^ Integer.to_string entry.T.entry_id); "instance", text page; "label", text entry.T.entry_label;
     "account", text (T.sender_of entry); "beneficiary", text entry.T.entry_identity.W.identity_address;
@@ -100,9 +119,14 @@ let entry_json page entry =
         "block", integer block; "gas", integer gas]
     | T.Reverted (hash, block, gas) -> ["state", text "failed"; "hash", text hash;
         "block", integer block; "gas", integer gas; "message", text "Transaction reverted on chain."]
+    | T.Superseded (hash,receipt,error) -> ["state", text "replaced"; "hash", text hash;
+        "message", text (match error with Some message -> message | None -> "The original request was replaced by a different transaction.")]
+        @ (match receipt with None -> [] | Some (block,gas) -> ["block",integer block;"gas",integer gas])
     | T.Rejected message -> ["state", text "failed"; "message", text message]
     | T.SubmissionUnknown message -> ["state", text "submission-unknown"; "message", text message]
-  in object_ (common @ phase)
+  in object_ (common @ ["descriptor", optional descriptor_json entry.T.entry_descriptor;
+    "originalHash", optional text (T.original_hash entry);
+    "replacements", `List (List.map replacement_json entry.T.entry_replacements)] @ phase)
 
 let activity_json activity =
   let simple kind label = object_ ["kind", text kind; "label", text label] in
@@ -133,6 +157,8 @@ let phase_archive_json = function
   | T.Submitted (hash, message) -> object_ ["kind", text "submitted"; "hash", text hash; "message", optional text message]
   | T.Confirmed (hash, block, gas) -> object_ ["kind", text "confirmed"; "hash", text hash; "block", integer block; "gas", integer gas]
   | T.Reverted (hash, block, gas) -> object_ ["kind", text "reverted"; "hash", text hash; "block", integer block; "gas", integer gas]
+  | T.Superseded (hash,receipt,error) -> object_ ["kind",text "replaced";"hash",text hash;
+      "receipt",optional receipt_pair_json receipt;"message",optional text error]
   | T.Rejected message -> object_ ["kind", text "rejected"; "message", text message]
   | T.SubmissionUnknown message -> object_ ["kind", text "unknown"; "message", text message]
 let phase_archive_exn value = match string_exn "kind" value with
@@ -141,6 +167,7 @@ let phase_archive_exn value = match string_exn "kind" value with
   | "submitted" -> T.Submitted (string_exn "hash" value, optional_string_exn "message" value)
   | "confirmed" -> T.Confirmed (string_exn "hash" value, number_exn "block" value, number_exn "gas" value)
   | "reverted" -> T.Reverted (string_exn "hash" value, number_exn "block" value, number_exn "gas" value)
+  | "replaced" -> T.Superseded (string_exn "hash" value, optional_exn receipt_pair_exn (member_exn "receipt" value), optional_string_exn "message" value)
   | "rejected" -> T.Rejected (string_exn "message" value)
   | "unknown" -> T.SubmissionUnknown (string_exn "message" value)
   | _ -> invalid_arg "Unknown history phase"
@@ -148,20 +175,25 @@ let archive_entry_json entry = object_ ["id", integer entry.T.entry_id;
   "label", text entry.T.entry_label; "identity", identity_json entry.T.entry_identity;
   "authority", (match entry.T.entry_authority with T.WalletAuthority -> `Null
     | T.FaucetAuthority sender -> object_ ["kind", text "dev-faucet"; "sender", text sender]);
-  "phase", phase_archive_json entry.T.entry_phase]
-let archive_entry_exn value : T.entry = { entry_id = number_exn "id" value;
+  "phase", phase_archive_json entry.T.entry_phase;
+  "descriptor",optional descriptor_json entry.T.entry_descriptor;
+  "replacements",`List (List.map replacement_json entry.T.entry_replacements)]
+let archive_entry_exn version value : T.entry = { entry_id = number_exn "id" value;
   entry_label = string_exn "label" value; entry_identity = identity_exn (member_exn "identity" value);
-  entry_authority = authority_exn value; entry_phase = phase_archive_exn (member_exn "phase" value) }
+  entry_authority = authority_exn value; entry_phase = phase_archive_exn (member_exn "phase" value);
+  entry_descriptor = (if version = 1 then None else optional_exn descriptor_exn (member_exn "descriptor" value));
+  entry_replacements = (if version = 1 then [] else member_exn "replacements" value |> Field.to_list |> List.map replacement_exn) }
 let archive_json state =
   let tx = state.H.transactions in
-  object_ ["version", `Int 1; "scope", text state.H.archive_scope; "instance", text state.H.instance;
+  object_ ["version", `Int 2; "scope", text state.H.archive_scope; "instance", text state.H.instance;
     "serial", integer tx.T.serial; "entries", `List (List.map archive_entry_json tx.T.journal)]
 let archive_exn encoded =
   let value = Json.from_string encoded in
-  if Field.to_int (member_exn "version" value) <> 1 then invalid_arg "Unknown history version";
+  let version = Field.to_int (member_exn "version" value) in
+  if version <> 1 && version <> 2 then invalid_arg "Unknown history version";
   { H.saved_scope = string_exn "scope" value; saved_instance = string_exn "instance" value;
     saved_serial = number_exn "serial" value;
-    saved_entries = member_exn "entries" value |> Field.to_list |> List.map archive_entry_exn }
+    saved_entries = member_exn "entries" value |> Field.to_list |> List.map (archive_entry_exn version) }
 let snapshot_exn value =
   let owner = string_exn "owner" value in
   let decoded = try Some (archive_exn (string_exn "archive" value))
@@ -247,6 +279,37 @@ let create_exn configuration =
       | event -> A.step query account rows (activity_event_exn event) in
     activity_page_json page |> Json.to_string |> Js.string
   in
+  let page_exn value = match member_exn "instance" value with `Null -> !history.H.instance | value -> Field.to_string value in
+  let receipt_search encoded =
+    let value = Json.from_string (Js.to_string encoded) in
+    let page = page_exn value and id = number_exn "transaction" value in
+    let search = ref (R.begin_observation (H.saved_descriptor !history page id)
+      (H.observing_active !history page id) (number_exn "head" value)) in
+    let result () =
+      let effect = match R.request !search with
+        | R.ReadNonce (owner,height) -> object_ ["kind",text "nonce";"owner",text owner;"block",integer height]
+        | R.ReadBlock height -> object_ ["kind",text "block";"block",integer height]
+        | R.Waiting height -> object_ ["kind",text "waiting";"block",integer height]
+        | R.WaitOriginal -> object_ ["kind",text "original"]
+        | R.OriginalReceipt candidate -> object_ ["kind",text "receipt";"candidate",descriptor_json candidate]
+        | R.ReplacementReceipt (original,candidate) -> object_ ["kind",text "replacement";
+            "original",descriptor_json original;"candidate",descriptor_json candidate]
+        | R.Failed message -> object_ ["kind",text "unavailable";"message",text message] in
+      Json.to_string effect |> Js.string in
+    Js.Unsafe.obj [|
+      "view",Js.Unsafe.inject (Js.wrap_callback result);
+      "timeoutMs",Js.Unsafe.inject (Js.string (Integer.to_string R.wait_timeout_ms));
+      "command",Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
+        let event = Json.from_string (Js.to_string encoded) in
+        search := (match string_exn "kind" event with
+          | "nonce" -> R.nonce_observed !search (number_exn "block" event) (number_exn "count" event)
+          | "block" -> R.block_observed !search (number_exn "block" event)
+              (member_exn "transactions" event |> Field.to_list |> List.map descriptor_exn)
+          | "head" -> R.head_observed !search (number_exn "block" event)
+          | "expired" -> R.expired !search
+          | "failed" -> R.failed !search (string_exn "message" event)
+          | _ -> invalid_arg "Unknown receipt observation event"); result ()))
+    |] in
   let save_effect () = if H.needs_save !history then
     [object_ ["kind", text "save-history"; "key", text (H.storage_key !history);
       "archive", text (Json.to_string (archive_json !history))]] else [] in
@@ -291,6 +354,22 @@ let create_exn configuration =
     | "broadcast" -> observed (T.broadcast (tx ()) (number_exn "transaction" event) (string_exn "hash" event))
     | "preflight-failed" -> observed (T.preflight_failed (tx ()) (number_exn "transaction" event) (string_exn "message" event))
     | "signature-failed" -> observed (T.signature_failed (tx ()) (number_exn "transaction" event) (optional_number_exn "code" event) (string_exn "message" event))
+    | "transaction-described" ->
+        let next,response = H.receive_descriptor !history (page_exn event)
+          (number_exn "transaction" event) (descriptor_exn (member_exn "descriptor" event)) in
+        history := next; history_reply response
+    | "transaction-metadata-unavailable" ->
+        let next,response = H.receive_metadata_error !history (page_exn event)
+          (number_exn "transaction" event) (string_exn "message" event) in
+        history := next; history_reply response
+    | "transaction-replaced" ->
+        let success = match string_exn "status" event with "success" -> true | "reverted" -> false
+          | _ -> invalid_arg "Invalid replacement receipt status" in
+        let next,response = H.receive_replacement !history (page_exn event) (number_exn "transaction" event)
+          (descriptor_exn (member_exn "original" event)) (descriptor_exn (member_exn "candidate" event))
+          (string_exn "hash" event) (string_exn "sender" event) success (number_exn "block" event)
+          (number_exn "gasUsed" event) (number_exn "gasPrice" event) in
+        history := next; history_reply response
     | "receipt" ->
         let success = match string_exn "status" event with "success" -> true | "reverted" -> false | _ -> invalid_arg "Invalid receipt status" in
         unit_result (T.settle (tx ()) (number_exn "transaction" event) (string_exn "hash" event) (string_exn "sender" event)
@@ -330,6 +409,7 @@ let create_exn configuration =
       reply effects [object_ ["kind", text "load-history"]] `Null));
     "dispatch", Js.Unsafe.inject (Js.wrap_callback dispatch);
     "activity", Js.Unsafe.inject (Js.wrap_callback activity);
+    "receiptSearch",Js.Unsafe.inject (Js.wrap_callback receipt_search);
     "allowances", Js.Unsafe.inject (Js.wrap_callback (AllowancesBridge.create ~current_identity:(fun () -> W.current_identity !wallet) ~pending:(fun () -> T.pending (tx ()))));
     "historyKey", Js.Unsafe.inject (Js.wrap_callback (fun genesis deployment endpoint -> H.scope (Js.to_string genesis) (Js.to_string deployment) (Js.to_string endpoint) |> Js.string));
     "retainsSnapshot", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->

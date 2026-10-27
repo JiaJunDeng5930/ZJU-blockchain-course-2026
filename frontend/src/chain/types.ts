@@ -1,3 +1,7 @@
+import type {
+  TransactionDescriptor,
+  TransactionReplacement,
+} from "../wallet/kernel";
 import type { TransactionReceipt } from "viem";
 
 export type Token = {
@@ -62,6 +66,9 @@ export type ArbitrageResult = {
   after: Pool[];
 };
 export type JournalEntry = {
+  descriptor: TransactionDescriptor | null;
+  originalHash: string | null;
+  replacements: TransactionReplacement[];
   id: string;
   label: string;
   account: string;
@@ -79,6 +86,13 @@ export type JournalEntry = {
       gas?: bigint;
     }
   | { state: "submission-unknown"; message: string }
+  | {
+      state: "replaced";
+      hash: string;
+      message: string;
+      block?: bigint;
+      gas?: bigint;
+    }
 );
 
 export type LiquidityActivity = {

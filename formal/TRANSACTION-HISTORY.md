@@ -32,17 +32,24 @@ On recovery:
   submission-unknown. Later storage failure may have allowed the original page
   to continue in memory. Another page or wallet may still complete it; recovery
   never labels it failed and never sends it again.
-- Every saved hash, including a previously confirmed or reverted transaction, is
-  checked against the current RPC. Missing receipts remain submitted with an
+- The current hash of each saved submitted, confirmed or reverted entry is
+  checked against the RPC. Lineage hashes are not independent pending entries.
+  Missing receipts leave these entries submitted with an
   explicit observation error after the bounded wait. A reset development chain
   therefore does not inherit an unchecked terminal result from an old archive.
 - The captured account, source, sender, authority and local identifier remain
   attached to the record when the current wallet or account changes.
 
+Saved different-call replacements retain their `replaced` classification while
+rechecking the replacement receipt. Version 2 stores public nonce descriptors
+and replacement lineage; version 1 migrates without either. The exact matching,
+read-only recovery and proof boundaries are described in
+[transaction receipt reconciliation](TRANSACTION-REPLACEMENTS.md).
+
 ## Proven properties
 
-The file contains 24 closed theorems. The acceptance run checked every theorem
-with `Print Assumptions`; all reported `Closed under the global context`.
+The recovery theorems are checked with `coqc` and `coqchk`. The current
+assumptions audit reports `Closed under the global context` for these theorems.
 The properties include:
 
 | Requirement | Proof entry points |

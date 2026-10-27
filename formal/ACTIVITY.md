@@ -40,6 +40,11 @@ the page when it is valid and clamp it when the filtered list becomes shorter.
 The canonical journal order is preserved; filtering does not impose a new
 chronological order across independent page archives.
 
+Different-call replacements remain visible under All with the original and
+replacement hashes and any verified receipt quantities. They are not classified
+as reverted receipts or rejected requests by the Failed selector. See
+[transaction receipt reconciliation](TRANSACTION-REPLACEMENTS.md).
+
 ## Model, extraction and proof scope
 
 `formal/theories/Frontend/Activity.v` defines selectors, events, normalization,

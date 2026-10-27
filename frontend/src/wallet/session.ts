@@ -12,6 +12,7 @@ import {
   BaseError,
   type Hex,
   type TransactionReceipt,
+  TransactionReceiptNotFoundError,
 } from "viem";
 import type { ExchangeClient, Writer } from "../chain/client";
 import { errorMessage } from "../chain/amounts";
@@ -23,6 +24,8 @@ import {
   type WalletEffect,
   type WalletIdentity,
   type WalletSource,
+  type TransactionDescriptor,
+  type ReceiptSearchEffect,
 } from "./kernel";
 
 declare global {
@@ -210,6 +213,245 @@ export class WalletController {
       });
     }
   }
+  private transactionDescriptor(
+    transaction: {
+      hash: Hex;
+      from: Address;
+      nonce: number;
+      to: Address | null;
+      input: Hex;
+      value: bigint;
+      blockNumber?: bigint | null;
+    },
+    observedBlock: bigint,
+  ): TransactionDescriptor {
+    return {
+      hash: transaction.hash.toLowerCase(),
+      from: getAddress(transaction.from),
+      nonce: transaction.nonce.toString(),
+      to: transaction.to === null ? null : getAddress(transaction.to),
+      input: transaction.input.toLowerCase(),
+      value: transaction.value.toString(),
+      observedBlock: (transaction.blockNumber ?? observedBlock).toString(),
+    };
+  }
+  private replacementObserved(
+    target: { instance: string | null; transaction: string },
+    original: TransactionDescriptor,
+    candidate: TransactionDescriptor,
+    receipt: TransactionReceipt,
+  ) {
+    this.dispatch({
+      kind: "transaction-replaced",
+      ...target,
+      original,
+      candidate,
+      hash: receipt.transactionHash.toLowerCase(),
+      sender: getAddress(receipt.from),
+      status: receipt.status,
+      block: receipt.blockNumber.toString(),
+      gasUsed: receipt.gasUsed.toString(),
+      gasPrice: receipt.effectiveGasPrice.toString(),
+    });
+  }
+  private async waitForRecordedReceipt(target: {
+    instance: string | null;
+    transaction: string;
+    hash: Hex;
+  }): Promise<TransactionReceipt> {
+    const { rpc } = this.client;
+    let observation:
+      | {
+          transaction: Awaited<ReturnType<typeof rpc.getTransaction>>;
+          block: bigint;
+        }
+      | undefined;
+    try {
+      const transaction = await rpc.getTransaction({ hash: target.hash });
+      observation = {
+        transaction,
+        block: transaction.blockNumber ?? (await rpc.getBlockNumber()),
+      };
+    } catch (error) {
+      // DEFENSE: a node can omit a replaced hash or reject its metadata read while its saved nonce remains usable.
+      this.dispatch({
+        kind: "transaction-metadata-unavailable",
+        instance: target.instance,
+        transaction: target.transaction,
+        message: `Transaction details are unavailable; checking the known hash and any saved nonce. ${errorMessage(error)}`,
+      });
+    }
+    if (observation) {
+      this.dispatch({
+        kind: "transaction-described",
+        instance: target.instance,
+        transaction: target.transaction,
+        descriptor: this.transactionDescriptor(
+          observation.transaction,
+          observation.block,
+        ),
+      });
+    }
+    try {
+      return await rpc.getTransactionReceipt({ hash: target.hash });
+    } catch (error) {
+      // DEFENSE: an unmined or replaced hash has no receipt; unrelated RPC failures remain errors.
+      if (!(error instanceof TransactionReceiptNotFoundError)) throw error;
+    }
+    const search = this.kernel.receiptSearch(
+      target.instance,
+      target.transaction,
+      await rpc.getBlockNumber(),
+    );
+    const command = (event: object): ReceiptSearchEffect =>
+      JSON.parse(search.command(JSON.stringify(event)));
+    const nativeWait = () =>
+      rpc.waitForTransactionReceipt({
+        hash: target.hash,
+        timeout: Number(search.timeoutMs),
+        onReplaced: ({
+          replacedTransaction,
+          transaction,
+          transactionReceipt,
+        }) => {
+          this.replacementObserved(
+            target,
+            this.transactionDescriptor(
+              replacedTransaction,
+              transactionReceipt.blockNumber,
+            ),
+            this.transactionDescriptor(
+              transaction,
+              transactionReceipt.blockNumber,
+            ),
+            transactionReceipt,
+          );
+        },
+      });
+    let request: ReceiptSearchEffect = JSON.parse(search.view());
+    if (request.kind === "original") return nativeWait();
+    let releaseHead: () => void = () => {};
+    let rejectHead: ((error: Error) => void) | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const work = async (): Promise<TransactionReceipt> => {
+      for (;;) {
+        switch (request.kind) {
+          case "nonce": {
+            try {
+              const count = await rpc.getTransactionCount({
+                address: getAddress(request.owner),
+                blockNumber: BigInt(request.block),
+              });
+              request = command({
+                kind: "nonce",
+                block: request.block,
+                count: count.toString(),
+              });
+            } catch (error) {
+              request = command({
+                kind: "failed",
+                message: errorMessage(error),
+              });
+            }
+            break;
+          }
+          case "block": {
+            try {
+              const block = await rpc.getBlock({
+                blockNumber: BigInt(request.block),
+                includeTransactions: true,
+              });
+              request = command({
+                kind: "block",
+                block: request.block,
+                transactions: block.transactions.map((transaction) =>
+                  this.transactionDescriptor(transaction, block.number),
+                ),
+              });
+            } catch (error) {
+              request = command({
+                kind: "failed",
+                message: errorMessage(error),
+              });
+            }
+            break;
+          }
+          case "waiting": {
+            request = await new Promise<ReceiptSearchEffect>(
+              (resolve, reject) => {
+                rejectHead = reject;
+                const unwatch = rpc.watchBlockNumber({
+                  emitOnBegin: true,
+                  onBlockNumber: (block) => {
+                    const next = command({
+                      kind: "head",
+                      block: block.toString(),
+                    });
+                    if (next.kind !== "waiting") {
+                      unwatch();
+                      releaseHead = () => {};
+                      rejectHead = undefined;
+                      resolve(next);
+                    }
+                  },
+                  onError: (error) => {
+                    unwatch();
+                    releaseHead = () => {};
+                    rejectHead = undefined;
+                    reject(error);
+                  },
+                });
+                releaseHead = unwatch;
+              },
+            );
+            break;
+          }
+          case "receipt":
+            return rpc.getTransactionReceipt({
+              hash: request.candidate.hash as Hex,
+            });
+          case "replacement": {
+            const receipt = await rpc.getTransactionReceipt({
+              hash: request.candidate.hash as Hex,
+            });
+            // DEFENSE: a receipt RPC may finish after the observation timeout.
+            const current: ReceiptSearchEffect = JSON.parse(search.view());
+            if (current.kind === "unavailable")
+              throw new Error(current.message);
+            this.replacementObserved(
+              target,
+              request.original,
+              request.candidate,
+              receipt,
+            );
+            return receipt;
+          }
+          case "original":
+            return nativeWait();
+          case "unavailable":
+            throw new Error(request.message);
+        }
+      }
+    };
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(() => {
+        const effect = command({ kind: "expired" }) as Extract<
+          ReceiptSearchEffect,
+          { kind: "unavailable" }
+        >;
+        const error = new Error(effect.message);
+        releaseHead();
+        rejectHead?.(error);
+        reject(error);
+      }, Number(search.timeoutMs));
+    });
+    try {
+      return await Promise.race([work(), timeout]);
+    } finally {
+      if (timer) clearTimeout(timer);
+      releaseHead();
+    }
+  }
   private async observeReceipt(
     effect: Extract<WalletEffect, { kind: "observe-receipt" }>,
   ): Promise<void> {
@@ -220,9 +462,10 @@ export class WalletController {
     try {
       let receipt: TransactionReceipt;
       try {
-        receipt = await this.client.rpc.waitForTransactionReceipt({
+        receipt = await this.waitForRecordedReceipt({
+          instance: effect.instance,
+          transaction: effect.transaction,
           hash: effect.hash as Hex,
-          timeout: 180000,
         });
       } catch (error) {
         // DEFENSE: a saved hash may remain unmined, be absent after a chain reset, or have an unavailable RPC.
@@ -238,7 +481,7 @@ export class WalletController {
         kind: "history-receipt",
         instance: effect.instance,
         transaction: effect.transaction,
-        hash: receipt.transactionHash,
+        hash: receipt.transactionHash.toLowerCase(),
         sender: getAddress(receipt.from),
         status: receipt.status,
         block: receipt.blockNumber.toString(),
@@ -315,10 +558,18 @@ export class WalletController {
         });
         throw error;
       }
-      this.dispatch({ kind: "broadcast", transaction, hash });
+      this.dispatch({
+        kind: "broadcast",
+        transaction,
+        hash: hash.toLowerCase(),
+      });
       let receipt: TransactionReceipt;
       try {
-        receipt = await client.rpc.waitForTransactionReceipt({ hash });
+        receipt = await this.waitForRecordedReceipt({
+          instance: null,
+          transaction,
+          hash,
+        });
       } catch (error) {
         this.dispatch({
           kind: "receipt-unavailable",
@@ -331,7 +582,7 @@ export class WalletController {
         this.dispatch({
           kind: "receipt",
           transaction,
-          hash: receipt.transactionHash,
+          hash: receipt.transactionHash.toLowerCase(),
           sender: getAddress(receipt.from),
           status: receipt.status,
           block: receipt.blockNumber.toString(),

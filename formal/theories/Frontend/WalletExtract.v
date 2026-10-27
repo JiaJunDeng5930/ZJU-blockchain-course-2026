@@ -1,5 +1,5 @@
 From Coq Require Import Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
-From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity Allowances.
+From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity Allowances ReplacementSearch.
 
 Extraction Language OCaml.
 Extraction "formal/build/wallet/WalletKernel.ml"
@@ -11,6 +11,9 @@ Extraction "formal/build/wallet/WalletKernel.ml"
   Transactions.authorize_and_reconcile Transactions.broadcast Transactions.preflight_failed Transactions.signature_failed
   Transactions.settle Transactions.observation_failed Transactions.finish_operation
   Transactions.pending Transactions.current_error Transactions.current_activity
+  Transactions.describe Transactions.replacement Transactions.original_hash Transactions.phase_hash
+  ReplacementSearch.initial ReplacementSearch.begin_observation ReplacementSearch.failed ReplacementSearch.request ReplacementSearch.nonce_observed ReplacementSearch.block_observed
+  ReplacementSearch.head_observed ReplacementSearch.expired ReplacementSearch.wait_timeout_ms
   Transactions.settlement_decision Transactions.sender_of
   TransactionHistory.initial TransactionHistory.storage_key TransactionHistory.scope TransactionHistory.valid_hash
   TransactionHistory.loaded TransactionHistory.load_failed TransactionHistory.error TransactionHistory.preference_warning
@@ -18,6 +21,8 @@ Extraction "formal/build/wallet/WalletKernel.ml"
   TransactionHistory.retry_load TransactionHistory.retry_save TransactionHistory.pending_receipts
   TransactionHistory.needs_save TransactionHistory.can_refresh TransactionHistory.can_retry_load TransactionHistory.can_retry_save
   TransactionHistory.visible_entries TransactionHistory.flush_loaded
+  TransactionHistory.receive_descriptor TransactionHistory.receive_replacement TransactionHistory.receive_metadata_error
+  TransactionHistory.saved_descriptor TransactionHistory.observing_active
   TransactionHistory.receive_receipt TransactionHistory.receipt_unavailable
   Allowances.pairs_for Allowances.initial Allowances.normalize Allowances.can_revoke Allowances.begin_read Allowances.matches_request
   Allowances.loaded Allowances.failed Allowances.select Allowances.cancel Allowances.take Allowances.validate

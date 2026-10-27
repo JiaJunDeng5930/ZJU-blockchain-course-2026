@@ -17,7 +17,41 @@ export type WalletView = {
   | { kind: "ready"; identity: WalletIdentity }
   | { kind: "unavailable"; reason: string; message: string }
 );
+export type TransactionDescriptor = {
+  hash: string;
+  from: string;
+  nonce: string;
+  to: string | null;
+  input: string;
+  value: string;
+  observedBlock: string;
+};
+export type TransactionReplacement = {
+  hash: string;
+  replacementHash: string;
+  kind: "repriced" | "replaced";
+};
+export type ReceiptSearchEffect =
+  | { kind: "nonce"; owner: string; block: string }
+  | { kind: "block"; block: string }
+  | { kind: "waiting"; block: string }
+  | { kind: "original" }
+  | { kind: "receipt"; candidate: TransactionDescriptor }
+  | {
+      kind: "replacement";
+      original: TransactionDescriptor;
+      candidate: TransactionDescriptor;
+    }
+  | { kind: "unavailable"; message: string };
+export type RawReceiptSearch = {
+  view(): string;
+  command(event: string): string;
+  timeoutMs: string;
+};
 export type JournalView = {
+  descriptor: TransactionDescriptor | null;
+  originalHash: string | null;
+  replacements: TransactionReplacement[];
   id: string;
   instance: string;
   label: string;
@@ -30,6 +64,13 @@ export type JournalView = {
   | { state: "submitted"; hash: string; message: string | null }
   | { state: "confirmed"; hash: string; block: string; gas: string }
   | { state: "submission-unknown"; message: string }
+  | {
+      state: "replaced";
+      hash: string;
+      message: string;
+      block?: string;
+      gas?: string;
+    }
   | {
       state: "failed";
       message: string;
@@ -132,6 +173,31 @@ export type KernelEvent =
       accounts: string[];
       chain: string;
     }
+  | {
+      kind: "transaction-described";
+      instance: string | null;
+      transaction: string;
+      descriptor: TransactionDescriptor;
+    }
+  | {
+      kind: "transaction-metadata-unavailable";
+      instance: string | null;
+      transaction: string;
+      message: string;
+    }
+  | {
+      kind: "transaction-replaced";
+      instance: string | null;
+      transaction: string;
+      original: TransactionDescriptor;
+      candidate: TransactionDescriptor;
+      hash: string;
+      sender: string;
+      status: "success" | "reverted";
+      block: string;
+      gasUsed: string;
+      gasPrice: string;
+    }
   | { kind: "broadcast"; transaction: string; hash: string }
   | {
       kind: "preflight-failed" | "receipt-unavailable";
@@ -183,7 +249,10 @@ export type KernelEvent =
       message: string;
     };
 export type RawAllowances = {
-  view(): string; command(event:string):string; writePlan(input:string):string; simulation(accepted:boolean):string;
+  view(): string;
+  command(event: string): string;
+  writePlan(input: string): string;
+  simulation(accepted: boolean): string;
 };
 type RawKernel = {
   view(): string;
@@ -193,7 +262,8 @@ type RawKernel = {
   fundingPlan(observation: string): string;
   historyKey(genesis: string, deployment: string, endpoint: string): string;
   activity(input: string): string;
-  allowances(configuration:string): RawAllowances;
+  receiptSearch(input: string): RawReceiptSearch;
+  allowances(configuration: string): RawAllowances;
 };
 declare global {
   var DEXWallet: {
@@ -217,7 +287,10 @@ export class WalletKernel {
     this.raw = globalThis.DEXWallet.create(JSON.stringify(configuration));
     this.view = JSON.parse(this.raw.view());
   }
-  createAllowances(configuration:{tokens:string[];spenders:string[]}): RawAllowances {
+  createAllowances(configuration: {
+    tokens: string[];
+    spenders: string[];
+  }): RawAllowances {
     return this.raw.allowances(JSON.stringify(configuration));
   }
   getSnapshot = () => this.view;
@@ -242,6 +315,16 @@ export class WalletKernel {
   /** Read-only projection: no dispatch, subscriptions or external effects. */
   projectActivity(input: string): string {
     return this.raw.activity(input);
+  }
+  /** @internal RPC interpreter for an already recorded transaction. */
+  receiptSearch(
+    instance: string | null,
+    transaction: string,
+    head: bigint,
+  ): RawReceiptSearch {
+    return this.raw.receiptSearch(
+      JSON.stringify({ instance, transaction, head: head.toString() }),
+    );
   }
   historyKey(genesis: string, deployment: string, endpoint: string) {
     return this.raw.historyKey(genesis, deployment, endpoint);

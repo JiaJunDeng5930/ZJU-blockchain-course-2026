@@ -1,5 +1,7 @@
 (** Registers the extracted wallet and transaction-history kernel using its
-    version-one JSON protocol. Integer quantities cross the boundary as exact
+    JSON protocol and version-two history archive. Version-one archives have no
+    nonce descriptor or replacement lineage and are migrated without inferring
+    either. Integer quantities cross the boundary as exact
     strings. Runtime closures retain all authority; archive DTOs contain public
     transaction metadata only and cannot reconstruct an executable operation.
 

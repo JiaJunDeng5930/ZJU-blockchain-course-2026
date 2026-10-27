@@ -1,15 +1,17 @@
 From Coq Require Import ZArith String List Bool Lia.
 From DEXFormal.Spec Require Import Types.
-From DEXFormal.Frontend Require Import Wallet.
+From DEXFormal.Frontend Require Import Wallet ReplacementSearch.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope string_scope.
+Open Scope Z_scope.
 
 (* Signing permission is bound to the operation's captured identity. Transport
    adapters must encode the requested call and use that captured viem account.
    RPC receipt fields describe the actual transaction; matching hash and sender
    are checked below. A general submission error does not establish rollback. *)
 Module Transactions.
+Module R := ReplacementSearch.
 
 Inductive phase :=
 | AwaitingPreflight
@@ -17,18 +19,23 @@ Inductive phase :=
 | Submitted (hash : string) (observation_error : option string)
 | Confirmed (hash : string) (block gas : Z)
 | Reverted (hash : string) (block gas : Z)
+| Superseded (hash : string) (receipt : option (Z * Z)) (observation_error : option string)
 | Rejected (message : string)
 | SubmissionUnknown (message : string).
 
 Inductive authority := WalletAuthority | FaucetAuthority (sender : address).
 
-Record entry := Entry {
+Record entry := ObservedEntry {
   entry_id : Z;
   entry_label : string;
   entry_identity : Wallet.identity;
   entry_authority : authority;
-  entry_phase : phase
+  entry_phase : phase;
+  entry_descriptor : option R.descriptor;
+  entry_replacements : list R.replacement
 }.
+Definition Entry id label identity authority status :=
+  ObservedEntry id label identity authority status None [].
 
 Inductive operation_phase := CanWrite | Waiting (transaction : Z) | Stopped.
 Record operation := Operation {
@@ -51,18 +58,28 @@ Arguments Accepted {A} _.
 Arguments Denied {A} _.
 
 Definition changed_phase (e : entry) (p : phase) :=
-  Entry (entry_id e) (entry_label e) (entry_identity e) (entry_authority e) p.
+  ObservedEntry (entry_id e) (entry_label e) (entry_identity e) (entry_authority e) p
+    (entry_descriptor e) (entry_replacements e).
 
 Inductive entry_event :=
 | Broadcast (hash : string)
 | PreflightFailed (message : string)
 | SignatureFailed (code : option Z) (message : string)
 | Receipt (hash sender : string) (success : bool) (block gas_used gas_price : Z)
-| ObservationFailed (message : string).
+| ObservationFailed (message : string)
+| Describe (value : R.descriptor)
+| Replacement (original candidate : R.descriptor) (receipt_hash receipt_sender : string)
+    (success : bool) (block gas_used gas_price : Z).
 
 Definition advance (p : phase) (event : entry_event) : phase :=
   match p with
   | Confirmed _ _ _ | Reverted _ _ _ | Rejected _ | SubmissionUnknown _ => p
+  | Superseded hash receipt error => match receipt,event with
+      | Some _,_ => p
+      | None,Receipt received _ _ block used price => if string_dec hash received
+          then Superseded hash (Some (block,used*price)) None else p
+      | None,ObservationFailed message => Superseded hash None (Some message)
+      | _,_ => p end
   | AwaitingPreflight => match event with PreflightFailed message => Rejected message | _ => p end
   | AwaitingSignature => match event with
       | Broadcast hash => Submitted hash None
@@ -93,8 +110,45 @@ Definition event_phase (e : entry) (event : entry_event) : phase :=
   | _ => advance (entry_phase e) event
   end.
 
+Definition phase_hash status := match status with
+  | Submitted hash _ | Confirmed hash _ _ | Reverted hash _ _ | Superseded hash _ _ => Some hash
+  | _ => None end.
+Definition original_hash e := match entry_replacements e with
+  | first :: _ => Some (R.previous_hash first)
+  | [] => phase_hash (entry_phase e) end.
+Definition replace_observations e status descriptor replacements :=
+  ObservedEntry (entry_id e) (entry_label e) (entry_identity e) (entry_authority e)
+    status descriptor replacements.
+Definition descriptor_agrees e original := match entry_descriptor e with
+  | None => true
+  | Some known => String.eqb (R.tx_hash known) (R.tx_hash original) && R.same_call known original end.
+Definition observe_descriptor e value := match entry_phase e with
+  | Submitted hash _ | Superseded hash None _ =>
+      if R.valid_descriptor value && String.eqb (R.tx_hash value) hash &&
+        String.eqb (R.tx_from value) (sender_of e) && descriptor_agrees e value
+      then replace_observations e (entry_phase e) (Some value) (entry_replacements e) else e
+  | _ => e end.
+Definition observe_replacement e original candidate receipt_hash receipt_sender (success : bool) block used price :=
+  match entry_phase e with
+  | Submitted hash _ | Superseded hash None _ =>
+      if R.matches (sender_of e) hash original candidate && descriptor_agrees e original &&
+        String.eqb receipt_hash (R.tx_hash candidate) && String.eqb receipt_sender (sender_of e) &&
+        Z.eqb block (R.observed_block candidate) && (0 <=? used) && (0 <=? price)
+      then let kind := R.classify original candidate in
+        let status := match entry_phase e,kind with
+          | Superseded _ _ _,_ | _,R.DifferentCall => Superseded (R.tx_hash candidate) (Some (block,used*price)) None
+          | _,R.Repriced => if success then Confirmed (R.tx_hash candidate) block (used*price)
+              else Reverted (R.tx_hash candidate) block (used*price) end in
+        replace_observations e status (Some candidate)
+          (List.app (entry_replacements e) [R.Replacement hash (R.tx_hash candidate) kind])
+      else e
+  | _ => e end.
 Definition apply_entry (id : Z) (event : entry_event) (e : entry) :=
-  if Z.eqb id (entry_id e) then changed_phase e (event_phase e event) else e.
+  if Z.eqb id (entry_id e) then match event with
+    | Describe value => observe_descriptor e value
+    | Replacement original candidate hash sender success block used price =>
+        observe_replacement e original candidate hash sender success block used price
+    | _ => changed_phase e (event_phase e event) end else e.
 
 Definition apply_journal (s : state) (id : Z) (event : entry_event) : state :=
   State (serial s) (active s) (map (apply_entry id event) (journal s)) (last_outcome s).
@@ -208,11 +262,21 @@ Definition receipt (s : state) (transaction_id : Z) (hash sender : string) (succ
   match find_entry transaction_id (journal updated) with
   | Some e => match entry_phase e with
       | Confirmed _ _ _ => set_waiting_status updated transaction_id CanWrite
-      | Reverted _ _ _ => set_waiting_status updated transaction_id Stopped
+      | Reverted _ _ _ | Superseded _ _ _ => set_waiting_status updated transaction_id Stopped
       | _ => updated
       end
   | None => updated
   end.
+
+Definition describe s id descriptor := apply_journal s id (Describe descriptor).
+Definition replacement s id original candidate hash sender success block used price :=
+  let updated := apply_journal s id (Replacement original candidate hash sender success block used price) in
+  match find_entry id (journal updated) with
+  | Some e => match entry_phase e with
+      | Confirmed _ _ _ => set_waiting_status updated id CanWrite
+      | Reverted _ _ _ | Superseded _ _ _ => set_waiting_status updated id Stopped
+      | _ => updated end
+  | None => updated end.
 
 Definition observation_failed (s : state) (transaction_id : Z) (message : string) :=
   set_waiting_status (apply_journal s transaction_id (ObservationFailed message)) transaction_id Stopped.
@@ -257,6 +321,7 @@ Definition current_activity (s : state) : activity :=
                   | WalletAuthority => AwaitingWallet (entry_label e)
                   | FaucetAuthority _ => RequestingFaucet (entry_label e)
                   end
+              | Superseded _ _ _ => OperationError (entry_label e) "The original request was replaced by a different transaction."
               | Submitted _ None => Mining (entry_label e)
               | Submitted _ (Some message) => ReceiptUncertain (entry_label e) message
               | _ => Preparing (operation_label operation)
@@ -283,6 +348,7 @@ Definition settlement_decision (s : state) (id : Z) : decision unit :=
   | Some e => match entry_phase e with
       | Confirmed _ _ _ => Accepted tt
       | Reverted _ _ _ => Denied "Transaction reverted on chain."
+      | Superseded _ _ _ => Denied "The original request was replaced by a different transaction. No following operation was sent."
       | Submitted _ (Some message) => Denied message
       | _ => Denied "The receipt does not confirm the submitted transaction."
       end
@@ -353,23 +419,30 @@ Proof. intros Hneq. cbn. destruct (string_dec hash received); congruence. Qed.
 
 Lemma entry_event_preserves_identity id event e :
   entry_identity (apply_entry id event e) = entry_identity e.
-Proof. unfold apply_entry. destruct (Z.eqb id (entry_id e)); reflexivity. Qed.
+Proof. unfold apply_entry. destruct (Z.eqb id (entry_id e)); try reflexivity.
+  destruct event; try reflexivity; unfold observe_descriptor,observe_replacement;
+  destruct (entry_phase e); try reflexivity; try destruct o; try reflexivity;
+  repeat match goal with |- context[if ?condition then _ else _] => destruct condition end; reflexivity. Qed.
 
+Lemma confirmed_event_phase e event hash block gas :
+  entry_phase e = Confirmed hash block gas -> event_phase e event = entry_phase e.
+Proof. intro Hphase; unfold event_phase; destruct event; try (rewrite Hphase; reflexivity).
+  destruct (string_dec sender (sender_of e)); rewrite Hphase; reflexivity. Qed.
 Lemma confirmed_entry_preserved id event e hash block gas :
   entry_phase e = Confirmed hash block gas -> apply_entry id event e = e.
 Proof.
   intros Hphase. unfold apply_entry. destruct (Z.eqb id (entry_id e)); try reflexivity.
-  assert (Hsame : event_phase e event = entry_phase e).
-  { unfold event_phase.
-    destruct event as [broadcast_hash|preflight_error|code failure|received receipt_sender success mined used price|failure];
-      try (rewrite Hphase; reflexivity).
-    destruct (string_dec receipt_sender (sender_of e)); rewrite Hphase; reflexivity. }
-  rewrite Hsame. destruct e; reflexivity.
+  destruct event;
+    try (unfold observe_descriptor,observe_replacement; rewrite Hphase; reflexivity);
+    rewrite (confirmed_event_phase e _ hash block gas Hphase); destruct e; reflexivity.
 Qed.
 
 Lemma entry_event_preserves_id id event e :
   entry_id (apply_entry id event e) = entry_id e.
-Proof. unfold apply_entry. destruct (Z.eqb id (entry_id e)); reflexivity. Qed.
+Proof. unfold apply_entry. destruct (Z.eqb id (entry_id e)); try reflexivity.
+  destruct event; try reflexivity; unfold observe_descriptor,observe_replacement;
+  destruct (entry_phase e); try reflexivity; try destruct o; try reflexivity;
+  repeat match goal with |- context[if ?condition then _ else _] => destruct condition end; reflexivity. Qed.
 
 Lemma find_entry_after_event id event entries :
   find_entry id (map (apply_entry id event) entries) =
@@ -519,6 +592,45 @@ Proof.
   intros Hresult. inversion Hresult; subst.
   rewrite (Wallet.successful_preflight_keeps_wallet _ _ _ _ Hpreflight). cbn.
   now apply Wallet.preflight_requires_current in Hpreflight.
+Qed.
+
+Definition replaced_phase p := match p with Superseded _ _ _ => true | _ => false end.
+Lemma replaced_advance_remains_replaced hash receipt error event :
+  replaced_phase (advance (Superseded hash receipt error) event) = true.
+Proof. destruct receipt; destruct event; cbn; try reflexivity.
+  destruct (string_dec hash hash0); reflexivity. Qed.
+Lemma replaced_observation_remains_replaced e original candidate hash sender success block used price :
+  replaced_phase (entry_phase e) = true ->
+  replaced_phase (entry_phase (observe_replacement e original candidate hash sender success block used price)) = true.
+Proof. destruct (entry_phase e) as [| |old err|old b g|old b g|old received err|m|m] eqn:Hphase; cbn; try discriminate.
+  intro H. unfold observe_replacement; rewrite Hphase; destruct received; try (rewrite Hphase; reflexivity).
+  repeat match goal with |- context[if ?test then _ else _] => destruct test end;
+    cbn; rewrite ?Hphase; reflexivity. Qed.
+Lemma different_call_never_confirms_original e original candidate hash sender success block used price :
+  R.classify original candidate = R.DifferentCall ->
+  (exists current error,entry_phase e = Submitted current error) ->
+  match entry_phase (observe_replacement e original candidate hash sender success block used price) with
+  | Confirmed _ _ _ => False | _ => True end.
+Proof. intros Hcall [current [error Hphase]]. unfold observe_replacement; rewrite Hphase.
+  repeat match goal with |- context[if ?test then _ else _] => destruct test end;
+    rewrite ?Hcall; cbn; rewrite ?Hphase; try trivial; congruence. Qed.
+Lemma replaced_event_phase e event : replaced_phase (entry_phase e) = true ->
+  replaced_phase (event_phase e event) = true.
+Proof. unfold event_phase; destruct event; intro H;
+  try (destruct (entry_phase e); cbn in H; try discriminate; apply replaced_advance_remains_replaced).
+  destruct (string_dec sender (sender_of e)); destruct (entry_phase e); cbn in H;
+    try discriminate; apply replaced_advance_remains_replaced. Qed.
+Lemma replaced_entry_never_confirms_original id event e :
+  replaced_phase (entry_phase e) = true ->
+  replaced_phase (entry_phase (apply_entry id event e)) = true.
+Proof. intro H. unfold apply_entry. destruct (Z.eqb id (entry_id e)); try assumption.
+  destruct event; try (apply replaced_event_phase; assumption).
+  - unfold observe_descriptor.
+    destruct (entry_phase e) as [| |old err|old b g|old b g|old received err|m|m] eqn:Hp;
+      cbn in H; try discriminate.
+    destruct received; repeat match goal with |- context[if ?test then _ else _] => destruct test end;
+      cbn; rewrite ?Hp; reflexivity.
+  - apply replaced_observation_remains_replaced; assumption.
 Qed.
 
 End Transactions.

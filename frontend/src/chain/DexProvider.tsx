@@ -38,25 +38,25 @@ function useDexState(client: ExchangeClient) {
     try {
       return new AssetCatalog(
         client.deployment.tokens,
-        localStorage.getItem(registryKey) ?? "[]"
+        localStorage.getItem(registryKey) ?? "[]",
       );
     } catch (error) {
       // DEFENSE: browser privacy settings can deny localStorage access.
       if (!(error instanceof DOMException)) throw error;
       const catalog = new AssetCatalog(client.deployment.tokens, "[]");
       catalog.storageError(
-        `Token storage is unavailable: ${errorMessage(error)}`
+        `Token storage is unavailable: ${errorMessage(error)}`,
       );
       return catalog;
     }
   }, [client, registryKey]);
   const catalogState = useSyncExternalStore(
     catalog.subscribe,
-    catalog.snapshot
+    catalog.snapshot,
   );
   const tokens = useMemo(
     () => catalogView(catalogState, []).tokens,
-    [catalogState]
+    [catalogState],
   );
   const registerTokens = useCallback(
     (additions: Token[]) => {
@@ -64,22 +64,22 @@ function useDexState(client: ExchangeClient) {
       try {
         localStorage.setItem(
           registryKey,
-          JSON.stringify(catalogView(catalog.snapshot(), []).storedTokens)
+          JSON.stringify(catalogView(catalog.snapshot(), []).storedTokens),
         );
       } catch (error) {
         // DEFENSE: a full browser quota or denied storage must not relabel a confirmed deployment as failed.
         if (!(error instanceof DOMException)) throw error;
         catalog.storageError(
-          `Token metadata could not be saved: ${errorMessage(error)}`
+          `Token metadata could not be saved: ${errorMessage(error)}`,
         );
       }
     },
-    [catalog, registryKey]
+    [catalog, registryKey],
   );
   const journal: JournalEntry[] = wallet.view.journal.map((entry) => {
     if (entry.state === "confirmed")
       return { ...entry, block: BigInt(entry.block), gas: BigInt(entry.gas) };
-    if (entry.state === "failed")
+    if (entry.state === "failed" || entry.state === "replaced")
       return {
         ...entry,
         block: entry.block === undefined ? undefined : BigInt(entry.block),
@@ -135,7 +135,7 @@ function useDexState(client: ExchangeClient) {
   });
   useEffect(() => {
     const found = discoveries.flatMap((query) =>
-      query.data ? [query.data] : []
+      query.data ? [query.data] : [],
     );
     if (found.length) registerTokens(found);
   }, [discoveries, registerTokens]);
@@ -186,7 +186,7 @@ function useDexState(client: ExchangeClient) {
             pool.reserve1,
             second.decimals,
             pool.reserve0,
-            first.decimals
+            first.decimals,
           )
         : undefined;
     },

@@ -1,5 +1,10 @@
 import { useEffect, useState } from "react";
-import { activityStep, activityView, type ActivityQuery, type ActivityEvent } from "../logic/activity";
+import {
+  activityStep,
+  activityView,
+  type ActivityQuery,
+  type ActivityEvent,
+} from "../logic/activity";
 import { HistoryStatus } from "../components/HistoryStatus";
 import { formatEther } from "viem";
 import { shorten } from "../chain/amounts";
@@ -60,18 +65,32 @@ export function TransactionsPage() {
       <div className="actions activity-filters">
         <label>
           Account
-          <select value={page.query.account} onChange={(event) => navigate({
-            kind: "account", value: event.target.value as ActivityQuery["account"],
-          })}>
+          <select
+            value={page.query.account}
+            onChange={(event) =>
+              navigate({
+                kind: "account",
+                value: event.target.value as ActivityQuery["account"],
+              })
+            }
+          >
             <option value="all">All accounts</option>
-            <option value="current" disabled={!page.canCurrentAccount}>Current account</option>
+            <option value="current" disabled={!page.canCurrentAccount}>
+              Current account
+            </option>
           </select>
         </label>
         <label>
           Status
-          <select value={page.query.status} onChange={(event) => navigate({
-            kind: "status", value: event.target.value as ActivityQuery["status"],
-          })}>
+          <select
+            value={page.query.status}
+            onChange={(event) =>
+              navigate({
+                kind: "status",
+                value: event.target.value as ActivityQuery["status"],
+              })
+            }
+          >
             <option value="all">All statuses</option>
             <option value="pending">In progress</option>
             <option value="confirmed">Confirmed</option>
@@ -79,9 +98,13 @@ export function TransactionsPage() {
             <option value="unknown">Submission unknown</option>
           </select>
         </label>
-        <button type="button" onClick={() => navigate({ kind: "reset" })}>Show all</button>
+        <button type="button" onClick={() => navigate({ kind: "reset" })}>
+          Show all
+        </button>
       </div>
-      <p role="status">{page.filteredTotal} of {page.total} transactions</p>
+      <p role="status">
+        {page.filteredTotal} of {page.total} transactions
+      </p>
       {page.entries.length === 0 ? (
         <p>{page.emptyMessage}</p>
       ) : (
@@ -120,6 +143,15 @@ export function TransactionsPage() {
                   </td>
                   <td>
                     {"hash" in entry && entry.hash && <code>{entry.hash}</code>}
+                    {entry.replacements.map((replacement) => (
+                      <p key={replacement.hash}>
+                        {replacement.kind === "repriced"
+                          ? "Fee replacement"
+                          : "Different transaction"}
+                        : <code>{replacement.hash}</code> →{" "}
+                        <code>{replacement.replacementHash}</code>
+                      </p>
+                    ))}
                     {"message" in entry && entry.message && (
                       <p>{entry.message}</p>
                     )}
@@ -140,15 +172,27 @@ export function TransactionsPage() {
           </table>
         </div>
       )}
-      {page.entries.length > 0 && <nav className="actions" aria-label="Transaction pages">
-        <button type="button" disabled={!page.canPrevious} onClick={() => navigate({ kind: "previous" })}>
-          Previous
-        </button>
-        <span>Page {page.page} of {page.pages}</span>
-        <button type="button" disabled={!page.canNext} onClick={() => navigate({ kind: "next" })}>
-          Next
-        </button>
-      </nav>}
+      {page.entries.length > 0 && (
+        <nav className="actions" aria-label="Transaction pages">
+          <button
+            type="button"
+            disabled={!page.canPrevious}
+            onClick={() => navigate({ kind: "previous" })}
+          >
+            Previous
+          </button>
+          <span>
+            Page {page.page} of {page.pages}
+          </span>
+          <button
+            type="button"
+            disabled={!page.canNext}
+            onClick={() => navigate({ kind: "next" })}
+          >
+            Next
+          </button>
+        </nav>
+      )}
     </section>
   );
 }
