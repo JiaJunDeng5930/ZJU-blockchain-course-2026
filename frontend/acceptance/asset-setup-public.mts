@@ -225,7 +225,8 @@ try {
     async () => {
       const start = await blockNumber();
       await perform("Create setup token", async (writer) => {
-        created = await writer.createToken("Prepared Asset", "PREP");
+        const confirmation = await writer.createToken("Prepared Asset", "PREP");
+        created = await client.importToken(confirmation.address);
       });
       assert(created);
       const receipts = await receiptsSince(start, owner);

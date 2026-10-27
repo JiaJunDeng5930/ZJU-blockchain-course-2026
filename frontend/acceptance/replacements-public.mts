@@ -882,7 +882,8 @@ async function main() {
             label: "Repriced token creation",
             session,
             perform: async (writer) => {
-              created = await writer.createToken("Repriced Token", "RPT");
+              const confirmation = await writer.createToken("Repriced Token", "RPT");
+              created = await client.importToken(confirmation.address);
             },
           })
           .then(
