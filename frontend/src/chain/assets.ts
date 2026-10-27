@@ -1,8 +1,10 @@
-import { getAddress, parseEventLogs } from "viem";
+import { getAddress, parseEventLogs, zeroAddress } from "viem";
 import type { ExchangeClient, SendTransaction } from "./client";
+import { executionFeeWei } from "../logic/receipts";
 import type { WalletSession } from "../wallet/session";
 import type {
   AssetCreationConfirmation,
+  AssetFundingConfirmation,
   PoolCreationConfirmation,
   Token,
   TokenCreationConfirmation,
@@ -134,10 +136,10 @@ export async function createAssetPool(
 export async function claimAsset(
   { client, session, send }: AssetContext,
   token: Token,
-): Promise<void> {
+): Promise<AssetFundingConfirmation> {
   const verified = await importAsset(client, token.address);
   const plan = faucetPlan(verified);
-  await send(`Claim ${verified.symbol}`, () =>
+  const receipt = await send(`Claim ${verified.symbol}`, () =>
     session.walletClient.writeContract({
       account: session.address,
       chain: client.chain,
@@ -146,6 +148,11 @@ export async function claimAsset(
       functionName: "faucet",
     }),
   );
+  const mint = parseEventLogs({ abi: testTokenAbi, eventName: "Transfer", logs: receipt.logs })
+    .find((event) => getAddress(event.address) === getAddress(verified.address) &&
+      event.args.from === zeroAddress && getAddress(event.args.to) === session.address)!;
+  return { kind: "token", token: verified, recipient: session.address,
+    amount: mint.args.value, gasCostWei: executionFeeWei(receipt), receipt };
 }
 
 import { errorMessage } from "./amounts";

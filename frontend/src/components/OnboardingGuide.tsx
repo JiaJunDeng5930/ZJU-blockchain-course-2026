@@ -1,11 +1,15 @@
+import { tokenLabel } from "../chain/amounts";
+import type { AssetFundingConfirmation } from "../chain/types";
 import { useDex } from "../chain/DexProvider";
 import "./OnboardingGuide.css";
 
-export function OnboardingGuide() {
-  const { client, wallet, session, snapshot, pending, run } = useDex();
+export function OnboardingGuide({ captureFunding }: {
+  captureFunding: () => ((confirmation: AssetFundingConfirmation) => void) | undefined;
+}) {
+  const { client, wallet, session, snapshot, pending, run, refresh } = useDex();
   const observed = snapshot.data;
   // DEFENSE: Anonymous snapshots contain no token balances, including while a wallet reconnects.
-  const plan = wallet.controller.kernel.fundingPlan(
+  const plan = wallet.controller.kernel.fundingPlanAfterConfirmations(
     observed?.identity
       ? {
           identity: observed.identity,
@@ -17,6 +21,7 @@ export function OnboardingGuide() {
           })),
         }
       : null,
+    observed?.block.toString() ?? null,
   );
   const ready = plan.kind === "ready";
 
@@ -47,20 +52,37 @@ export function OnboardingGuide() {
             wrapping ETH, rather than claimed from a faucet. Use Wrap / unwrap
             next to your wallet's WETH balance; keep some ETH for gas.
           </p>
+          {plan.kind === "awaiting-balances" && (
+            <p role="status">
+              Funding is confirmed. Refresh balances before preparing assets again.
+              <button type="button" disabled={pending || snapshot.isFetching}
+                onClick={() => { void refresh(); }}>Refresh balances</button>
+            </p>
+          )}
+          {plan.kind === "need-funding" && (
+            <p>
+              Still needed: {[...(plan.native ? ["local ETH"] : []), ...plan.tokens.map((address) => {
+                const token = client.deployment.tokens.find((candidate) => candidate.address === address)!;
+                return tokenLabel(token.address, token.symbol);
+              })].join(", ")}. Only missing assets will be claimed.
+            </p>
+          )}
           {plan.kind === "need-funding" && (
             <button
               disabled={pending}
-              onClick={() =>
+              onClick={() => {
+                const confirmed = captureFunding();
+                if (!confirmed) return;
                 run("Prepare test assets", async (writer) => {
-                  if (plan.native) await writer.claimEther();
+                  if (plan.native) confirmed(await writer.claimEther());
                   for (const address of plan.tokens) {
                     const token = client.deployment.tokens.find(
                       (token) => token.address === address,
                     )!;
-                    await writer.faucet(token);
+                    confirmed(await writer.faucet(token));
                   }
-                })
-              }
+                });
+              }}
             >
               Prepare test assets
             </button>

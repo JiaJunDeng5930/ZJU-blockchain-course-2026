@@ -1,3 +1,7 @@
+import { useState } from "react";
+import type { AssetFundingConfirmation } from "../chain/types";
+import type { WalletIdentity, WalletKernel } from "../wallet/kernel";
+import { FundingConfirmations } from "./FundingConfirmations";
 import { formatAmount, shorten, tokenLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmationDialog } from "./ConfirmationDialog";
@@ -25,6 +29,25 @@ export function WalletMenu({
     run,
     refresh,
   } = useDex();
+  const [fundingRecords, setFundingRecords] = useState<{
+    kernel: WalletKernel;
+    identity: WalletIdentity;
+    confirmation: AssetFundingConfirmation;
+  }[]>([]);
+  function captureFunding() {
+    const kernel = wallet.controller.kernel;
+    const view = kernel.getSnapshot().wallet;
+    // DEFENSE: an account event can invalidate a rendered funding button before its click.
+    if (view.kind !== "ready") return undefined;
+    return (confirmation: AssetFundingConfirmation) => {
+      kernel.recordFunding(view.identity, confirmation.receipt.blockNumber.toString());
+      setFundingRecords((records) => [...records, { kernel, identity: view.identity, confirmation }]);
+    };
+  }
+  const confirmations = fundingRecords.filter((record) =>
+    record.kernel === wallet.controller.kernel &&
+    record.kernel.retainsSnapshot(record.identity),
+  ).map((record) => record.confirmation);
   const [searchParams] = useSearchParams();
   const wrappingSearch = new URLSearchParams(searchParams);
   wrappingSearch.set("view", "pools");
@@ -149,9 +172,12 @@ export function WalletMenu({
                     <button
                       className="text"
                       disabled={pending}
-                      onClick={() =>
-                        run("Claim local ETH", (writer) => writer.claimEther())
-                      }
+                      onClick={() => {
+                        const confirmed = captureFunding();
+                        if (confirmed) run("Claim local ETH", async (writer) => {
+                          confirmed(await writer.claimEther());
+                        });
+                      }}
                     >
                       Claim 10 local ETH
                     </button>
@@ -180,11 +206,12 @@ export function WalletMenu({
                           aria-label={`Claim 10,000 ${token.symbol} (${token.address})`}
                           title={token.address}
                           disabled={pending}
-                          onClick={() =>
-                            run(`Claim ${token.symbol}`, (writer) =>
-                              writer.faucet(token),
-                            )
-                          }
+                          onClick={() => {
+                            const confirmed = captureFunding();
+                            if (confirmed) run(`Claim ${token.symbol}`, async (writer) => {
+                              confirmed(await writer.faucet(token));
+                            });
+                          }}
                         >
                           Claim 10,000 {token.symbol}
                         </button>
@@ -207,7 +234,8 @@ export function WalletMenu({
               </div>
             </>
           )}
-          <OnboardingGuide />
+          <FundingConfirmations confirmations={confirmations} />
+          <OnboardingGuide captureFunding={captureFunding} />
           {pending ||
           status.startsWith("Operation stopped") ||
           status.includes("confirmed in block") ? (

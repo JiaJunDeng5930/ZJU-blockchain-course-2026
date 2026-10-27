@@ -398,7 +398,7 @@ class ExchangeWriter {
       account: funder,
       transport: http(this.client.deployment.rpcUrl),
     });
-    await this.send(
+    const receipt = await this.send(
       "Claim local ETH",
       () =>
         fundingWallet.sendTransaction({
@@ -407,6 +407,8 @@ class ExchangeWriter {
         }),
       { kind: "dev-faucet", sender: funder }
     );
+    return { kind: "native" as const, recipient: this.session.address,
+      amount: funding.amountWei, gasCostWei: executionFeeWei(receipt), receipt };
   }
   async routedSwap(plan: RoutedSwapPlan): Promise<SwapResult> {
     const receipt = await this.executeSwap(

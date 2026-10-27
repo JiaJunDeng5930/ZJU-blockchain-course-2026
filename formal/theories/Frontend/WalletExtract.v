@@ -1,5 +1,5 @@
 From Coq Require Import Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
-From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity Allowances ReplacementSearch.
+From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity Allowances ReplacementSearch FundingConfirmations.
 
 Extraction Language OCaml.
 Extraction "formal/build/wallet/WalletKernel.ml"
@@ -7,6 +7,7 @@ Extraction "formal/build/wallet/WalletKernel.ml"
   Wallet.observe Wallet.observation_failed Wallet.disconnect Wallet.provider_changed Wallet.provider_disconnected
   Wallet.switch_network Wallet.switched Wallet.added Wallet.current_identity
   Wallet.preflight Wallet.reconcile_preflight Wallet.retains_snapshot Wallet.funding_plan Wallet.native_funding_plan
+  FundingConfirmations.record_confirmation FundingConfirmations.synchronized_plan
   Transactions.initial Transactions.begin_operation Transactions.request_write
   Transactions.authorize_and_reconcile Transactions.broadcast Transactions.preflight_failed Transactions.signature_failed
   Transactions.settle Transactions.observation_failed Transactions.finish_operation

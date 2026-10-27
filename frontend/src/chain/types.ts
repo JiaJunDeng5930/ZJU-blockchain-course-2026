@@ -19,6 +19,12 @@ export type TokenCreationConfirmation = {
   symbol: string;
   receipt: TransactionReceipt;
 };
+export type AssetFundingConfirmation = {
+  recipient: string;
+  amount: bigint;
+  gasCostWei: bigint;
+  receipt: TransactionReceipt;
+} & ({ kind: "native" } | { kind: "token"; token: Token });
 export type PoolCreationConfirmation = {
   kind: "pool";
   exchange: Exchange;

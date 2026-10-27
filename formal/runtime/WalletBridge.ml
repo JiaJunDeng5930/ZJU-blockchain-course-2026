@@ -260,6 +260,7 @@ let create_exn configuration =
   in
   let initialized = W.restore_saved (number_exn "chain" configuration) saved in
   let wallet = ref initialized.W.next in
+  let latest_funding = ref None in
   let history = ref (H.initial (number_exn "chain" configuration) (optional_string_exn "instance" configuration)) in
   let initial_effects = ref initialized.W.effects in
   let tx () = !history.H.transactions in
@@ -414,6 +415,21 @@ let create_exn configuration =
     "historyKey", Js.Unsafe.inject (Js.wrap_callback (fun genesis deployment endpoint -> H.scope (Js.to_string genesis) (Js.to_string deployment) (Js.to_string endpoint) |> Js.string));
     "retainsSnapshot", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
       Json.from_string (Js.to_string encoded) |> optional_identity_exn |> W.retains_snapshot !wallet |> Js.bool));
+    "recordFunding", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
+      let input = Json.from_string (Js.to_string encoded) in
+      latest_funding := K.record_confirmation !wallet
+        (identity_exn (member_exn "identity" input)) (number_exn "block" input) !latest_funding;
+      reply [] [] `Null));
+    "fundingPlanAfterConfirmations", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
+      let input = Json.from_string (Js.to_string encoded) in
+      let block = match member_exn "block" input with
+        | `Null -> None | value -> Some (Integer.of_string (Field.to_string value)) in
+      let plan = K.synchronized_plan !wallet
+        (funding_observation_exn (member_exn "observation" input)) block !latest_funding in
+      (match plan with
+       | K.FundingObserved observed -> funding_json observed
+       | K.FundingAwaitingBalances -> object_ ["kind", text "awaiting-balances"])
+      |> Json.to_string |> Js.string));
     "fundingPlan", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
       Json.from_string (Js.to_string encoded) |> funding_observation_exn |> W.funding_plan !wallet
       |> funding_json |> Json.to_string |> Js.string))

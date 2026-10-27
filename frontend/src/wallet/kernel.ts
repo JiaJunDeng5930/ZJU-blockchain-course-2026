@@ -260,6 +260,8 @@ type RawKernel = {
   dispatch(event: string): string;
   retainsSnapshot(identity: string): boolean;
   fundingPlan(observation: string): string;
+  recordFunding(input: string): string;
+  fundingPlanAfterConfirmations(input: string): string;
   historyKey(genesis: string, deployment: string, endpoint: string): string;
   activity(input: string): string;
   receiptSearch(input: string): RawReceiptSearch;
@@ -331,6 +333,15 @@ export class WalletKernel {
   }
   retainsSnapshot(identity: WalletIdentity | null) {
     return this.raw.retainsSnapshot(JSON.stringify(identity));
+  }
+  recordFunding(identity: WalletIdentity, block: string): void {
+    this.publish(this.raw.recordFunding(JSON.stringify({ identity, block })));
+  }
+  fundingPlanAfterConfirmations(
+    observation: object | null,
+    block: string | null,
+  ): FundingPlan | { kind: "awaiting-balances" } {
+    return JSON.parse(this.raw.fundingPlanAfterConfirmations(JSON.stringify({ observation, block })));
   }
   fundingPlan(observation: object | null): FundingPlan {
     return JSON.parse(this.raw.fundingPlan(JSON.stringify(observation)));
