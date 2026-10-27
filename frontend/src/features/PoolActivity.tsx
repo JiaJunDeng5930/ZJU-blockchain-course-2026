@@ -1,3 +1,4 @@
+import { poolAssetsSupported, unsupportedPoolError } from "../logic/assets";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatAmount, poolKey } from "../chain/amounts";
@@ -6,6 +7,13 @@ import { poolPositions } from "../logic/liquidity";
 import type { Pool } from "../chain/types";
 
 export function PoolActivity({ pool }: { pool: Pool }) {
+  const { tokens } = useDex();
+  if (!poolAssetsSupported(pool, tokens))
+    return <p role="status">{unsupportedPoolError}</p>;
+  return <SupportedPoolActivity pool={pool} />;
+}
+
+function SupportedPoolActivity({ pool }: { pool: Pool }) {
   const { client, snapshot, symbol } = useDex();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
@@ -46,10 +54,7 @@ export function PoolActivity({ pool }: { pool: Pool }) {
           <dt>Trading fee</dt>
           <dd>0.30% retained by liquidity providers</dd>
         </dl>
-        <h3>Liquidity sources · active pool</h3>
-        <p className="liquidity-small">
-          Current owners of the pool's active position NFTs.
-        </p>
+        <h3>Position NFTs</h3>
         <div className="liquidity-table-scroll">
           <table>
             <thead>

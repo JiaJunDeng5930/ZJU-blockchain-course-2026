@@ -1,3 +1,4 @@
+import { poolAssetsSupported, unsupportedPoolError } from "../logic/assets";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -23,11 +24,14 @@ import { PoolActivity } from "./PoolActivity";
 import "./LiquidityPage.css";
 
 export function LiquidityPage({ pool }: { pool: Pool }) {
-  const { snapshot, session, pending, symbol } = useDex();
+  const { snapshot, session, pending, symbol, tokens } = useDex();
   const [creating, setCreating] = useState(false);
   const [managed, setManaged] = useState<string>();
   const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
   const pools = snapshot.data?.pools ?? [];
+  const supportedPools = pools.filter((candidate) =>
+    poolAssetsSupported(candidate, tokens),
+  );
   const positions = ownedPositions(
     snapshot.data?.positions ?? [],
     session?.address ?? "",
@@ -43,7 +47,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
         </div>
         <button
           className="button-primary liquidity-new"
-          disabled={pending || !session}
+          disabled={pending || !session || supportedPools.length === 0}
           onClick={() => setCreating(true)}
         >
           New position
@@ -70,7 +74,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
             </p>
             <button
               className="button-primary"
-              disabled={pending}
+              disabled={pending || supportedPools.length === 0}
               onClick={() => setCreating(true)}
             >
               Create your first position
@@ -115,8 +119,16 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
         </div>
         <PoolActivity key={poolKey(inspected)} pool={inspected} />
       </section>
-      {creating && (
-        <CreatePosition initialPool={pool} onClose={() => setCreating(false)} />
+      {creating && supportedPools.length > 0 && (
+        <CreatePosition
+          pools={supportedPools}
+          initialPool={
+            supportedPools.find(
+              (candidate) => poolKey(candidate) === poolKey(pool),
+            ) ?? supportedPools[0]
+          }
+          onClose={() => setCreating(false)}
+        />
       )}
     </div>
   );
@@ -124,9 +136,11 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
 
 function CreatePosition({
   initialPool,
+  pools,
   onClose,
 }: {
   initialPool: Pool;
+  pools: Pool[];
   onClose: () => void;
 }) {
   const { snapshot, symbol, pending, session, run } = useDex();
@@ -135,7 +149,6 @@ function CreatePosition({
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
   const [reviewing, setReviewing] = useState(false);
-  const pools = snapshot.data!.pools;
   const pool = pools.find((candidate) => poolKey(candidate) === selection)!;
   const decision = depositPreview(
     pool,
@@ -302,25 +315,53 @@ function CreatePosition({
   );
 }
 
-function PositionCard({
-  position,
-  expanded,
-  onToggle,
-}: {
+type TransferDraft = {
+  recipient: string;
+  onRecipientChange: (value: string) => void;
+};
+type PositionCardProps = {
   position: Position;
   expanded: boolean;
   onToggle: () => void;
-}) {
-  const { client, snapshot, symbol, pending, session, run } = useDex();
-  const [showMetadata, setShowMetadata] = useState(false);
-  const [review, setReview] = useState<"redeem" | "transfer">();
-  const [slippage, setSlippage] = useState("0.5");
+};
+function PositionCard(props: PositionCardProps) {
+  const { snapshot, tokens } = useDex();
   const [recipient, setRecipient] = useState("");
+  const { position } = props;
   const pool = snapshot.data!.pools.find(
     (candidate) =>
       sameAddress(candidate.exchange.address, position.exchange.address) &&
       candidate.id === position.poolId,
   )!;
+  return poolAssetsSupported(pool, tokens) ? (
+    <SupportedPositionCard
+      {...props}
+      pool={pool}
+      recipient={recipient}
+      onRecipientChange={setRecipient}
+    />
+  ) : (
+    <UnsupportedPositionCard
+      pool={pool}
+      position={position}
+      recipient={recipient}
+      onRecipientChange={setRecipient}
+    />
+  );
+}
+
+function SupportedPositionCard({
+  position,
+  expanded,
+  onToggle,
+  pool,
+  recipient,
+  onRecipientChange,
+}: PositionCardProps & { pool: Pool } & TransferDraft) {
+  const { client, snapshot, symbol, pending, session, run } = useDex();
+  const [showMetadata, setShowMetadata] = useState(false);
+  const [review, setReview] = useState<"redeem" | "transfer">();
+  const [slippage, setSlippage] = useState("0.5");
   const view = positionView(pool, position);
   const { amounts, currentValue, valueChange, sharePercent } = view;
   const metadata = useQuery({
@@ -334,11 +375,7 @@ function PositionCard({
     enabled: showMetadata,
   });
   const invalidTolerance = toleranceError(slippage);
-  const recipientError = transferError(
-    position.owner,
-    session?.address ?? "",
-    recipient,
-  );
+
   return (
     <article className="liquidity-position">
       <div className="liquidity-position-summary">
@@ -497,37 +534,89 @@ function PositionCard({
         </ConfirmationDialog>
       )}
       {review === "transfer" && (
-        <ConfirmationDialog
-          title="Transfer liquidity position"
+        <TransferPositionDialog
+          recipient={recipient}
+          onRecipientChange={onRecipientChange}
+          pool={pool}
+          position={position}
           onClose={() => setReview(undefined)}
-        >
-          <p>
-            Transfer NFT #{String(position.id)} and all redemption rights to the
-            recipient. You will no longer be able to redeem this position.
-          </p>
-          <label>
-            Recipient address
-            <input
-              value={recipient}
-              onChange={(event) => setRecipient(event.target.value)}
-              placeholder="0x…"
-            />
-          </label>
-          {recipient && <FormError message={recipientError} />}
-          <button
-            className="button-primary"
-            disabled={pending || !!recipientError}
-            onClick={() => {
-              setReview(undefined);
-              run("Transfer position", (writer) =>
-                writer.transferPosition(pool, position.id, recipient),
-              );
-            }}
-          >
-            Confirm transfer
-          </button>
-        </ConfirmationDialog>
+        />
       )}
     </article>
+  );
+}
+
+function UnsupportedPositionCard({
+  pool,
+  position,
+  recipient,
+  onRecipientChange,
+}: { pool: Pool; position: Position } & TransferDraft) {
+  const { pending, session } = useDex();
+  const [transferring, setTransferring] = useState(false);
+  return (
+    <article className="liquidity-position">
+      <h3>Position NFT #{String(position.id)}</h3>
+      <FormError message={unsupportedPoolError} />
+      <button
+        disabled={pending || !session}
+        onClick={() => setTransferring(true)}
+      >
+        Transfer NFT
+      </button>
+      {transferring && (
+        <TransferPositionDialog
+          recipient={recipient}
+          onRecipientChange={onRecipientChange}
+          pool={pool}
+          position={position}
+          onClose={() => setTransferring(false)}
+        />
+      )}
+    </article>
+  );
+}
+
+function TransferPositionDialog({
+  pool,
+  position,
+  onClose,
+  recipient,
+  onRecipientChange,
+}: { pool: Pool; position: Position; onClose: () => void } & TransferDraft) {
+  const { pending, session, run } = useDex();
+  const recipientError = transferError(
+    position.owner,
+    session?.address ?? "",
+    recipient,
+  );
+  return (
+    <ConfirmationDialog title="Transfer liquidity position" onClose={onClose}>
+      <p>
+        Transfer NFT #{String(position.id)} and all redemption rights to the
+        recipient. You will no longer be able to redeem this position.
+      </p>
+      <label>
+        Recipient address
+        <input
+          value={recipient}
+          onChange={(event) => onRecipientChange(event.target.value)}
+          placeholder="0x…"
+        />
+      </label>
+      {recipient && <FormError message={recipientError} />}
+      <button
+        className="button-primary"
+        disabled={pending || !!recipientError}
+        onClick={() => {
+          onClose();
+          run("Transfer position", (writer) =>
+            writer.transferPosition(pool, position.id, recipient),
+          );
+        }}
+      >
+        Confirm transfer
+      </button>
+    </ConfirmationDialog>
   );
 }

@@ -1,3 +1,5 @@
+import { importAsset } from "./assets";
+import { assertSupportedPool } from "../logic/assets";
 import { getAddress } from "viem";
 import { miniDexAbi, testTokenAbi } from "../generated/abis";
 import {
@@ -8,6 +10,14 @@ import {
 import type { ExchangeClient, SendTransaction } from "./client";
 import type { WalletSession } from "../wallet/session";
 import type { Pool } from "./types";
+
+async function verifyPoolAssets(client: ExchangeClient, pool: Pool) {
+  const assets = await Promise.all([
+    importAsset(client, pool.token0),
+    importAsset(client, pool.token1),
+  ]);
+  assertSupportedPool(pool, assets);
+}
 
 type Context = {
   client: ExchangeClient;
@@ -22,6 +32,7 @@ export async function addLiquidity(
   slippage: bigint,
 ) {
   const { client, session, send } = context;
+  await verifyPoolAssets(client, pool);
   const owner = session.address,
     exchange = getAddress(pool.exchange.address);
   const [balance0, balance1, allowance0, allowance1, block] = await Promise.all(
@@ -92,6 +103,7 @@ export async function removeLiquidity(
   slippage: bigint,
 ) {
   const { client, session, send } = context;
+  await verifyPoolAssets(client, pool);
   const exchange = getAddress(pool.exchange.address);
   const [owner, position, block] = await Promise.all([
     client.rpc.readContract({
