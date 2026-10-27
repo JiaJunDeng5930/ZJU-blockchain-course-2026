@@ -93,6 +93,27 @@ remain external assumptions. Public-entry real-chain acceptance checks that
 association against token transfers, balances and native ETH expenditure; it
 does not turn the frontend theorem into a proof of whole-EVM execution.
 
+The deposit ownership projection in `Frontend/LiquidityPolicy.v` composes the
+shared `mint_total` and `redeem_amounts` functions. It reports the projected total
+shares, newly locked shares and the new NFT's immediately redeemable quantities
+at the quoted pool state. `first_deposit_ownership_includes_locked` establishes
+the initial lock; `prepared_deposit_ownership_keeps_pool_funded` and
+`analyzed_deposit_ownership_keeps_pool_funded` connect successful preparation
+and frontend analysis to the funded-reserve property. The extracted bridge
+supplies these values to React without repeating the arithmetic in TypeScript.
+This is a hypothetical mint-and-redeem projection at one state, not a promise
+about future reserves or a new refinement of OpenZeppelin arithmetic. The
+[initial-liquidity public acceptance](../frontend/acceptance/initial-liquidity-public.mts)
+checks its binding to actual mint and redemption effects, including a
+zero-decimal `1001/1001` deposit whose NFT can redeem only `1/1` immediately.
+
+The simulation lifecycle model does not prove receipt-journal delivery or
+retention. Worker IPC, receipt decoding, the service's in-memory journal and its
+explicit terminal-run handoff are external adapters. Their HTTP/RPC acceptance
+checks received confirmations, funding rejection before writes and real reverted
+transactions; it does not establish crash recovery or coverage of submissions
+whose confirmation was never reported. See [ADR 013](../docs/adr/013-preserve-simulation-receipt-evidence.md).
+
 ## Actual Solidity evidence
 
 SMTChecker harnesses import production helper code rather than a second arithmetic implementation:

@@ -1,5 +1,45 @@
 # Frontend public acceptance
 
+## First-deposit ownership
+
+Run `npm run test:initial-liquidity` from the repository root. With an already
+built, unchanged kernel and contracts, run
+`contracts/node_modules/.bin/tsx frontend/acceptance/initial-liquidity-public.mts`
+directly.
+
+The runner uses the public deposit preview, wallet and exchange interfaces on an
+isolated real chain. It compares projected ownership with actual mint events,
+NFT owners, subsequent redemption receipts and token balance changes. Five
+scenarios cover rejection before any approval when the initial lock cannot be
+funded; a zero-decimal `1001/1001` deposit whose one-share NFT redeems `1/1`;
+later provision without another initial lock; equal NFT identifiers on different
+exchanges; and ordinary 6/18-decimal assets. It does not reproduce the square-root
+algorithm as an oracle or use browser assertions.
+
+Results and runtime source fingerprints are saved to
+`.local/initial-liquidity-public-*/result.json`. The projection is conditional on
+the quoted pool state; these scenarios deliberately perform no intervening swap
+between preview, mint and redemption. Mathematical projection properties are
+checked separately in Rocq.
+
+## Simulation failure evidence
+
+Run `npm run test:simulation-failure`, or invoke
+`contracts/node_modules/.bin/tsx frontend/acceptance/simulation-failure-public.mts`
+after building the current production sources. This runner uses HTTP and real
+JSON-RPC directly; it does not execute the frontend kernel or inspect worker
+implementation internals.
+
+Three scenarios check receipt retention beyond the 100-entry progress window
+after a real RPC outage, preparation funding failure before any chain write,
+and an unchanged transaction mined after its deadline. Receipt hashes and
+liquidity identities are checked against the chain, including status-zero gas
+and the distinction between a recorded burn and current NFT ownership. Old job
+IDs cannot retrieve a replacement job's journal. Results and service source
+fingerprints are saved to `.local/simulation-failure-public-*/result.json`.
+The kernel SHA in that record identifies the environment, not coverage of the
+extracted frontend.
+
 ## Transaction deadlines after approvals
 
 Run from the repository root after building the current contracts and extracted frontend:
