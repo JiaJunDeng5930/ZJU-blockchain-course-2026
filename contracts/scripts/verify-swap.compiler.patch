@@ -1,0 +1,12 @@
+diff --git a/libsolidity/codegen/ir/Common.h b/libsolidity/codegen/ir/Common.h
+index cf5bc69c..9177134d 100644
+--- a/libsolidity/codegen/ir/Common.h
++++ b/libsolidity/codegen/ir/Common.h
+@@ -42,6 +42,7 @@ struct YulArity
+ 
+ 	bool operator==(YulArity const& _other) const { return in == _other.in && out == _other.out; }
+ 	bool operator!=(YulArity const& _other) const { return !(*this == _other); }
++	bool operator<(YulArity const& _other) const { return in < _other.in || (in == _other.in && out < _other.out); }
+ 
+ 	size_t in;  /// Number of input parameters
+ 	size_t out; /// Number of output parameters

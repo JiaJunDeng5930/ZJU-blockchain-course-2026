@@ -1,17 +1,9 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import { formatUnits } from "ethers";
-import {
-  formatAmount,
-  minimumReceived,
-  poolKey,
-  positiveAmount,
-  sameAddress,
-  slippageBps,
-} from "../chain/amounts";
+import { useReducer, useState } from "react";
+import { formatAmount, poolKey } from "../chain/amounts";
+import { formatUnits18 } from "../logic/units";
+import { createSwapController, type SwapEvent } from "../logic/trade";
 import { useDex } from "../chain/DexProvider";
 import type { Pool } from "../chain/types";
-import { amountError, toleranceError } from "../components/Forms";
 import "./SwapPage.css";
 
 type SwapPageProps = {
@@ -21,87 +13,34 @@ type SwapPageProps = {
 };
 
 export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
-  const { client, snapshot, symbol, session, pending, run } = useDex();
-  const [inputToken, setInputToken] = useState(pool.token0);
-  const [amount, setAmount] = useState("");
-  const [slippage, setSlippage] = useState("0.5");
+  const { snapshot, symbol, session, pending, run, tokens } = useDex();
+  const [controller] = useState(() => createSwapController(pool.token0));
+  const [, render] = useReducer((value: boolean) => !value, false);
   const [settingsOpen, setSettingsOpen] = useState(false);
-  const outputToken = sameAddress(inputToken, pool.token0)
-    ? pool.token1
-    : pool.token0;
-  const balance = session ? snapshot.data?.balances[inputToken] : undefined;
-  const outputBalance = session
-    ? snapshot.data?.balances[outputToken]
-    : undefined;
-  const hasAmount = amount.trim() !== "";
-  const numericError = amountError(amount);
-  const balanceError = amountError(amount, balance);
-  const slippageError = toleranceError(slippage);
-  const amountIn = numericError ? undefined : positiveAmount(amount);
-  const funded = pool.reserve0 > 0n && pool.reserve1 > 0n;
-  const quote = useQuery({
-    queryKey: [
-      "quote",
-      client.key,
-      poolKey(pool),
-      inputToken,
-      amount,
-      snapshot.data?.block,
-    ],
-    queryFn: () => client.quote(pool, inputToken, amountIn!),
-    enabled: amountIn !== undefined && funded,
-  });
-  const reserveIn = sameAddress(inputToken, pool.token0)
-    ? pool.reserve0
-    : pool.reserve1;
-  const reserveOut = sameAddress(inputToken, pool.token0)
-    ? pool.reserve1
-    : pool.reserve0;
-  const impact =
-    amountIn && quote.data
-      ? Math.max(
-          0,
-          (1 -
-            (Number(quote.data) * Number(reserveIn)) /
-              (Number(amountIn) * Number(reserveOut))) *
-            100,
-        )
-      : undefined;
-  const executionRate =
-    quote.data !== undefined && amountIn
-      ? Number(quote.data) / Number(amountIn)
-      : undefined;
-  const minimum =
-    quote.data !== undefined && !slippageError
-      ? minimumReceived(quote.data, slippageBps(slippage))
-      : undefined;
-  const canSwap =
-    !!session &&
-    !pending &&
-    !balanceError &&
-    !slippageError &&
-    !!quote.data &&
-    !quote.isFetching &&
-    funded;
-  const message = hasAmount
-    ? (balanceError ?? slippageError ?? quote.error?.message)
-    : slippageError;
-
-  function reverseDirection() {
-    if (quote.data && !numericError) setAmount(formatUnits(quote.data, 18));
-    setInputToken(outputToken);
-  }
-  function actionLabel() {
-    if (!session) return "Connect wallet";
-    if (pending) return "Waiting for confirmation…";
-    if (!funded) return "Pool needs liquidity";
-    if (!hasAmount) return "Enter amount";
-    if (numericError) return "Check amount";
-    if (balanceError) return "Insufficient balance";
-    if (slippageError) return "Check slippage";
-    if (quote.isFetching) return "Getting quote…";
-    if (!quote.data) return "Quote unavailable";
-    return "Swap";
+  const context = {
+    tokens,
+    pool,
+    balances: snapshot.data?.balances,
+    connected: !!session,
+    pending,
+  };
+  const view = controller.view(context);
+  const { inputToken, outputToken, balance, outputBalance } = view;
+  function dispatch(event: SwapEvent) {
+    const { effect } = controller.dispatch(event, context);
+    render();
+    if (effect?.kind === "wallet") onOpenWallet();
+    if (effect?.kind === "swap") {
+      run("Swap tokens", (writer) =>
+        writer.swap(
+          pool,
+          effect.inputToken,
+          effect.input,
+          effect.quoted,
+          effect.slippage,
+        ),
+      );
+    }
   }
 
   return (
@@ -111,21 +50,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
         aria-label="Swap tokens"
         onSubmit={(event) => {
           event.preventDefault();
-          if (!session) {
-            onOpenWallet();
-            return;
-          }
-          if (canSwap && amountIn && quote.data) {
-            run("Swap tokens", (writer) =>
-              writer.swap(
-                pool,
-                inputToken,
-                amountIn,
-                quote.data!,
-                slippageBps(slippage),
-              ),
-            );
-          }
+          dispatch({ kind: "submit" });
         }}
       >
         <div className="trade-heading">
@@ -166,8 +91,8 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
                 <button
                   key={value}
                   type="button"
-                  aria-pressed={slippage === value}
-                  onClick={() => setSlippage(value)}
+                  aria-pressed={view.slippageText === value}
+                  onClick={() => dispatch({ kind: "slippage", value })}
                 >
                   {value}%
                 </button>
@@ -177,8 +102,10 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
                   id="trade-slippage"
                   aria-label="Slippage"
                   inputMode="decimal"
-                  value={slippage}
-                  onChange={(event) => setSlippage(event.target.value)}
+                  value={view.slippageText}
+                  onChange={(event) =>
+                    dispatch({ kind: "slippage", value: event.target.value })
+                  }
                 />
                 <span>%</span>
               </div>
@@ -191,12 +118,12 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             <label htmlFor="trade-amount">Sell</label>
             <span>
               Balance: {balance === undefined ? "—" : formatAmount(balance)}
-              {balance !== undefined && balance > 0n && (
+              {view.showMax && (
                 <button
                   type="button"
                   className="trade-max"
                   disabled={pending}
-                  onClick={() => setAmount(formatUnits(balance, 18))}
+                  onClick={() => dispatch({ kind: "max" })}
                 >
                   Max
                 </button>
@@ -210,16 +137,18 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               placeholder="0"
               inputMode="decimal"
               autoComplete="off"
-              value={amount}
+              value={view.amountText}
               disabled={pending}
-              onChange={(event) => setAmount(event.target.value)}
+              onChange={(event) =>
+                dispatch({ kind: "amount", value: event.target.value })
+              }
             />
             <TokenSelector
               label="Pay token"
               value={inputToken}
               addresses={[pool.token0, pool.token1]}
               disabled={pending}
-              onChange={setInputToken}
+              onChange={(value) => dispatch({ kind: "pay", value })}
             />
           </div>
         </section>
@@ -230,7 +159,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             className="trade-direction"
             aria-label="Reverse swap direction"
             disabled={pending}
-            onClick={reverseDirection}
+            onClick={() => dispatch({ kind: "reverse" })}
           >
             ↓
           </button>
@@ -248,97 +177,83 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             <output
               className="trade-output"
               aria-label="Estimated receive"
-              title={quote.data ? formatUnits(quote.data, 18) : undefined}
+              title={
+                view.output === undefined
+                  ? undefined
+                  : formatUnits18(view.output)
+              }
             >
-              {!hasAmount || numericError
-                ? "0"
-                : quote.isFetching
-                  ? "…"
-                  : quote.data !== undefined
-                    ? formatAmount(quote.data, 6)
-                    : "—"}
+              {view.output === undefined
+                ? view.hasAmount
+                  ? "—"
+                  : "0"
+                : formatAmount(view.output, 6)}
             </output>
             <TokenSelector
               label="Receive token"
               value={outputToken}
               addresses={[pool.token0, pool.token1]}
               disabled={pending}
-              onChange={(address) => {
-                setInputToken(
-                  sameAddress(address, pool.token0) ? pool.token1 : pool.token0,
-                );
-              }}
+              onChange={(value) => dispatch({ kind: "receive", value })}
             />
           </div>
         </section>
 
-        {message && (
+        {view.message && (
           <p className="trade-error" role="alert">
-            {message}
+            {view.message}
           </p>
         )}
-        {!message && impact !== undefined && impact >= 5 && (
+        {!view.message && view.highImpact && (
           <p className="trade-impact-note" role="alert">
-            Price impact is {impact.toFixed(2)}%. Review the received amount.
+            Price impact is {view.impactText}%. Review the received amount.
           </p>
         )}
-        {!funded && (
+        {!view.funded && (
           <p className="trade-error" role="alert">
             This pool has no liquidity yet. Add liquidity before trading.
           </p>
         )}
 
-        <button
-          className="trade-submit"
-          type="submit"
-          disabled={pending || (!!session && !canSwap)}
-        >
-          {actionLabel()}
+        <button className="trade-submit" type="submit" disabled={view.disabled}>
+          {view.actionLabel}
         </button>
 
-        {hasAmount && !numericError && (
+        {view.amount !== undefined && (
           <div className="trade-summary">
-            <span>0.3% pool fee</span>
-            <span>Slippage {slippage}%</span>
+            <span>{view.feePercent}% pool fee</span>
+            <span>Slippage {view.slippageText}%</span>
           </div>
         )}
-        {hasAmount && !numericError && quote.data !== undefined && (
+        {view.output !== undefined && (
           <details className="trade-details">
             <summary>
               <span>
-                1 {symbol(inputToken)} ≈{" "}
-                {executionRate?.toLocaleString("en-US", {
-                  maximumFractionDigits: 6,
-                })}{" "}
-                {symbol(outputToken)}
+                1 {symbol(inputToken)} ≈ {view.rateText} {symbol(outputToken)}
               </span>
               <span>Trade details</span>
             </summary>
             <dl>
               <dt>Minimum received</dt>
               <dd>
-                {minimum === undefined
+                {view.minimum === undefined
                   ? "—"
-                  : `${formatAmount(minimum, 6)} ${symbol(outputToken)}`}
+                  : `${formatAmount(view.minimum, 6)} ${symbol(outputToken)}`}
               </dd>
               <dt>Price impact, including fee</dt>
               <dd
-                className={
-                  impact !== undefined && impact >= 5
-                    ? "trade-impact-warning"
-                    : undefined
-                }
+                className={view.highImpact ? "trade-impact-warning" : undefined}
               >
-                {impact === undefined ? "—" : `${impact.toFixed(3)}%`}
+                {view.impactText === null ? "—" : `${view.impactText}%`}
               </dd>
               <dt>Liquidity provider fee</dt>
               <dd>
-                {amountIn
-                  ? `${formatAmount((amountIn * 30n) / 10000n, 6)} ${symbol(inputToken)}`
-                  : "—"}
+                {view.fee === undefined
+                  ? "—"
+                  : `${formatAmount(view.fee, 6)} ${symbol(inputToken)}`}
               </dd>
               <dt>Deadline</dt>
-              <dd>20 minutes</dd>
+              <dd>{view.deadlineText}</dd>
             </dl>
             <p>
               Token approval may require a separate confirmation before the

@@ -1,0 +1,3 @@
+# Preserve upstream patches and compiler output byte for byte.
+*.patch whitespace=-blank-at-eol,-space-before-tab
+formal/theories/Contracts/*Generated.v whitespace=-blank-at-eol linguist-generated=true
