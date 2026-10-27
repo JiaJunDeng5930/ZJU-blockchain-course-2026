@@ -2,6 +2,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const crypto = require("node:crypto");
 const { spawnSync } = require("node:child_process");
+const { auditAssumptions } = require("./rocq-assumptions.cjs");
 
 const root = path.resolve(__dirname, "../..");
 const toolchain = path.join(root, ".local/toolchain");
@@ -89,55 +90,8 @@ for (const source of sources) {
     path.join(build, source),
   ]);
 }
-const expectedPrimitives = [
-  "int",
-  "add",
-  "sub",
-  "land",
-  "lor",
-  "lxor",
-  "lsl",
-  "lsr",
-  "ltb",
-  "eqb",
-]
-  .map((name) => `PrimInt63.${name}`)
-  .sort();
-const observedPrimitives = [
-  ...new Set(
-    [...assumptions.matchAll(/^([A-Za-z][\w.]*)\s*:/gm)]
-      .map((match) => match[1])
-      .filter((name) => name !== "Axioms" && name !== "Theory"),
-  ),
-].sort();
-const theoryModes = [
-  ...assumptions.matchAll(/^Theory:\n([\s\S]*?)(?=\nChars|(?![\s\S]))/gm),
-].map((match) => match[1].trim());
-// DEFENSE: The upstream library contains admitted lemmas. Only the registered
-// kernel primitives and the declared Set mode may occur in our proof's audit.
-if (
-  JSON.stringify(observedPrimitives) !== JSON.stringify(expectedPrimitives) ||
-  (assumptions.match(/^Axioms:/gm) ?? []).length !== 2 ||
-  JSON.stringify(theoryModes) !==
-    JSON.stringify(["Set is impredicative", "Set is impredicative"])
-) {
-  throw new Error(
-    `Expected only registered Coq kernel primitives and the declared impredicative Set mode. See ${path.join(build, "verification.log")}`,
-  );
-}
 const coqlib = run(path.join(coq, "bin/coqc"), ["-where"]).trim();
-const primitiveSource = path.join(
-  coqlib,
-  "theories/Numbers/Cyclic/Int63/PrimInt63.v",
-);
-const declarations = fs.readFileSync(primitiveSource, "utf8");
-for (const name of expectedPrimitives) {
-  if (!declarations.includes(`Primitive ${name.split(".")[1]} := #int63_`)) {
-    throw new Error(
-      `${name} is not a registered kernel Primitive in ${primitiveSource}`,
-    );
-  }
-}
+const audit = auditAssumptions(assumptions, { expectedReports: 2, coqlib });
 const hash = (file) =>
   crypto.createHash("sha256").update(fs.readFileSync(file)).digest("hex");
 const report = {
@@ -158,12 +112,7 @@ const report = {
     ),
   ),
   theorems: ["checked_profit_runs", "checked_profit_refines_settlement"],
-  assumptions: {
-    registeredKernelPrimitives: observedPrimitives,
-    unprovedLemmas: [],
-    logic: "Set is impredicative",
-    primitiveSource: { path: primitiveSource, sha256: hash(primitiveSource) },
-  },
+  assumptions: audit,
   boundary:
     "Successful pure production checkedProfit helper under the official generated IR execution relation. External calls, whole-transaction rollback and optimized bytecode remain outside this refinement theorem.",
   log: path.join(build, "verification.log"),
