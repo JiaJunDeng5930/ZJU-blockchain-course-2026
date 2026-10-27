@@ -39,6 +39,7 @@
     "test:chain-read": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/chain-read-public.mts",
     "test:liquidity-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-receipt-public.mts",
     "test:arbitrage-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/arbitrage-receipt-public.mts",
-    "test:swap-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/swap-receipt-public.mts"
+    "test:swap-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/swap-receipt-public.mts",
+    "test:wrapping-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-receipt-public.mts"
   }
 }

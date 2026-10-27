@@ -516,3 +516,7 @@ it does not prove React rendering or browser and wallet behavior.
 ## Historical swap receipts
 
 `npm run test:swap-receipt` executes real mixed-precision swaps, rebuilds saved wallet history, and checks actual execution recovery through both the swap-specific and unified transaction entry points. The isolated chain also mines preceding, target and following swaps in one block, including a distinct recipient. Real NFT, arbitrage and token-deployment receipts exercise dispatch; foreign same-ABI markets, reverted transactions and actual RPC outages exercise result boundaries. Historical execution contains no invented original quote or minimum.
+
+## Historical ETH wrapping receipts
+
+`npm run test:wrapping-receipt` restores actual ETH wrapping and WETH unwrapping through the domain and unified result APIs after serialized wallet-history reconstruction. A one-wei withdrawal checks the real negative net ETH effect against account balances. Empty-calldata ETH deposits, a same-block wrap/full withdrawal, unavailable transaction descriptions, blocked state reads and receipt HTTP failures exercise recovery. Ordinary token transfers, approvals, faucet minting, foreign WETH and a genuinely reverted withdrawal stay outside successful conversion results. The tests use one isolated chain and its real receipts and balance changes, with no mirrored AMM or fee formula.
