@@ -30,8 +30,9 @@ are raw share counts, not ERC20 quantities with an invented decimal precision.
 
 Pool prices and execution rates compare human units, including precision
 scaling. A pool with equal human amounts of 6- and 18-place assets therefore has
-a unit price, rather than a price of 10^12. Approximate numeric chart helpers do
-not supply transaction amounts. Arbitrage candidate capital sizes and minimum
+a unit price, rather than a price of 10^12. The public `formatPrice` entry point
+uses this same extracted model; TypeScript does not supply another price formula.
+Arbitrage candidate capital sizes and minimum
 profit use the principal token's precision, and actual results use that same
 principal. Authorization amounts use the same verified token metadata.
 
