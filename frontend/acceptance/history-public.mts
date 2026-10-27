@@ -545,13 +545,14 @@ async function orchestrate() {
         chainId: 31337,
         rpcUrl,
         tokens: [
-          { address: tokenA, name: "History A", symbol: "HSA", kind: "faucet" },
-          { address: tokenB, name: "History B", symbol: "HSB", kind: "faucet" },
+          { address: tokenA, name: "History A", symbol: "HSA", decimals: 18, kind: "faucet" },
+          { address: tokenB, name: "History B", symbol: "HSB", decimals: 18, kind: "faucet" },
           {
             address: wrapped,
             name: "Wrapped Ether",
             symbol: "WETH",
             kind: "wrapped",
+            decimals: 18,
           },
         ],
         exchanges: [

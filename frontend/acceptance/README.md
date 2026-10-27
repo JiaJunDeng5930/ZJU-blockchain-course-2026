@@ -67,3 +67,34 @@ and `result.json` in `.local/allowances-public-*`, including the extracted bundl
 SHA256. Setup transactions use the upstream node directly, so wallet-write
 counts represent only SDK operations through the proxy. The main development
 node and `shared/deployment.json` are unchanged.
+
+## ERC20 token precision
+
+After building the production frontend and contract artifacts:
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/precision-public.mts
+```
+
+The runner deploys the production exchanges to its own local node. Its test-only
+OpenZeppelin tokens expose precisions 0, 6, 8 and 255; a separate token refuses
+the optional `decimals()` metadata read. Imports, unit conversion, swap previews,
+liquidity previews, allowance management and atomic arbitrage use the public
+production SDK and its extracted JavaScript. No new model, bridge, SDK
+implementation or React source was used to choose the expected results.
+
+The scenarios check legacy metadata recovery without an assumed precision,
+smallest representable units and uint256 limits, preservation of a six-decimal
+balance above JavaScript's safe integer range, mixed 6/18 reserves with a human
+price of one, exact swap balance deltas against an on-chain quote, NFT redemption,
+finite and unlimited six-decimal allowance revocation, actual 0/8-token trading,
+and six-decimal arbitrage principal and profit. Precision 255 is checked through
+actual metadata and raw balances plus exact input/formatting; the runner does
+not claim a wallet can hold one whole token at that precision.
+
+Each `.local/precision-public-*/result.json` records the scenarios, raw values,
+receipts and production bundle hash. The node, compiler output and logs remain
+in that local directory. Cleanup stops only the runner's node; the development
+RPC, deployment file and browser are untouched. These checks exercise public
+behavior and adapter assumptions; they do not prove React rendering, RPC honesty,
+the compiler, or EVM semantics.

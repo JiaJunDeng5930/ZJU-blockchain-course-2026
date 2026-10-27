@@ -133,10 +133,10 @@ async function main() {
     await new Promise<void>((done) => proxy.listen(0, "127.0.0.1", done));
     const rpcUrl = `http://127.0.0.1:${(proxy.address() as { port: number }).port}`;
     const tokens: Token[] = [
-      { address: tokenA, name: "Allowance A", symbol: "ALA", kind: "faucet" },
-      { address: tokenB, name: "Allowance B", symbol: "ALB", kind: "faucet" },
-      { address: weth, name: "Wrapped Ether", symbol: "WETH", kind: "wrapped" },
-      { address: refusing, name: "Refusing Approval", symbol: "REFUSE", kind: "external" },
+      { address: tokenA, name: "Allowance A", symbol: "ALA", decimals: 18, kind: "faucet" },
+      { address: tokenB, name: "Allowance B", symbol: "ALB", decimals: 18, kind: "faucet" },
+      { address: weth, name: "Wrapped Ether", symbol: "WETH", decimals: 18, kind: "wrapped" },
+      { address: refusing, name: "Refusing Approval", symbol: "REFUSE", decimals: 18, kind: "external" },
     ];
     const deployment: Deployment = { schemaVersion: 1, chainId: 31337, rpcUrl, tokens: tokens.slice(0, 3), exchanges: [{ address: first, name: "Allowance DEX A" }, { address: second, name: "Allowance DEX B" }], arbitrage, bytecodes: { TestToken: testToken.bytecode } };
     const client = new ExchangeClient(deployment);
