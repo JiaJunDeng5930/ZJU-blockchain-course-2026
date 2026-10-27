@@ -59,6 +59,16 @@ closed, rather than on the earlier `exit` event. This ordering repairs an
 observed zero-exit report loss; it is an integration obligation of the trusted
 Node interface and is not claimed as a Rocq theorem.
 
+Receiving the final report does not yet publish a terminal job. The service
+holds that report in the owning worker's callback scope until `close`, then
+releases the worker and publishes the report and terminal state in one
+synchronous transition. This prevents `Completed` from enabling a new start
+while the service still rejects it as already running. A stop received after
+the worker disconnects IPC waits for that same close outcome without sending
+on the closed channel. Node's [`close` and `disconnect` lifecycle](https://nodejs.org/api/child_process.html#event-close)
+is an external interface obligation; the real-service acceptance checks this
+connection rather than deriving it from the frontend Rocq model.
+
 Transaction deadlines use the RPC pending block timestamp plus the existing
 300-second lifetime. They do not use the worker's wall clock or the last mined
 block timestamp. On an idle local chain, the pending execution context can be

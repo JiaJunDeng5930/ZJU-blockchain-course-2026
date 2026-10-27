@@ -146,6 +146,7 @@ function start(input: SimulationOptions) {
   });
   worker = child;
   let diagnostic = "";
+  let finalReport: SimulationReport | null = null;
   child.stderr?.on("data", (chunk: Buffer) => {
     diagnostic = (diagnostic + chunk.toString()).slice(-8000);
   });
@@ -158,7 +159,18 @@ function start(input: SimulationOptions) {
         state: job.state === "stopping" ? "stopping" : "running",
       };
     } else if (message.type === "finished") {
-      report = message.report;
+      finalReport = message.report;
+    }
+  });
+  child.once("error", (error) => {
+    diagnostic = error.message;
+  });
+  // A terminal job permits another start. Publish it only when the worker has
+  // closed, after queued IPC/stdio delivery, and release the worker in this turn.
+  child.once("close", (code, signal) => {
+    worker = null;
+    if (finalReport) {
+      report = finalReport;
       job = {
         ...job,
         state: report.status,
@@ -166,20 +178,7 @@ function start(input: SimulationOptions) {
         reportAvailable: true,
         rollback: report.rollback,
       };
-    }
-  });
-  child.once("error", (error) => {
-    job = {
-      ...job,
-      state: "failed",
-      error: error.message,
-      finishedAt: new Date().toISOString(),
-    };
-  });
-  // "exit" can precede queued IPC/stdout delivery; classify the outcome only after streams close.
-  child.once("close", (code, signal) => {
-    worker = null;
-    if (!report)
+    } else {
       job = {
         ...job,
         state: "failed",
@@ -188,6 +187,7 @@ function start(input: SimulationOptions) {
           `Simulation worker exited before producing a report (${signal ?? code}).`,
         finishedAt: new Date().toISOString(),
       };
+    }
   });
 }
 
@@ -241,7 +241,9 @@ const server = createServer(async (request, response) => {
       if (!worker || !["starting", "running", "stopping"].includes(job.state))
         throw new RequestError(409, "There is no running simulation to stop.");
       job = { ...job, state: "stopping" };
-      worker.send({ type: "stop" });
+      // DEFENSE: a finished worker disconnects IPC before close; a stop can
+      // arrive in that interval and must wait for its existing final report.
+      if (worker.connected) worker.send({ type: "stop" });
       return respond(response, 202, job);
     }
     throw new RequestError(404, "Simulation endpoint not found.");

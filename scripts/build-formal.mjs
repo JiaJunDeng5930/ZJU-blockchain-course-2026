@@ -229,9 +229,13 @@ try {
   const stubs = run("ocamlfind", ["query", "zarith_stubs_js"], root, true);
   const output = join(work, "dex_logic.js");
   await mkdir(dirname(output), { recursive: true });
-  run("js_of_ocaml", [
+  // DEFENSE: Node 26.5 rejects valid warmed-up simulation events with the
+  // default inlined output. Preserve the decoder/callback boundaries.
+  const javascriptArguments = [
     "--disable",
     "genprim",
+    "--disable",
+    "inline",
     "--target-env",
     "browser",
     join(stubs, "biginteger.js"),
@@ -239,7 +243,9 @@ try {
     bytecode,
     "-o",
     output,
-  ]);
+  ];
+  const javascriptVersion = run("js_of_ocaml", ["--version"], root, true);
+  run("js_of_ocaml", javascriptArguments);
   const inputs = [
     ...theories,
     ...profiles.map((profile) => join(formal, profile.extract)),
@@ -272,6 +278,10 @@ try {
     JSON.stringify(
       {
         compiler: version,
+        javascriptCompiler: {
+          version: javascriptVersion,
+          arguments: javascriptArguments,
+        },
         log: relative(root, logPath),
         logicalMode: "predicative Set",
         sourceSnapshot: relative(root, work),

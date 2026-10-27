@@ -26,15 +26,22 @@ The generated `.local/toolchain/environment.json` is a plain environment-variabl
 
 ## Pinned inputs
 
-| Component | Revision/version |
-| --- | --- |
-| [Coq](https://github.com/rocq-prover/rocq) | `fd609f07dab2d2720695882a711cd0a022068ea8` (8.20.1) |
-| [rocq-of-solidity](https://github.com/formal-land/rocq-of-solidity) | `a53c579ab822838dd938ff5eb8fbcb09b918ec03` |
-| [CoqHammer tactics](https://github.com/lukaszcz/coqhammer) | `af9fab74391a48a7f8fddb28ef280d5110bbb2fb` |
-| [coqutil](https://github.com/mit-plv/coqutil) | `b8bb9bcc6ff19b6bad060323d822bc8e2058bee0` |
-| OCaml / ocamlfind / Dune | 4.14.2 / 1.9.8 / 3.23.1 |
-| Zarith / num / Yojson | 1.14 / 1.6 / 3.0.0 |
-| js_of_ocaml / zarith_stubs_js | 6.4.1 / v0.16.1 |
+| Component                                                           | Revision/version                                    |
+| ------------------------------------------------------------------- | --------------------------------------------------- |
+| [Coq](https://github.com/rocq-prover/rocq)                          | `fd609f07dab2d2720695882a711cd0a022068ea8` (8.20.1) |
+| [rocq-of-solidity](https://github.com/formal-land/rocq-of-solidity) | `a53c579ab822838dd938ff5eb8fbcb09b918ec03`          |
+| [CoqHammer tactics](https://github.com/lukaszcz/coqhammer)          | `af9fab74391a48a7f8fddb28ef280d5110bbb2fb`          |
+| [coqutil](https://github.com/mit-plv/coqutil)                       | `b8bb9bcc6ff19b6bad060323d822bc8e2058bee0`          |
+| OCaml / ocamlfind / Dune                                            | 4.14.2 / 1.9.8 / 3.23.1                             |
+| Zarith / num / Yojson                                               | 1.14 / 1.6 / 3.0.0                                  |
+| js_of_ocaml / zarith_stubs_js                                       | 6.4.1 / v0.16.1                                     |
+
+JavaScript generation disables js_of_ocaml inlining. The build manifest records
+the JavaScript compiler version and the actual argument array used for that
+artifact. This addresses a reproduced warm-up failure of the default generated
+output on Node 26.5's Maglev execution path; it does not change the extracted
+models or certify the JavaScript engine. See [ADR 011](../docs/adr/011-preserve-generated-callback-boundaries.md)
+for the observed boundary and the reason for using the compiler option.
 
 The source tree needs one documented C++ ordering repair in [`verify-swap.compiler.patch`](../contracts/scripts/verify-swap.compiler.patch), plus the build flags `-DMETA_NO_STD_FORWARD_DECLARATIONS=1 -include filesystem`. These address the host C++/Boost build; no Solidity, Yul or Rocq semantics are patched. The script rejects additional tracked compiler modifications and checks every copied semantics `.v` against the pinned upstream file.
 
