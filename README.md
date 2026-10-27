@@ -53,6 +53,7 @@ npm --prefix frontend run dev
 
 ## 操作流程
 
+- **链上数据**：Chain data 标明已读区块及余额所属地址。首次读取失败会给出错误；后台刷新失败则保留已有数据并说明来源。状态栏的刷新按钮重新读取当前查询。本机 RPC 按实际请求结果反馈，电脑的外网离线提示不会将本地调用暂停排队，设计原因见 [ADR 012](docs/adr/012-observe-local-chain-availability.md)。
 - **资产准备**：钱包内可按需领取测试 ETH 和测试 ERC20。WETH 通过 ETH 按 1:1 包装获得，钱包中的准备入口可直达包装表单；包装和解包都需要保留 ETH 支付 gas。转换前先审阅方向、数量和执行账户。
 - **Swap**：首页直接显示兑换卡。选择交易对、输入卖出数量，默认用 Best quote 比较本部署的直接池，选择实际收到数量最多的池子；也可手动指定成交池。可反转方向、用 Max 填入余额，在 Settings 中调整滑点。点击 **Review swap** 审阅，再 **Confirm swap**，按需完成批准与交换。
 - **Liquidity**：先查看自己的头寸，点击 **New position** 选择池和投入量，再 Review 后确认铸造 NFT。已有池按当前比例投入，未使用部分留在钱包；新池由首次提供者设定初始比例。
@@ -96,6 +97,12 @@ redeem1 = floor(positionShares × reserve1 / totalShares)
 池信息中的头寸表展示当前 NFT 持有人和初始存入数量；历史表按 NFT 编号记录原始提供者与赎回时的所有者。没有活动 NFT 时会标明所读区块；已初始化的池子仍保留永久锁定的最小份额与相应储备。
 
 池列表的 Add liquidity 直接打开所选池的投入表单，空池必须先注入流动性才能交易。首次投入确定初始价格；投入审阅展示资产比例、预计份额及未使用而留在钱包的数量。投入与赎回确认保留代币的精确最小单位，池和 NFT 均按所属交易所及编号识别，避免在两个交易所的同编号池或 NFT 之间混淆。
+
+投入、转让和赎回后，Confirmed liquidity action 保留最近一次成功回执的实际结果：投入与赎回的双币数量、份额、NFT 编号与所有者，或该 NFT 转让事件的发送方与接收方，以及执行账户、区块和交易哈希。新铸造的 NFT 会直接展开；转让或烧毁使原卡片离开持仓列表后，确认结果仍可查看。赎回数量包含储备中累积的手续费及市场变化，不能把相对初始存币的差额单独称为手续费收益。
+
+同一页面、同一目标池的投入草稿在关闭窗口或钱包拒签后保留，可再次打开 New position 审阅；选择其他池时重新建立草稿。
+
+运行 `npm run test:liquidity-evidence` 可通过公开钱包入口核对真实事件、NFT 权属和余额变化；运行 `npm run test:chain-read` 可在真实 RPC 故障与恢复、浏览器离线提示情景下验证生产查询客户端的读取与手动操作行为。
 
 ### Bonus：双交易所与原子套利
 
@@ -272,7 +279,7 @@ Best quote 在同一交易对的已知直接池中比较给定输入的实际输
 
 ### 流动性与 NFT
 
-![Liquidity 运行截图](docs/screenshots/11-formal-liquidity.jpg)
+![链上数据来源与当前钱包的流动性持仓](docs/screenshots/32-chain-data-and-positions.jpg)
 
 新建头寸时，选池和金额字段使用同一组代币标识。
 
@@ -285,6 +292,14 @@ Best quote 在同一交易对的已知直接池中比较给定输入的实际输
 NFT 编号只在对应 DEX 合约内唯一。当前赎回确认显示 DEX、池编号和代币地址缩写，悬停代币字段可查看完整地址。
 
 ![赎回前确认 DEX、池、NFT 与代币地址](docs/screenshots/18-redemption-review.jpg)
+
+本机实际流程：第一个演示账户在区块 849 获得 Harbor NFT #65，区块 850 转给第二个账户，再由第二个账户于区块 851 赎回。数量、归属与交易哈希均来自对应成功回执；本次创建的临时 NFT 已全部赎回，两个初始 NFT 的持有人保持不变。
+
+![实际投入数量与新铸造NFT的回执](docs/screenshots/29-liquidity-confirmed-mint.jpg)
+
+![NFT转让后的双方地址与回执](docs/screenshots/30-liquidity-confirmed-transfer.jpg)
+
+![新持有人赎回收到的实际资产与回执](docs/screenshots/31-liquidity-confirmed-redemption.jpg)
 
 ### 资产与交易池
 

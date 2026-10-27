@@ -24,6 +24,8 @@
     "test:deadlines": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/deadlines-public.mts",
     "test:simulation": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/simulation-public.mts",
     "test:arbitrage-evidence": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/arbitrage-evidence-public.mts",
-    "test:asset-setup": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/asset-setup-public.mts"
+    "test:asset-setup": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/asset-setup-public.mts",
+    "test:liquidity-evidence": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-evidence-public.mts",
+    "test:chain-read": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/chain-read-public.mts"
   }
 }

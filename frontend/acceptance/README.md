@@ -258,3 +258,38 @@ before sending: the public wallet error and pending state, nonce and balances
 are observed independently. No second gas-budget model supplies the oracle.
 Evidence and source fingerprints remain under `.local/asset-setup-public-*/`;
 the runner does not use the browser or development services.
+
+## Realized liquidity actions
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-evidence-public.mts
+```
+
+The public wallet executes deposits, an NFT transfer and redemptions on two real
+isolated DEX contracts. A mixed six/eighteen-decimal pair and equal NFT numbers
+on the two exchanges exercise asset units and position identity. A real trade
+changes the selected pool while an actual approval response is delayed; the
+returned deposit amounts must match its successful liquidity event and wallet
+balance changes, including when they differ from the original budget. Shares,
+NFT ownership, transfer endpoints and redeemed amounts are checked against the
+same receipts and public contract reads. The former owner cannot redeem the
+transferred NFT; the new owner receives its assets. No duplicate AMM formula is
+used as an oracle. Results and source fingerprints stay under
+`.local/liquidity-evidence-public-*/`.
+
+## Local chain reads and recovery
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/chain-read-public.mts
+```
+
+QueryObserver and MutationObserver use the production `createChainQueryClient`
+with an isolated real HTTP RPC endpoint and public wallet SDK. HTTP 503 failures
+exercise initial failure, manual recovery, retention of a previous successful
+snapshot and recovery to a newer block. Read phases must not send transactions.
+The public onlineManager supplies the browser's offline hint while localhost
+remains reachable: a real query and ERC20 faucet transaction must still finish
+without waiting for an online notification. Nonces, receipts and balances check
+the external effects. Results and source fingerprints stay under
+`.local/chain-read-public-*/`. This verifies the production query/SDK boundary;
+it does not prove React rendering or browser and wallet behavior.
