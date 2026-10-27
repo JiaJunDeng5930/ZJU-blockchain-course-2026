@@ -32,6 +32,24 @@ the external check for the extracted long-calldata validator; no Node stack or
 optimization flags are added. Results and runtime source fingerprints are saved
 to `.local/creation-results-public-*/result.json`.
 
+## Preparing liquidity from available balances
+
+Run `npm run test:liquidity-balances`. With an already built kernel and contract
+artifacts, run
+`contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-balances-public.mts`
+directly.
+
+The public `depositBalancePreview` entrypoint takes observed raw balances as
+spending limits. The runner carries those original limits through the public
+wallet writer into actual deposits and NFT redemptions on an isolated chain.
+It checks mixed token precision, non-divisible integer reserve ratios, actual
+transfers, unused wallet funds and NFT ownership without copying the production
+liquidity formula. Approvals are checked against captured desired limits,
+actual transfers against used amounts, and residual allowances against their
+difference. Empty pools require explicit starting amounts; unavailable
+balances do not fabricate a usable quote. These are public business API and
+chain-effect checks, not browser tests or a proof of EVM behavior.
+
 ## First-deposit ownership
 
 Run `npm run test:initial-liquidity` from the repository root. With an already

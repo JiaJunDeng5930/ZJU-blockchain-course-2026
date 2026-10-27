@@ -49,6 +49,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/AMM.v`, `Units.v` | Fee-adjusted integer quote, product/bounds arguments, token-specific exact amount/slippage parsing and swap parameters; see [token precision](TOKEN-PRECISION.md) |
 | `theories/Spec/Routing.v` | Direct-pool comparison, manual venue selection and captured swap effects; see [swap routing](SWAP-ROUTING.md) |
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
+| `theories/Frontend/LiquidityBalances.v` | Balance-bounded preparation for an existing pool, preserving original spending limits and requiring an explicit price for the first deposit |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
 | `theories/Frontend/ArbitrageCapital.v` | Exact user-entered capital for manual route comparison, reusing the shared arbitrage candidate calculation |
@@ -63,6 +64,25 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
 
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
+
+`Frontend/LiquidityBalances.v` prepares an existing-pool deposit from observed
+raw token balances using the shared deposit planner. The original balances stay
+as `desired0` and `desired1`; used amounts and unused balances are separate
+fields. Feeding rounded used amounts back as new limits would perform a second
+ratio calculation, so the UI formats the original limits and the writer receives
+those same limits. Missing balance observations do not become zero balances.
+An empty pool requires the user to choose its starting price through explicit
+amounts. The arithmetic guarantees apply to the shared planner; public real-chain
+acceptance separately checks the original limits, transfers, NFT and redemption.
+
+`balance_deposit_preserves_limits` and `balance_deposit_within_wallet` connect
+the prepared plan to its original limits, bounded spending and unused balances.
+`balance_deposit_requires_existing_pool` and
+`balance_deposit_requires_observed_balances` state the prerequisites of a usable
+quote; `balance_deposit_empty_pool` and `balance_deposit_zero_balance` establish
+the rejected cases. All six theorems are closed under the global context.
+Approval amounts remain governed by the existing writer: approvals cover the
+captured desired limits, while actual transfers use the pool-ratio amounts.
 
 Manual arbitrage uses `Frontend/ArbitrageCapital.v` to parse one exact capital
 amount at the token's declared precision and compare routes using that amount.
