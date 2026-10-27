@@ -33,7 +33,7 @@ test("a presenter can run, inspect, download and safely stop the market simulati
   ).toContainText("Completed", { timeout: 60_000 });
   await expect(page.getByLabel("Simulation metrics")).toContainText("20 / 20");
   await expect(
-    page.getByRole("heading", { name: "Live markets", exact: true }),
+    page.getByRole("heading", { name: "Markets", exact: true }),
   ).toBeVisible();
   await expect(
     page.getByText("Verified: reserves and token balances unchanged", {

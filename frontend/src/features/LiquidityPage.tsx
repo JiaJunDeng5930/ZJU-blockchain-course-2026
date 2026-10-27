@@ -40,8 +40,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
     <div className="liquidity-page">
       <header className="liquidity-heading">
         <div>
-          <h1>Your liquidity</h1>
-          <p>Manage your pool positions and the assets they hold.</p>
+          <h1>Liquidity</h1>
         </div>
         <button
           className="button-primary liquidity-new"
@@ -52,10 +51,6 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
         </button>
       </header>
       <section className="liquidity-positions" aria-label="My positions">
-        <div className="liquidity-list-heading">
-          <h2>My positions</h2>
-          <span>{positions.length} active</span>
-        </div>
         {!session ? (
           <div className="liquidity-empty">
             <h3>Connect a wallet to see your positions</h3>
@@ -104,10 +99,8 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
       >
         <div>
           <h2>Explore a pool</h2>
-          <p>Inspect reserves, liquidity providers and trading fees.</p>
         </div>
-        <label className="liquidity-pool-select">
-          Pool
+        <div className="liquidity-pool-select">
           <select
             aria-label="Liquidity pool"
             value={poolKey(inspected)}
@@ -120,7 +113,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
               </option>
             ))}
           </select>
-        </label>
+        </div>
         <PoolActivity key={poolKey(inspected)} pool={inspected} />
       </section>
       {creating && (

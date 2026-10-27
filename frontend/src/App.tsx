@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { BrowserRouter, useSearchParams } from "react-router-dom";
 import {
   QueryClient,
   QueryClientProvider,
@@ -8,12 +9,13 @@ import { ExchangeClient } from "./chain/client";
 import { DexProvider, useDex } from "./chain/DexProvider";
 import type { Deployment } from "./chain/types";
 import { poolKey } from "./chain/amounts";
-import { WalletBar } from "./components/WalletBar";
+import { WalletMenu } from "./components/WalletMenu";
 import { PoolSelector } from "./components/PoolSelector";
 import { SwapPage } from "./features/SwapPage";
 import { LiquidityPage } from "./features/LiquidityPage";
 import { PoolsPage } from "./features/PoolsPage";
 import { ArbitragePage } from "./features/ArbitragePage";
+import { SimulationPage } from "./features/SimulationPage";
 import { TransactionsPage } from "./features/TransactionsPage";
 import "./App.css";
 
@@ -23,19 +25,22 @@ const queries = new QueryClient({
     mutations: { retry: false },
   },
 });
-const pages = [
-  "Swap",
-  "Liquidity",
-  "Pools & tokens",
-  "Arbitrage",
-  "Transactions",
+const workspaces = [
+  { name: "Swap", route: "swap" },
+  { name: "Liquidity", route: "liquidity" },
+  { name: "Pools & tokens", route: "tokens" },
+  { name: "Arbitrage", route: "arbitrage" },
+  { name: "Simulation", route: "simulation" },
+  { name: "Transactions", route: "activity" },
 ] as const;
-type Page = (typeof pages)[number];
+type WorkspaceName = (typeof workspaces)[number]["name"];
 export default function App() {
   return (
-    <QueryClientProvider client={queries}>
-      <Bootstrap />
-    </QueryClientProvider>
+    <BrowserRouter>
+      <QueryClientProvider client={queries}>
+        <Bootstrap />
+      </QueryClientProvider>
+    </BrowserRouter>
   );
 }
 function Bootstrap() {
@@ -51,12 +56,12 @@ function Bootstrap() {
         !response.headers.get("content-type")?.includes("json")
       )
         throw new Error(
-          "Deployment file missing. Start the node and run npm run deploy in contracts.",
+          "Deployment file missing. Start the local app with npm run dev from the repository root.",
         );
       const config: Deployment = await response.json();
       if (config.schemaVersion !== 1)
         throw new Error(
-          "Deployment format is outdated. Run npm run deploy again.",
+          "The deployment file needs updating. Run npm run deploy in contracts.",
         );
       const client = new ExchangeClient(config);
       await client.verifyDeployment();
@@ -66,16 +71,16 @@ function Bootstrap() {
   });
   if (!deployment.data)
     return (
-      <main className="loading">
-        <h1>TwoPool DEX</h1>
+      <main className="connection-screen">
+        <a className="wordmark" href="/">
+          twopool<span>↗</span>
+        </a>
         {deployment.error ? (
           <>
+            <h1>Local network unavailable</h1>
             <p role="alert">{deployment.error.message}</p>
-            <pre>
-              cd contracts{`\n`}npm run node{`\n`}# another terminal{`\n`}npm
-              run deploy
-            </pre>
             <button
+              className="button-primary"
               onClick={() => {
                 void deployment.refetch();
               }}
@@ -84,7 +89,7 @@ function Bootstrap() {
             </button>
           </>
         ) : (
-          <p role="status">Connecting to deployment…</p>
+          <p role="status">Connecting to your local exchange…</p>
         )}
       </main>
     );
@@ -95,83 +100,241 @@ function Bootstrap() {
   );
 }
 function Workspace() {
-  const { client, snapshot, status, pending, journal } = useDex();
-  const [page, setPage] = useState<Page>("Swap");
-  const [selection, setSelection] = useState("");
+  const { snapshot } = useDex();
+  const [search, setSearch] = useSearchParams();
+  const [walletOpen, setWalletOpen] = useState(false);
+  const [toolsOpen, setToolsOpen] = useState(false);
+  const tools = useRef<HTMLDivElement>(null);
+  const toolsButton = useRef<HTMLButtonElement>(null);
+  const page =
+    workspaces.find((workspace) => workspace.route === search.get("view"))
+      ?.name ?? "Swap";
+  const selected = search.get("pool");
   const pool =
-    snapshot.data?.pools.find((p) => poolKey(p) === selection) ??
+    snapshot.data?.pools.find((item) => poolKey(item) === selected) ??
     snapshot.data?.pools[0];
-  const poolPage =
-    page === "Swap" || page === "Liquidity" || page === "Arbitrage";
+  function goTo(name: WorkspaceName) {
+    const route = workspaces.find(
+      (workspace) => workspace.name === name,
+    )!.route;
+    setSearch((previous) => {
+      const next = new URLSearchParams(previous);
+      next.set("view", route);
+      return next;
+    });
+    setToolsOpen(false);
+    setWalletOpen(false);
+  }
+  function selectPool(key: string) {
+    setSearch(
+      (previous) => {
+        const next = new URLSearchParams(previous);
+        next.set("pool", key);
+        return next;
+      },
+      { replace: true },
+    );
+  }
+  useEffect(() => {
+    if (!toolsOpen) return;
+    function outside(event: PointerEvent) {
+      if (!tools.current?.contains(event.target as Node)) setToolsOpen(false);
+    }
+    document.addEventListener("pointerdown", outside);
+    return () => document.removeEventListener("pointerdown", outside);
+  }, [toolsOpen]);
   return (
-    <div className="shell">
-      <header>
-        <div>
-          <h1>TwoPool DEX</h1>
-          <p>
-            Harbor / Summit · Local Ethereum · Chain {client.deployment.chainId}
-          </p>
-        </div>
-        <small>0.3% trading fee · ERC721 liquidity positions</small>
-      </header>
-      <WalletBar />
-      <div className="operation-status">
-        <p role="status" aria-live="polite">
-          {status}
-        </p>
-        {pending && (
-          <small>
-            You can inspect the transaction journal while confirmation is
-            pending.
-          </small>
-        )}
-      </div>
-      {snapshot.error && (
-        <p role="alert" className="read-error">
-          Chain data refresh failed: {snapshot.error.message}. Confirmed
-          transaction records remain available.
-        </p>
-      )}
-      <nav aria-label="Workspace">
-        {pages.map((label) => (
-          <button
-            key={label}
-            className={label === page ? "active" : ""}
-            aria-current={label === page ? "page" : undefined}
-            onClick={() => setPage(label)}
-          >
-            {label}
-            {label === "Transactions" && journal.length
-              ? ` (${journal.length})`
-              : ""}
-          </button>
-        ))}
-      </nav>
-      {poolPage && <PoolSelector pool={pool} onChange={setSelection} />}
-      {page === "Transactions" ? (
-        <TransactionsPage />
-      ) : !snapshot.data ? (
-        <p role="status">Reading chain data…</p>
-      ) : page === "Pools & tokens" ? (
-        <PoolsPage
-          onSelect={(next) => {
-            setSelection(poolKey(next));
-            setPage("Swap");
+    <div className="app-shell">
+      <header className="app-header">
+        <a
+          className="wordmark"
+          href="?view=swap"
+          onClick={(event) => {
+            event.preventDefault();
+            goTo("Swap");
           }}
+        >
+          twopool<span>↗</span>
+        </a>
+        <nav className="primary-nav" aria-label="Workspace">
+          <button
+            className={page === "Swap" ? "active" : ""}
+            aria-current={page === "Swap" ? "page" : undefined}
+            onClick={() => goTo("Swap")}
+          >
+            Swap
+          </button>
+          <button
+            className={page === "Liquidity" ? "active" : ""}
+            aria-current={page === "Liquidity" ? "page" : undefined}
+            onClick={() => goTo("Liquidity")}
+          >
+            Liquidity
+          </button>
+          <div className="tools-navigation" ref={tools}>
+            <button
+              ref={toolsButton}
+              className={
+                page !== "Swap" && page !== "Liquidity" ? "active" : ""
+              }
+              aria-haspopup="menu"
+              aria-expanded={toolsOpen}
+              onClick={() => setToolsOpen(!toolsOpen)}
+              onKeyDown={(event) => {
+                if (event.key === "ArrowDown") {
+                  event.preventDefault();
+                  setToolsOpen(true);
+                  requestAnimationFrame(() =>
+                    tools.current
+                      ?.querySelector<HTMLButtonElement>("[role=menuitem]")
+                      ?.focus(),
+                  );
+                }
+              }}
+            >
+              Tools <span aria-hidden="true">⌄</span>
+            </button>
+            {toolsOpen && (
+              <div
+                className="tools-menu"
+                role="menu"
+                aria-label="Tools"
+                onKeyDown={(event) => {
+                  if (event.key === "Escape") {
+                    setToolsOpen(false);
+                    toolsButton.current?.focus();
+                    return;
+                  }
+                  if (event.key !== "ArrowDown" && event.key !== "ArrowUp")
+                    return;
+                  event.preventDefault();
+                  const items = [
+                    ...event.currentTarget.querySelectorAll<HTMLButtonElement>(
+                      "[role=menuitem]",
+                    ),
+                  ];
+                  const index = items.indexOf(
+                    document.activeElement as HTMLButtonElement,
+                  );
+                  items[
+                    (index +
+                      (event.key === "ArrowDown" ? 1 : -1) +
+                      items.length) %
+                      items.length
+                  ]?.focus();
+                }}
+              >
+                {workspaces.slice(2).map((workspace) => (
+                  <button
+                    key={workspace.route}
+                    role="menuitem"
+                    onClick={() => goTo(workspace.name)}
+                  >
+                    {workspace.name}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </nav>
+        <WalletMenu
+          open={walletOpen}
+          onOpen={() => setWalletOpen(true)}
+          onClose={() => setWalletOpen(false)}
         />
-      ) : !pool ? (
-        <p>Create a pool in Pools & tokens to begin.</p>
-      ) : page === "Swap" ? (
-        <SwapPage key={poolKey(pool)} pool={pool} />
-      ) : page === "Liquidity" ? (
-        <LiquidityPage key={poolKey(pool)} pool={pool} />
-      ) : (
-        <ArbitragePage key={poolKey(pool)} pool={pool} />
-      )}
-      <footer>
-        Local teaching network · Test tokens have no monetary value · Token
-        profit excludes ETH gas costs
-      </footer>
+      </header>
+      <main
+        className={`workspace-content ${page === "Swap" ? "swap-workspace" : "tool-workspace"}`}
+      >
+        {snapshot.error && (
+          <p role="alert" className="read-error">
+            Unable to refresh chain data. Confirmed transactions are still
+            available in Activity. {snapshot.error.message}
+          </p>
+        )}
+        {page === "Simulation" ? (
+          <SimulationPage />
+        ) : page === "Transactions" ? (
+          <TransactionsPage />
+        ) : !snapshot.data ? (
+          <div className="workspace-loading" role="status">
+            Loading markets…
+          </div>
+        ) : page === "Pools & tokens" ? (
+          <PoolsPage
+            onSelect={(next) => {
+              selectPool(poolKey(next));
+              goTo("Swap");
+            }}
+          />
+        ) : !pool ? (
+          <section className="empty-state">
+            <h1>No pools yet</h1>
+            <p>Create a token pair to start trading.</p>
+            <button
+              className="button-primary"
+              onClick={() => goTo("Pools & tokens")}
+            >
+              Create a pool
+            </button>
+          </section>
+        ) : page === "Swap" ? (
+          <SwapPage
+            key={`${pool.token0}:${pool.token1}`}
+            pool={pool}
+            onPoolChange={selectPool}
+            onOpenWallet={() => setWalletOpen(true)}
+          />
+        ) : page === "Liquidity" ? (
+          <LiquidityPage key={poolKey(pool)} pool={pool} />
+        ) : (
+          <>
+            <div className="tool-page-heading">
+              <h1>Arbitrage</h1>
+            </div>
+            <PoolSelector pool={pool} onChange={selectPool} />
+            <ArbitragePage
+              key={poolKey(pool)}
+              pool={pool}
+              onOpenSimulation={() => goTo("Simulation")}
+            />
+          </>
+        )}
+      </main>
+      <TransactionNotice onOpenActivity={() => goTo("Transactions")} />
     </div>
+  );
+}
+function TransactionNotice({ onOpenActivity }: { onOpenActivity: () => void }) {
+  const { journal, status, pending } = useDex();
+  const latest = journal[0];
+  const [dismissed, setDismissed] = useState<string>();
+  const key = latest ? `${latest.id}:${latest.state}` : undefined;
+  useEffect(() => {
+    if (!key || pending || latest?.state !== "confirmed") return;
+    const timer = setTimeout(() => setDismissed(key), 8000);
+    return () => clearTimeout(timer);
+  }, [key, pending, latest?.state]);
+  if (!latest || dismissed === key) return null;
+  return (
+    <aside
+      className={`transaction-notice${latest.state === "failed" ? " transaction-error" : ""}`}
+    >
+      <p role="status" aria-live="polite">
+        {status}
+      </p>
+      <button className="text" onClick={onOpenActivity}>
+        View activity
+      </button>
+      {!pending && (
+        <button
+          className="notice-dismiss"
+          aria-label="Dismiss notification"
+          onClick={() => setDismissed(key)}
+        >
+          ×
+        </button>
+      )}
+    </aside>
   );
 }

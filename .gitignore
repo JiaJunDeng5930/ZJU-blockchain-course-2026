@@ -5,3 +5,4 @@ shared/simulation-report.json
 .DS_Store
 frontend/test-results/
 frontend/playwright-report/
+.local/

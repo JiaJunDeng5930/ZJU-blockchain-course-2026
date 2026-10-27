@@ -142,7 +142,6 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
         </div>
 
         <div className="trade-market">
-          <label htmlFor="trade-market">Market</label>
           <select
             id="trade-market"
             aria-label="Active pool"
@@ -297,10 +296,12 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           {actionLabel()}
         </button>
 
-        <div className="trade-summary">
-          <span>0.3% pool fee</span>
-          <span>Slippage {slippage}%</span>
-        </div>
+        {hasAmount && !numericError && (
+          <div className="trade-summary">
+            <span>0.3% pool fee</span>
+            <span>Slippage {slippage}%</span>
+          </div>
+        )}
         {hasAmount && !numericError && quote.data !== undefined && (
           <details className="trade-details">
             <summary>
@@ -346,9 +347,6 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           </details>
         )}
       </form>
-      <p className="trade-network-note">
-        Local test network · Test assets only
-      </p>
     </div>
   );
 }

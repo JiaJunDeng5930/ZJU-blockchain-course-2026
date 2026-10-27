@@ -64,3 +64,22 @@ export type JournalEntry = { id: string; label: string; account: string } & (
   | { state: "confirmed"; hash: string; block: number; gas: bigint }
   | { state: "failed"; message: string; hash?: string }
 );
+
+export type LiquidityActivity = {
+  block: number;
+  volume0: bigint;
+  volume1: bigint;
+  fees0: bigint;
+  fees1: bigint;
+  swaps: number;
+  events: {
+    kind: "added" | "removed";
+    positionId: bigint;
+    actor: string;
+    amount0: bigint;
+    amount1: bigint;
+    block: number;
+    index: number;
+    hash: string;
+  }[];
+};

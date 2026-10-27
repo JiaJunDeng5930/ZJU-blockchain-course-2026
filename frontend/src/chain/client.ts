@@ -15,6 +15,7 @@ import {
 import { depositAmounts, minimumReceived, sameAddress } from "./amounts";
 import type {
   ArbitrageResult,
+  LiquidityActivity,
   ChainSnapshot,
   Deployment,
   Opportunity,
@@ -176,6 +177,67 @@ export class ExchangeClient {
       kind: "external",
     };
   }
+  async liquidityActivity(
+    pool: Pool,
+    block: number,
+  ): Promise<LiquidityActivity> {
+    const contract = this.dex(pool.exchange.address);
+    const [added, removed, swaps, feeBps] = await Promise.all([
+      contract.queryFilter(contract.filters.LiquidityAdded(pool.id), 0, block),
+      contract.queryFilter(
+        contract.filters.LiquidityRemoved(pool.id),
+        0,
+        block,
+      ),
+      contract.queryFilter(contract.filters.Swap(pool.id), 0, block),
+      contract.FEE_BPS({ blockTag: block }),
+    ]);
+    let volume0 = 0n;
+    let volume1 = 0n;
+    let fees0 = 0n;
+    let fees1 = 0n;
+    for (const log of swaps) {
+      const fee = (log.args.amountIn * feeBps) / 10000n;
+      if (sameAddress(log.args.tokenIn, pool.token0)) {
+        volume0 += log.args.amountIn;
+        fees0 += fee;
+      } else {
+        volume1 += log.args.amountIn;
+        fees1 += fee;
+      }
+    }
+    const events = [
+      ...added.map((log) => ({
+        kind: "added" as const,
+        positionId: log.args.positionId,
+        actor: log.args.provider,
+        amount0: log.args.amount0,
+        amount1: log.args.amount1,
+        block: log.blockNumber,
+        index: log.index,
+        hash: log.transactionHash,
+      })),
+      ...removed.map((log) => ({
+        kind: "removed" as const,
+        positionId: log.args.positionId,
+        actor: log.args.owner,
+        amount0: log.args.amount0,
+        amount1: log.args.amount1,
+        block: log.blockNumber,
+        index: log.index,
+        hash: log.transactionHash,
+      })),
+    ].sort((a, b) => b.block - a.block || b.index - a.index);
+    return {
+      block,
+      volume0,
+      volume1,
+      fees0,
+      fees1,
+      swaps: swaps.length,
+      events,
+    };
+  }
   async metadata(positionId: bigint, exchange: string): Promise<unknown> {
     const uri = await this.dex(exchange).tokenURI(positionId);
     return JSON.parse(atob(uri.split(",")[1]));
@@ -318,6 +380,15 @@ class ExchangeWriter {
         minimumReceived(amounts[0], slippage),
         minimumReceived(amounts[1], slippage),
         deadline,
+      ),
+    );
+  }
+  async transferPosition(pool: Pool, positionId: bigint, recipient: string) {
+    await this.send("Transfer position", () =>
+      this.dex(pool)["safeTransferFrom(address,address,uint256)"](
+        this.session.address,
+        getAddress(recipient),
+        positionId,
       ),
     );
   }

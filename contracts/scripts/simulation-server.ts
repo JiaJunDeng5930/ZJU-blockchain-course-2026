@@ -18,7 +18,10 @@ const workerPath = fileURLToPath(new URL("./simulate.ts", import.meta.url));
 const reportPath = fileURLToPath(
   new URL("../../shared/simulation-report.json", import.meta.url),
 );
+const webPort = Number(process.env.DEX_WEB_PORT ?? 3000);
 const allowedOrigins = new Set([
+  `http://127.0.0.1:${webPort}`,
+  `http://localhost:${webPort}`,
   "http://127.0.0.1:3000",
   "http://localhost:3000",
   "http://127.0.0.1:4173",

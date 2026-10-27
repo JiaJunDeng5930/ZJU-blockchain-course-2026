@@ -19,6 +19,7 @@ export function AmountField({
       <input
         aria-label={name}
         type="text"
+        placeholder="0"
         inputMode="decimal"
         value={value}
         onChange={(event) => onChange(event.target.value)}

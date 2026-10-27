@@ -16,7 +16,13 @@ import {
   amountError,
 } from "../components/Forms";
 
-export function ArbitragePage({ pool }: { pool: Pool }) {
+export function ArbitragePage({
+  pool,
+  onOpenSimulation,
+}: {
+  pool: Pool;
+  onOpenSimulation: () => void;
+}) {
   const { client, snapshot, symbol, run, pending, session } = useDex();
   const [tokenIn, setTokenIn] = useState(pool.token0);
   const [minimum, setMinimum] = useState("0.001");
@@ -51,7 +57,6 @@ export function ArbitragePage({ pool }: { pool: Pool }) {
             });
         }}
       >
-        <h2>Atomic arbitrage</h2>
         <TokenSelect
           label="Capital token"
           value={tokenIn}
@@ -130,7 +135,11 @@ export function ArbitragePage({ pool }: { pool: Pool }) {
         ) : (
           <p>No arbitrage executed in this session.</p>
         )}
-        <SimulationReport />
+        <div className="simulation">
+          <button className="secondary" onClick={onOpenSimulation}>
+            Open market simulation
+          </button>
+        </div>
       </section>
     </div>
   );
@@ -199,50 +208,6 @@ function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
               })}
           </tbody>
         </table>
-      )}
-    </div>
-  );
-}
-function SimulationReport() {
-  const report = useQuery({
-    queryKey: ["simulation-report"],
-    queryFn: async (): Promise<unknown> => {
-      const response = await fetch("/simulation-report.json", {
-        cache: "no-store",
-      });
-      if (
-        !response.ok ||
-        !response.headers.get("content-type")?.includes("json")
-      )
-        throw new Error(
-          "Run npm run simulate in contracts to generate the report.",
-        );
-      return response.json();
-    },
-    enabled: false,
-  });
-  return (
-    <div className="simulation">
-      <h3>20-account simulation</h3>
-      <p>
-        Run <code>npm run simulate</code> in contracts, then load the recorded
-        transactions, profits, reserve changes and rollback evidence.
-      </p>
-      <button
-        className="secondary"
-        disabled={report.isFetching}
-        onClick={() => {
-          void report.refetch();
-        }}
-      >
-        Load simulation report
-      </button>
-      {report.error && <p role="alert">{report.error.message}</p>}
-      {report.data !== undefined && (
-        <details>
-          <summary>Simulation report</summary>
-          <pre className="result">{JSON.stringify(report.data, null, 2)}</pre>
-        </details>
       )}
     </div>
   );

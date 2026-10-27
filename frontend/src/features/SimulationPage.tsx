@@ -296,7 +296,7 @@ export function SimulationPage() {
           </div>
           <div className="workspace">
             <section className="card">
-              <h2>Live markets</h2>
+              <h2>Markets</h2>
               <p>
                 Prices are {symbol(progress.markets[0].token1)} per{" "}
                 {symbol(progress.markets[0].token0)}. Both markets trade the
