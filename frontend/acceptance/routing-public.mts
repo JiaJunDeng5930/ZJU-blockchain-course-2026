@@ -4,17 +4,30 @@ import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { createServer } from "node:http";
 import { resolve } from "node:path";
-import { decodeFunctionData, getAddress } from "viem";
+import {
+  decodeFunctionData,
+  getAddress,
+  parseAbiItem,
+  parseEventLogs,
+} from "viem";
 import { isolatedChain, root, until } from "./support/chain.mts";
 import { ExchangeClient } from "../src/chain/client";
 import { WalletController } from "../src/wallet/session";
-import { createRoutedSwapController } from "../src/logic/routing";
+import {
+  createRoutedSwapController,
+  type RoutedSwapPlan,
+} from "../src/logic/routing";
 import type {
   ChainSnapshot,
   Deployment,
   Pool,
   Token,
+  SwapResult,
 } from "../src/chain/types";
+
+const swapEvent = parseAbiItem(
+  "event Swap(uint256 indexed poolId, address indexed sender, address indexed tokenIn, uint256 amountIn, uint256 amountOut, address recipient)"
+);
 
 const same = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase();
@@ -106,6 +119,21 @@ async function main() {
   const evidence: Record<string, unknown> = {
     status: "running",
     programSha256,
+    sourceSha256: Object.fromEntries(
+      await Promise.all(
+        [
+          "chain/client.ts",
+          "chain/types.ts",
+          "logic/routing.ts",
+          "wallet/session.ts",
+        ].map(async (path) => [
+          path,
+          createHash("sha256")
+            .update(await readFile(resolve(root, "frontend/src", path)))
+            .digest("hex"),
+        ])
+      )
+    ),
     scenarios,
   };
   let wallet: WalletController | undefined;
@@ -404,6 +432,46 @@ async function main() {
       }
     );
 
+    const verifyExecution = async (
+      result: SwapResult,
+      plan: RoutedSwapPlan,
+      before: { input: bigint; output: bigint },
+      after: { input: bigint; output: bigint }
+    ) => {
+      assert.equal(result.receipt.status, "success");
+      assert.equal(poolIdentity(result.pool), poolIdentity(plan.pool));
+      assert(same(result.tokenIn, plan.inputToken));
+      assert(same(result.tokenOut, plan.outputToken));
+      assert.equal(result.quoted, plan.quoted);
+      assert.equal(result.minimum, plan.minimum);
+      const receipt = await read.getTransactionReceipt({
+        hash: result.receipt.transactionHash,
+      });
+      assert.equal(receipt.status, "success");
+      assert.equal(result.receipt.blockHash, receipt.blockHash);
+      assert.equal(result.receipt.blockNumber, receipt.blockNumber);
+      assert(same(receipt.from, owner));
+      assert(receipt.to && same(receipt.to, plan.pool.exchange.address));
+      const events = parseEventLogs({
+        abi: [swapEvent],
+        eventName: "Swap",
+        logs: receipt.logs,
+      }).filter((event) => same(event.address, plan.pool.exchange.address));
+      assert.equal(events.length, 1);
+      const event = events[0].args;
+      assert.equal(event.poolId, plan.pool.id);
+      assert(same(String(event.sender), owner));
+      assert(same(String(event.recipient), owner));
+      assert(same(String(event.tokenIn), result.tokenIn));
+      assert.equal(result.amountIn, event.amountIn);
+      assert.equal(result.amountOut, event.amountOut);
+      assert.equal(result.amountIn, before.input - after.input);
+      assert.equal(result.amountOut, after.output - before.output);
+      assert.equal(result.amountIn, plan.input);
+      assert(result.amountOut >= plan.minimum);
+      return { result, event, before, after };
+    };
+
     await scenario(
       "Automatic execution spends the precise mixed-decimal input in the selected pool",
       async () => {
@@ -421,13 +489,24 @@ async function main() {
         );
         const funds = await balances();
         const start = proxy.writes.length;
-        await perform("Automatic routed swap", (writer) =>
-          writer.routedSwap(effect)
-        );
+        let execution: SwapResult | undefined;
+        await perform("Automatic routed swap", async (writer) => {
+          execution = await writer.routedSwap(effect);
+        });
         const after = await snapshot();
         const final = await balances();
+        assert(execution);
+        assert(same(execution.tokenIn, six.address));
+        assert(same(execution.tokenOut, eighteen.address));
+        const actualExecution = await verifyExecution(
+          execution,
+          effect,
+          funds,
+          final
+        );
         const sent = swaps(proxy.writes.slice(start));
         assert.equal(sent.length, 1);
+        assert.equal(execution.receipt.transactionHash, sent[0].hash);
         assert(same(sent[0].to, effect.pool.exchange.address));
         assert.equal(sent[0].decoded.args?.[0], effect.pool.id);
         assert(same(String(sent[0].decoded.args?.[1]), six.address));
@@ -445,6 +524,7 @@ async function main() {
           sent,
           before: funds,
           after: final,
+          actualExecution,
         };
       }
     );
@@ -501,9 +581,9 @@ async function main() {
           assert.equal(json(effect), captured);
           changed = { thinQuote, deepQuote, pending };
         };
-        await perform("Captured routed swap", (writer) =>
-          writer.routedSwap(effect)
-        );
+        await perform("Captured routed swap", async (writer) => {
+          await writer.routedSwap(effect);
+        });
         assert(
           changed,
           "the approval boundary must actually have been exercised"
@@ -555,9 +635,9 @@ async function main() {
         const effect = draft.dispatch({ kind: "submit" }, ctx).effect;
         assert(effect?.kind === "swap");
         const start = proxy.writes.length;
-        await perform("Explicit manual routed swap", (writer) =>
-          writer.routedSwap(effect)
-        );
+        await perform("Explicit manual routed swap", async (writer) => {
+          await writer.routedSwap(effect);
+        });
         const after = await snapshot();
         const sent = swaps(proxy.writes.slice(start));
         assert.equal(sent.length, 1);
@@ -571,6 +651,65 @@ async function main() {
           findPair(before, second).reserve1
         );
         evidence.manualExecution = { effect, sent };
+      }
+    );
+
+    await scenario(
+      "An 18-decimal payment reports actual output after its chosen market improves during approval",
+      async () => {
+        const data = await snapshot();
+        const { draft, ctx } = draftFor(data, "1");
+        draft.dispatch({ kind: "reverse" }, ctx);
+        draft.dispatch({ kind: "amount", value: "1" }, ctx);
+        const effect = draft.dispatch({ kind: "submit" }, ctx).effect;
+        assert(effect?.kind === "swap");
+        assert(same(effect.inputToken, eighteen.address));
+        assert(same(effect.outputToken, six.address));
+        assert.equal(effect.input, 10n ** 18n);
+        const reverseBalances = async () => ({
+          input: await client.token(eighteen.address).read.balanceOf([owner]),
+          output: await client.token(six.address).read.balanceOf([owner]),
+        });
+        const before = await reverseBalances();
+        let marketChanged = false;
+        proxy.state.afterApproval = async () => {
+          await adminWrite(six.address, fixture.abi, "approve", [
+            effect.pool.exchange.address,
+            1_000_000n,
+          ]);
+          await adminWrite(effect.pool.exchange.address, dex.abi, "swap", [
+            effect.pool.id,
+            six.address,
+            1_000_000n,
+            0n,
+            accounts[0],
+            (await client.transactionTimestamp()) + 1200n,
+          ]);
+          marketChanged = true;
+        };
+        let execution: SwapResult | undefined;
+        await perform(
+          "Reverse routed swap with changed actual output",
+          async (writer) => {
+            execution = await writer.routedSwap(effect);
+          }
+        );
+        assert(
+          marketChanged,
+          "the real approval boundary must change the selected market"
+        );
+        assert(execution);
+        const actualExecution = await verifyExecution(
+          execution,
+          effect,
+          before,
+          await reverseBalances()
+        );
+        assert(
+          execution.amountOut > effect.quoted,
+          "actual received evidence must differ from the captured draft quote"
+        );
+        evidence.changedActualExecution = actualExecution;
       }
     );
 
@@ -763,9 +902,9 @@ async function main() {
         };
         let interruption: string | null = null;
         try {
-          await perform("Interrupted routed swap", (writer) =>
-            writer.routedSwap(effect)
-          );
+          await perform("Interrupted routed swap", async (writer) => {
+            await writer.routedSwap(effect);
+          });
         } catch (error) {
           // DEFENSE: the public wallet may surface the expected identity interruption as a rejected promise.
           interruption = error instanceof Error ? error.message : String(error);
