@@ -1,0 +1,28 @@
+.confirmed-arbitrage {
+  margin: 1rem 0;
+  padding: 1.25rem;
+  border: 1px solid #e4e8ed;
+  border-radius: 1rem;
+  background: white;
+  overflow-wrap: anywhere;
+}
+
+.confirmed-arbitrage-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 2fr);
+  gap: 0.6rem 1rem;
+}
+
+.confirmed-arbitrage-values dd {
+  margin: 0;
+}
+
+.confirmed-arbitrage table {
+  font-size: 0.8rem;
+}
+
+@media (max-width: 640px) {
+  .confirmed-arbitrage-values {
+    grid-template-columns: 1fr;
+  }
+}

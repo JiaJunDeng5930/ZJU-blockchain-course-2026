@@ -1,5 +1,6 @@
 From Coq Require Import List String Bool.
 From DEXFormal.Spec Require Import Ledger.
+From DEXFormal.Frontend Require Import ReceiptScope.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -13,18 +14,14 @@ Record liquidity_event := LiquidityEvent {
 }.
 
 Definition available known (descriptor_known : bool) target operation :=
-  if descriptor_known then
-    existsb (String.eqb target) known &&
-    existsb (String.eqb operation)
-      ["addLiquidity"; "removeLiquidity"; "safeTransferFrom"; "transferFrom"]
-  else true.
+  operation_receipt_available known
+    ["addLiquidity"; "removeLiquidity"; "safeTransferFrom"; "transferFrom"]
+    descriptor_known target operation.
 
 Theorem available_requires_configured_exchange known target operation :
   available known true target operation = true -> In target known.
 Proof.
-  unfold available. intros H. apply andb_true_iff in H as [H _].
-  apply existsb_exists in H as [exchange [Hin Heq]].
-  apply String.eqb_eq in Heq. now rewrite Heq.
+  apply known_receipt_target_is_configured.
 Qed.
 
 Theorem unknown_descriptor_allows_receipt_read known target operation :

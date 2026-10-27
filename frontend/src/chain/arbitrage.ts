@@ -1,5 +1,10 @@
-import { getAddress, parseEventLogs } from "viem";
-import { arbitrageAbi, testTokenAbi } from "../generated/abis";
+import {
+  getAddress,
+  parseEventLogs,
+  type Hex,
+  type TransactionReceipt,
+} from "viem";
+import { arbitrageAbi, miniDexAbi, testTokenAbi } from "../generated/abis";
 import {
   prepareArbitrage,
   arbitrageCapitalInput,
@@ -7,12 +12,20 @@ import {
   scanArbitrage,
   summarizeArbitrageExecution,
 } from "../logic/arbitrage";
+import { selectArbitrageReceipt } from "../logic/arbitrageReceipt";
 import { importAsset } from "./assets";
 import { tokenDecimals } from "./amounts";
 import { assertSupportedPool } from "../logic/assets";
 import type { WalletSession } from "../wallet/session";
 import type { ExchangeClient, SendTransaction } from "./client";
-import type { ArbitrageResult, Opportunity, Pool, Token } from "./types";
+import type {
+  ArbitrageResult,
+  ArbitrageReceiptDetails,
+  ArbitrageReserveSnapshot,
+  Opportunity,
+  Pool,
+  Token,
+} from "./types";
 
 export async function opportunities(
   client: ExchangeClient,
@@ -41,11 +54,21 @@ export async function quoteArbitrage(
   supportedTokens: readonly Token[],
 ): Promise<Opportunity[]> {
   assertSupportedPool(selected, supportedTokens);
-  const input = arbitrageCapitalInput(amount, tokenDecimals(supportedTokens, tokenIn));
+  const input = arbitrageCapitalInput(
+    amount,
+    tokenDecimals(supportedTokens, tokenIn),
+  );
   if (!input.canQuote) throw new Error(input.error!);
   const block = await client.rpc.getBlock({ blockTag: "latest" });
   const pools = await client.pools(Number(block.number));
-  return quoteArbitrageAmount(selected, pools, tokenIn, amount, Number(block.number), supportedTokens);
+  return quoteArbitrageAmount(
+    selected,
+    pools,
+    tokenIn,
+    amount,
+    Number(block.number),
+    supportedTokens,
+  );
 }
 
 export async function executeArbitrage(
@@ -138,46 +161,146 @@ export async function executeArbitrage(
       ],
     }),
   );
-  const event = parseEventLogs({
+  return resultFromEvidence(receipt, decodeArbitrageEvents(client, receipt)!, [
+    plan.route.buy,
+    plan.route.sell,
+  ]);
+}
+
+function decodeArbitrageEvents(
+  client: ExchangeClient,
+  receipt: TransactionReceipt,
+) {
+  const executions = parseEventLogs({
     abi: arbitrageAbi,
     eventName: "ArbitrageExecuted",
     logs: receipt.logs,
-  }).find((log) => getAddress(log.address) === arbitrage)!;
+  });
   const snapshots = parseEventLogs({
     abi: arbitrageAbi,
     eventName: "PoolReservesChanged",
     logs: receipt.logs,
-  }).filter((log) => getAddress(log.address) === arbitrage);
-  const evidence = [plan.route.buy, plan.route.sell].map((pool) => {
-    const snapshot = snapshots.find(
-      (log) =>
-        getAddress(log.args.exchange) === getAddress(pool.exchange.address) &&
-        log.args.poolId === pool.id,
-    )!;
+  });
+  const selection = selectArbitrageReceipt(
+    receipt.status === "success",
+    getAddress(client.deployment.arbitrage).toLowerCase(),
+    client.deployment.exchanges.map((exchange) =>
+      getAddress(exchange.address).toLowerCase(),
+    ),
+    executions.map((event, index) => ({
+      index,
+      source: getAddress(event.address).toLowerCase(),
+      buy: getAddress(event.args.buyDex).toLowerCase(),
+      sell: getAddress(event.args.sellDex).toLowerCase(),
+    })),
+    snapshots.map((event, index) => ({
+      index,
+      source: getAddress(event.address).toLowerCase(),
+      exchange: getAddress(event.args.exchange).toLowerCase(),
+    })),
+  );
+  switch (selection.kind) {
+    case "none":
+      return null;
+    case "reverted":
+      // DEFENSE: a saved or supplied hash can refer to an actually reverted execution.
+      throw new Error(
+        "The transaction reverted and has no confirmed arbitrage result.",
+      );
+    case "unsupported":
+      // DEFENSE: an external contract can call execute more than once in one transaction.
+      throw new Error(
+        "This receipt does not contain one complete arbitrage execution and its two reserve events.",
+      );
+  }
+  return {
+    execution: executions[selection.execution]!,
+    buy: snapshots[selection.buy]!,
+    sell: snapshots[selection.sell]!,
+  };
+}
+
+type Evidence = NonNullable<ReturnType<typeof decodeArbitrageEvents>>;
+type PoolIdentity = Pick<Pool, "exchange" | "id" | "token0" | "token1">;
+
+function resultFromEvidence(
+  receipt: TransactionReceipt,
+  evidence: Evidence,
+  pools: readonly [PoolIdentity, PoolIdentity],
+): ArbitrageResult {
+  const snapshots = [evidence.buy, evidence.sell].map((event, index) => {
+    const pool = pools[index]!;
+    const identity = {
+      exchange: pool.exchange,
+      id: pool.id,
+      token0: pool.token0,
+      token1: pool.token1,
+    };
     return {
       before: {
-        ...pool,
-        reserve0: snapshot.args.reserve0Before,
-        reserve1: snapshot.args.reserve1Before,
+        ...identity,
+        reserve0: event.args.reserve0Before,
+        reserve1: event.args.reserve1Before,
       },
       after: {
-        ...pool,
-        reserve0: snapshot.args.reserve0After,
-        reserve1: snapshot.args.reserve1After,
+        ...identity,
+        reserve0: event.args.reserve0After,
+        reserve1: event.args.reserve1After,
       },
+    } satisfies {
+      before: ArbitrageReserveSnapshot;
+      after: ArbitrageReserveSnapshot;
     };
   });
+  const event = evidence.execution.args;
   return {
-    tokenIn: event.args.tokenIn,
+    trader: getAddress(event.trader),
+    tokenIn: event.tokenIn,
+    intermediateAmount: event.intermediateAmount,
     ...summarizeArbitrageExecution({
-      amountIn: event.args.amountIn,
-      amountOut: event.args.amountOut,
-      profit: event.args.profit,
+      amountIn: event.amountIn,
+      amountOut: event.amountOut,
+      profit: event.profit,
       gasUsed: receipt.gasUsed,
       gasPrice: receipt.effectiveGasPrice,
     }),
     receipt,
-    before: evidence.map((snapshot) => snapshot.before),
-    after: evidence.map((snapshot) => snapshot.after),
+    before: snapshots.map((snapshot) => snapshot.before),
+    after: snapshots.map((snapshot) => snapshot.after),
   };
+}
+
+export async function readArbitrageReceipt(
+  client: ExchangeClient,
+  hash: Hex,
+): Promise<ArbitrageReceiptDetails | null> {
+  const receipt = await client.rpc.getTransactionReceipt({ hash });
+  const evidence = decodeArbitrageEvents(client, receipt);
+  if (evidence === null) return null;
+  const blockNumber = receipt.blockNumber;
+  const readIdentity = async (
+    event: Evidence["buy"],
+  ): Promise<PoolIdentity> => {
+    const address = getAddress(event.args.exchange);
+    const exchange = client.deployment.exchanges.find(
+      (item) => getAddress(item.address) === address,
+    )!;
+    const [token0, token1] = await client.rpc.readContract({
+      address,
+      abi: miniDexAbi,
+      functionName: "pools",
+      args: [event.args.poolId],
+      blockNumber,
+    });
+    return { exchange, id: event.args.poolId, token0, token1 };
+  };
+  const pools = await Promise.all([
+    readIdentity(evidence.buy),
+    readIdentity(evidence.sell),
+  ]);
+  const tokens = await Promise.all([
+    importAsset(client, pools[0].token0, blockNumber),
+    importAsset(client, pools[0].token1, blockNumber),
+  ]);
+  return { result: resultFromEvidence(receipt, evidence, pools), tokens };
 }

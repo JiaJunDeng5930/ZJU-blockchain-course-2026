@@ -1,8 +1,9 @@
-import { Fragment, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { poolKey, poolLabel, tokenDecimals, tokenLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { ArbitrageResult, Opportunity, Pool } from "../chain/types";
+import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import {
   AmountField,
@@ -217,7 +218,7 @@ export function ArbitragePage({
       <section className="card">
         <h2>Execution evidence</h2>
         {result ? (
-          <ExecutionEvidence result={result} />
+          <ConfirmedArbitrageAction result={result} tokens={tokens} />
         ) : (
           <p>No arbitrage executed in this session.</p>
         )}
@@ -227,62 +228,6 @@ export function ArbitragePage({
           </button>
         </div>
       </section>
-    </div>
-  );
-}
-function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
-  const { symbol, amount, price, tokens } = useDex();
-  const decimals = tokenDecimals(tokens, result.tokenIn);
-  return (
-    <div data-testid="arbitrage-result">
-      <dl className="details">
-        <dt>Trader</dt>
-        <dd>{result.receipt.from}</dd>
-        <dt>Capital sent</dt>
-        <dd>{formatUnits(result.amountIn, decimals)} {symbol(result.tokenIn)}</dd>
-        <dt>Returned</dt>
-        <dd>{formatUnits(result.amountOut, decimals)} {symbol(result.tokenIn)}</dd>
-        <dt>Realized token profit</dt>
-        <dd>{formatUnits(result.profit, decimals)} {symbol(result.tokenIn)}</dd>
-        <dt>Execution fee</dt>
-        <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
-      </dl>
-      <p>Confirmed in block {result.receipt.blockNumber.toString()}.</p>
-      <code>{result.receipt.transactionHash}</code>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Pool</th>
-              <th>State</th>
-              <th>Reserves</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.before.map((before) => {
-              const next = result.after.find(
-                (p) => poolKey(p) === poolKey(before)
-              )!;
-              return (
-                <Fragment key={poolKey(before)}>
-                  {[{ state: "Before", pool: before }, { state: "After", pool: next }].map(({ state, pool }) => (
-                    <tr key={state}>
-                      {state === "Before" && <td rowSpan={2}>{poolLabel(before, symbol)}</td>}
-                      <td>{state}</td>
-                      <td>
-                        {amount(pool.reserve0, pool.token0)} {symbol(pool.token0)} /{" "}
-                        {amount(pool.reserve1, pool.token1)} {symbol(pool.token1)}
-                      </td>
-                      <td>{price(pool)} {symbol(pool.token1)} per {symbol(pool.token0)}</td>
-                    </tr>
-                  ))}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
     </div>
   );
 }

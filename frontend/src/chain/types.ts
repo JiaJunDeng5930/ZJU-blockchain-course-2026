@@ -34,7 +34,8 @@ export type PoolCreationConfirmation = {
   receipt: TransactionReceipt;
 };
 export type AssetCreationConfirmation =
-  TokenCreationConfirmation | PoolCreationConfirmation;
+  | TokenCreationConfirmation
+  | PoolCreationConfirmation;
 export type Deployment = {
   schemaVersion: 1;
   chainId: number;
@@ -81,7 +82,13 @@ export type Opportunity = {
   profit: bigint;
   quotedAtBlock: number;
 };
+export type ArbitrageReserveSnapshot = Pick<
+  Pool,
+  "exchange" | "id" | "token0" | "token1" | "reserve0" | "reserve1"
+>;
 export type ArbitrageResult = {
+  trader: string;
+  intermediateAmount: bigint;
   tokenIn: string;
   amountIn: bigint;
   amountOut: bigint;
@@ -89,8 +96,12 @@ export type ArbitrageResult = {
   /** Execute transaction only; excludes preceding ERC20 approval fees. */
   gasCostWei: bigint;
   receipt: TransactionReceipt;
-  before: Pool[];
-  after: Pool[];
+  before: ArbitrageReserveSnapshot[];
+  after: ArbitrageReserveSnapshot[];
+};
+export type ArbitrageReceiptDetails = {
+  result: ArbitrageResult;
+  tokens: readonly [Token, Token];
 };
 export type SwapResult = {
   gasCostWei: bigint;

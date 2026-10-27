@@ -12,6 +12,8 @@ import type { JournalView } from "../wallet/kernel";
 import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmedLiquidityAction } from "../components/ConfirmedLiquidityAction";
+import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction";
+import { arbitrageReceiptAvailable } from "../logic/arbitrageReceipt";
 import { liquidityReceiptAvailable } from "../logic/liquidityReceipt";
 export function TransactionsPage() {
   const { history, wallet, client } = useDex();
@@ -156,6 +158,11 @@ export function TransactionsPage() {
                         client.deployment.exchanges,
                         entry.descriptor,
                       ) && <LiquidityReceipt entry={entry} />}
+                    {entry.state === "confirmed" &&
+                      arbitrageReceiptAvailable(
+                        client.deployment.arbitrage,
+                        entry.descriptor,
+                      ) && <ArbitrageReceipt entry={entry} />}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
                         {replacement.kind === "repriced"
@@ -312,6 +319,57 @@ function CreatedContractReceipt({
         {receipt.isFetching
           ? "Reading creation receipt…"
           : "Read created contract"}
+      </button>
+    </div>
+  );
+}
+
+function ArbitrageReceipt({
+  entry,
+}: {
+  entry: Extract<JournalView, { state: "confirmed" }>;
+}) {
+  const { client } = useDex();
+  const result = useQuery({
+    queryKey: [
+      "arbitrage-receipt",
+      client.deployment.rpcUrl,
+      client.key,
+      entry.instance,
+      entry.id,
+      entry.hash,
+    ],
+    queryFn: () => client.arbitrageReceipt(entry.hash as Hex),
+    enabled: false,
+    retry: false,
+  });
+  return (
+    <div>
+      {result.data && (
+        <ConfirmedArbitrageAction
+          result={result.data.result}
+          tokens={result.data.tokens}
+        />
+      )}
+      {result.data === null && (
+        <p>
+          No arbitrage operation from this deployment was found in the receipt.
+        </p>
+      )}
+      {result.error && (
+        <p role="alert">
+          Arbitrage receipt could not be read: {result.error.message}
+        </p>
+      )}
+      <button
+        className="text"
+        type="button"
+        disabled={result.isFetching}
+        onClick={() => void result.refetch()}
+      >
+        {result.isFetching
+          ? "Reading arbitrage receipt…"
+          : "Read arbitrage result"}
       </button>
     </div>
   );

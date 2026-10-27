@@ -36,7 +36,7 @@ import { addLiquidity, removeLiquidity, transferPosition, readLiquidityReceipt }
 import { revokeAllowance, type RevokePlan } from "./allowances";
 import type { RawAllowances } from "../wallet/kernel";
 import { executeWrap } from "./wrapping";
-import { opportunities, quoteArbitrage, executeArbitrage } from "./arbitrage";
+import { opportunities, quoteArbitrage, executeArbitrage, readArbitrageReceipt } from "./arbitrage";
 import type {
   ArbitrageResult,
   SwapResult,
@@ -253,6 +253,9 @@ export class ExchangeClient {
   }
   importToken(address: string): Promise<Token> {
     return importAsset(this, address);
+  }
+  arbitrageReceipt(hash: Hex) {
+    return readArbitrageReceipt(this, hash);
   }
   liquidityReceipt(hash: Hex) {
     return readLiquidityReceipt(this, hash);

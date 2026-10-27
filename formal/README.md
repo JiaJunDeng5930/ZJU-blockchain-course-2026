@@ -298,3 +298,14 @@ Pool state and token metadata are read at the receipt block. ABI decoding,
 historical RPC data and this adapter binding remain external assumptions; the
 black-box lifecycle acceptance checks that binding without duplicating the pure
 selection proofs.
+
+Arbitrage receipt recovery shares configured-target and missing-descriptor entry
+policy with liquidity recovery. The extracted selector requires a successful
+receipt, one execution from the configured arbitrage contract and its two reserve
+events in buy/sell order, with both exchanges configured. Its proofs establish
+observation membership, emitter identity and route association. Historical and
+live results use the same decoder. Reserve snapshots contain only pool identity,
+asset addresses and the event's before/after reserves; they do not claim
+transaction-local LP supply or other mutable pool state. Asset metadata uses the
+receipt block. ABI decoding, complete receipt logs and historical RPC reads remain
+external assumptions, checked through the independent public acceptance flow.
