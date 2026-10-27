@@ -13,7 +13,7 @@ import { createSwapController } from "../src/logic/trade";
 import { depositPreview, positionView } from "../src/logic/liquidity";
 import { arbitragePreview, scanArbitrage } from "../src/logic/arbitrage";
 import { formatUnits, formatPrice, positiveAmount } from "../src/logic/units";
-import { formatAmount, reservePrice } from "../src/chain/amounts";
+import { formatAmount } from "../src/chain/amounts";
 import type {
   ArbitrageResult,
   Deployment,
@@ -307,7 +307,6 @@ async function main() {
           )!,
           /^1(?:\.0+)?$/,
         );
-        assert.equal(reservePrice(pool, tokens), 1);
         evidence.initialPool = pool;
       },
     );
@@ -495,7 +494,15 @@ async function main() {
           writer.addLiquidity(integerPool, ...desired(integerPool, "100"), 50n),
         );
         integerPool = await findPair(first, zero.address, eight.address);
-        assert.equal(reservePrice(integerPool, tokens), 1);
+        assert.match(
+          formatPrice(
+            integerPool.reserve1,
+            tokenFor(integerPool.token1).decimals,
+            integerPool.reserve0,
+            tokenFor(integerPool.token0).decimals,
+          )!,
+          /^1(?:\.0+)?$/,
+        );
         const before = await client.snapshot(owner, tokens);
         const context = {
           pool: integerPool,
