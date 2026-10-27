@@ -271,7 +271,7 @@ async function main() {
     const oldLocation = new URL(location.href);
     oldLocation.searchParams.set("pool", poolKey(earlierPool));
     const beforeReject = {
-      block: await read.getBlockNumber(),
+      block: await rpc("eth_blockNumber"),
       nonce: await rpc("eth_getTransactionCount", [actor, "latest"]),
     };
     const live = await client.snapshot(actor, deployment.tokens);
@@ -284,7 +284,7 @@ async function main() {
       requested: oldLocation.searchParams.get("pool"),
     });
     assert.equal(Object.hasOwn(missing, "pool"), false);
-    assert.equal(await read.getBlockNumber(), beforeReject.block);
+    assert.equal(await rpc("eth_blockNumber"), beforeReject.block);
     assert.equal(
       await rpc("eth_getTransactionCount", [actor, "latest"]),
       beforeReject.nonce,
