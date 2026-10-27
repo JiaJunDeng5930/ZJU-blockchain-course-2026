@@ -35,15 +35,14 @@ export async function addLiquidity(
   await verifyPoolAssets(client, pool);
   const owner = session.address,
     exchange = getAddress(pool.exchange.address);
-  const [balance0, balance1, allowance0, allowance1, block] = await Promise.all(
-    [
+  const [balance0, balance1, allowance0, allowance1, timestamp] =
+    await Promise.all([
       client.token(pool.token0).read.balanceOf([owner]),
       client.token(pool.token1).read.balanceOf([owner]),
       client.token(pool.token0).read.allowance([owner, exchange]),
       client.token(pool.token1).read.allowance([owner, exchange]),
-      client.rpc.getBlock(),
-    ],
-  );
+      client.transactionTimestamp(),
+    ]);
   const plan = prepareDepositWrite(
     pool,
     amount0,
@@ -51,7 +50,7 @@ export async function addLiquidity(
     balance0,
     balance1,
     slippage,
-    block.timestamp,
+    timestamp,
     allowance0,
     allowance1,
   );
@@ -105,7 +104,7 @@ export async function removeLiquidity(
   const { client, session, send } = context;
   await verifyPoolAssets(client, pool);
   const exchange = getAddress(pool.exchange.address);
-  const [owner, position, block] = await Promise.all([
+  const [owner, position, timestamp] = await Promise.all([
     client.rpc.readContract({
       address: exchange,
       abi: miniDexAbi,
@@ -118,7 +117,7 @@ export async function removeLiquidity(
       functionName: "positions",
       args: [id],
     }),
-    client.rpc.getBlock(),
+    client.transactionTimestamp(),
   ]);
   const plan = prepareWithdrawWrite(
     pool,
@@ -126,7 +125,7 @@ export async function removeLiquidity(
     owner,
     session.address,
     slippage,
-    block.timestamp,
+    timestamp,
     position[0],
     amounts,
   );
