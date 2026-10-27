@@ -484,3 +484,9 @@
   font-size: 14px;
   line-height: 1.6;
 }
+
+.liquidity-deposit-estimate {
+  margin: 0;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}

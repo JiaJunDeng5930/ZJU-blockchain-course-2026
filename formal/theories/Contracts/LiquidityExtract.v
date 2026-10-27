@@ -1,8 +1,8 @@
 From Coq Require Import Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
 From DEXFormal.Spec Require Import Types Units AMM Liquidity.
-From DEXFormal.Frontend Require Import LiquidityPolicy.
+From DEXFormal.Frontend Require Import LiquidityPolicy LiquidityBalances.
 Extraction "build/liquidity/LiquidityKernel.ml"
-  LiquidityPolicy.analyze_deposit Types.approval_needed
+  LiquidityPolicy.analyze_deposit LiquidityBalances.balance_deposit Types.approval_needed
   LiquidityPolicy.deposit_ownership
   LiquidityPolicy.prepare_transfer
   LiquidityPolicy.prepare_position_withdraw LiquidityPolicy.prepare_withdraw_write

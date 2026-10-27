@@ -40,6 +40,7 @@ export type DepositDecision =
 type Runtime = {
   [K in
     | "analyzeDeposit"
+    | "balanceDeposit"
     | "depositAmounts"
     | "counterpart"
     | "positionView"
@@ -100,6 +101,25 @@ export function depositPreview(
   ) as WireDeposit;
   return wire.ok ? { ok: true, ...decodePlan(wire) } : wire;
 }
+export function depositBalancePreview(
+  pool: Pool,
+  slippage: string,
+  balance0: bigint | undefined,
+  balance1: bigint | undefined,
+): DepositDecision {
+  const wire = JSON.parse(
+    globalThis.DEXLiquidity.balanceDeposit(
+      JSON.stringify({
+        ...poolWire(pool),
+        slippage,
+        balance0: balance0?.toString() ?? null,
+        balance1: balance1?.toString() ?? null,
+      }),
+    ),
+  ) as WireDeposit;
+  return wire.ok ? { ok: true, ...decodePlan(wire) } : wire;
+}
+
 export function depositAmounts(
   pool: Pool,
   desired0: bigint,

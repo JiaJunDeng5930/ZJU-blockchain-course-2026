@@ -27,6 +27,16 @@ let analyze_deposit value =
   | K.DepositEmpty -> `Assoc ["ok", `Bool false; "error", `Null]
   | K.DepositRejected why -> rejected why
   | K.DepositPrepared plan -> `Assoc (("ok", `Bool true)::deposit_json ~reserve0:r0 ~reserve1:r1 ~total plan)
+let balance_deposit value =
+  let r0,r1,total = pool value in
+  let observed key = match Field.member key value with
+    | `Null -> None
+    | item -> Some (Field.to_string item |> Big_int_Z.big_int_of_string) in
+  match K.balance_deposit r0 r1 total (observed "balance0") (observed "balance1")
+    (text "slippage" value) with
+  | K.DepositEmpty -> `Assoc ["ok", `Bool false; "error", `Null]
+  | K.DepositRejected why -> rejected why
+  | K.DepositPrepared plan -> `Assoc (("ok", `Bool true)::deposit_json ~reserve0:r0 ~reserve1:r1 ~total plan)
 let deposit_amounts value =
   let r0,r1,total = pool value in
   let a0,a1 = K.deposit_amounts r0 r1 total (integer "desired0" value) (integer "desired1" value) in
@@ -87,6 +97,7 @@ let () = Js.Unsafe.set Js.Unsafe.global "DEXLiquidity" (Js.Unsafe.obj [|
   "ownedPositions", Js.Unsafe.inject (callback owned_positions);
   "poolPositions", Js.Unsafe.inject (callback pool_positions);
   "analyzeDeposit", Js.Unsafe.inject (callback analyze_deposit);
+  "balanceDeposit", Js.Unsafe.inject (callback balance_deposit);
   "depositAmounts", Js.Unsafe.inject (callback deposit_amounts);
   "counterpart", Js.Unsafe.inject (callback counterpart);
   "positionView", Js.Unsafe.inject (callback position_view);

@@ -22,6 +22,7 @@ import type { LiquidityConfirmation, Pool, Position } from "../chain/types";
 import {
   counterpartAmount,
   depositPreview,
+  depositBalancePreview,
   ownedPositions,
   positionView,
   prepareTransfer,
@@ -202,6 +203,7 @@ function CreatePosition({
   const pool = review?.pool ?? pools.find((candidate) => poolKey(candidate) === selection)!;
   const balance0 = snapshot.data?.balances[pool.token0];
   const balance1 = snapshot.data?.balances[pool.token1];
+  const balanceDecision = depositBalancePreview(pool, slippage, balance0, balance1);
   // DEFENSE: anonymous/loading observations do not supply wallet balances.
   const decision = review || balance0 === undefined || balance1 === undefined
     ? undefined
@@ -284,6 +286,14 @@ function CreatePosition({
             <dt>Immediate redeem quote · {tokenLabel(pool.token1, symbol(pool.token1))}</dt>
             <dd>{exactAmount(review.plan.redeemable1, pool.token1)}</dd>
             <dt title={pool.token0}>
+              Spending limit {tokenLabel(pool.token0, symbol(pool.token0))}
+            </dt>
+            <dd>{exactAmount(review.plan.desired0, pool.token0)}</dd>
+            <dt title={pool.token1}>
+              Spending limit {tokenLabel(pool.token1, symbol(pool.token1))}
+            </dt>
+            <dd>{exactAmount(review.plan.desired1, pool.token1)}</dd>
+            <dt title={pool.token0}>
               Unspent {tokenLabel(pool.token0, symbol(pool.token0))}
             </dt>
             <dd>{exactAmount(review.plan.unused0, pool.token0)}</dd>
@@ -319,8 +329,9 @@ function CreatePosition({
             </dd>
           </dl>
           <p className="liquidity-small">
-            Approve each token if needed, then confirm the deposit. Unused
-            amounts stay in your wallet. The immediate redeem quote assumes this
+            New token approvals cover the spending limits shown above. Confirm
+            the deposit after any required approvals. Unused tokens stay in your
+            wallet and remaining allowance stays active. The immediate redeem quote assumes this
             pool state and whole-unit rounding; intervening pool changes can
             change the NFT's resulting claim. Deposit minima do not guarantee a
             future redemption value.
@@ -390,6 +401,22 @@ function CreatePosition({
               ))}
             </select>
           </label>
+          <button
+            className="secondary"
+            type="button"
+            disabled={pending || !balanceDecision.ok}
+            title={balanceDecision.ok ? undefined : balanceDecision.error ?? undefined}
+            onClick={() => {
+              if (balanceDecision.ok) {
+                // Keep both spending limits: feeding ratio-rounded used amounts
+                // back through the planner can round the deposit down again.
+                setAmount0(exactAmount(balanceDecision.desired0, pool.token0));
+                setAmount1(exactAmount(balanceDecision.desired1, pool.token1));
+              }
+            }}
+          >
+            Use available balances
+          </button>
           {pool.totalShares === 0n && (
             <p className="liquidity-notice">
               This pool has no liquidity. Your first deposit sets the starting
@@ -427,6 +454,15 @@ function CreatePosition({
               {session
                 ? "Wallet balances are not available yet."
                 : "Connect a wallet to prepare a deposit."}
+            </p>
+          )}
+          {decision?.ok && (
+            <p className="liquidity-deposit-estimate" role="status">
+              Expected deposit: {exactAmount(decision.used0, pool.token0)} {symbol(pool.token0)}
+              {" + "}{exactAmount(decision.used1, pool.token1)} {symbol(pool.token1)}.
+              {" "}Unused: {exactAmount(decision.unused0, pool.token0)} {symbol(pool.token0)}
+              {" + "}{exactAmount(decision.unused1, pool.token1)} {symbol(pool.token1)}
+              {" "}stay in your wallet.
             </p>
           )}
           <FormError message={amount0 || amount1 ? invalid : undefined} />
