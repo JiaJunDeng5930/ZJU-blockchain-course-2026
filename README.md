@@ -171,11 +171,14 @@ npm test
 
 ```bash
 npm run test:history
+npm run test:replacements
 ```
 
-该命令先构建当前程序，再用隔离链、真实 WebStorage 和独立进程验证：未挖出的交易先被新页面实例恢复，再自动跟踪至确认；两个页面的记录互不覆盖；无存储时仍可交易；无哈希的未完成操作保持未知，不自动重发；坏归档原文保留；不同 RPC 端点的记录隔离。验收不使用浏览器，也不改动主服务链状态。
+`test:history` 先构建当前程序，再用隔离链、真实 WebStorage 和独立进程验证：未挖出的交易先被新页面实例恢复，再自动跟踪至确认；两个页面的记录互不覆盖；无存储时仍可交易；无哈希的未完成操作保持未知，不自动重发；坏归档原文保留；不同 RPC 端点的记录隔离。验收不使用浏览器，也不改动主服务链状态。
 
-恢复模型的 24 条证明通过假设审计。归档只提供历史观测，不提供签名权限；任何无哈希的处理中快照都不表示“未广播”，因为后续存储失败可能使页面转入内存模式继续执行。浏览器接受保存不等于链上备份，清除浏览器数据会删除本地记录。设计原因见 [ADR 006](docs/adr/006-persistent-transaction-history.md)，模型与外部接口边界见[交易历史形式化说明](formal/TRANSACTION-HISTORY.md)，独立验收入口见[公开 SDK 验收](frontend/acceptance/README.md)。
+`test:replacements` 验证钱包加速、取消和刷新时的原交易确认。加速会保留原哈希与替换哈希，按相同调用的新收据更新状态；取消或改成其他调用则显示 Replaced，停止原流程的后续交易。刷新仍从已有记录恢复公开观察，不续签、不重发。缺少已保存 sender/nonce 等信息时，不把旧哈希查不到猜成交易失败，也不把替换收据的成功记到原操作上。设计原因见 [ADR 010](docs/adr/010-observe-transaction-replacements.md)，模型及外部接口约定见[确认与恢复说明](formal/TRANSACTION-REPLACEMENTS.md)。
+
+恢复模型的证明通过假设审计。归档只提供历史观测，不提供签名权限；任何无哈希的处理中快照都不表示“未广播”，因为后续存储失败可能使页面转入内存模式继续执行。浏览器接受保存不等于链上备份，清除浏览器数据会删除本地记录。设计原因见 [ADR 006](docs/adr/006-persistent-transaction-history.md)，模型与外部接口边界见[交易历史形式化说明](formal/TRANSACTION-HISTORY.md)，独立验收入口见[公开 SDK 验收](frontend/acceptance/README.md)。
 
 ### 交易记录查找
 

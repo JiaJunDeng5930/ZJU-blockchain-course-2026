@@ -52,6 +52,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
 | `theories/Frontend/Wallet.v`, `Transactions.v`, `TransactionsProofs.v` | Wallet/session identity, stale replies, signature authority, submission uncertainty and immutable confirmation history |
+| `theories/Frontend/ReplacementSearch.v` | Private receipt observation for a journal entry's bound descriptor; see [transaction confirmation details](TRANSACTION-REPLACEMENTS.md) |
 | `theories/Frontend/TransactionHistory.v` | Per-page archive ownership, read-only recovery and storage failure policy; see [transaction history](TRANSACTION-HISTORY.md) |
 | `theories/Frontend/Activity.v` | Account and status selection, bounded pages and read-only transaction projection; see [activity navigation](ACTIVITY.md) |
 | `theories/Frontend/Allowances.v` | Identity-bound allowance observations, explicit zero-approval decisions and verification after confirmation; see [allowance management](ALLOWANCES.md) |
