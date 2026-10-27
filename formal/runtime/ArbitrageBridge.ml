@@ -72,6 +72,23 @@ let scan value =
   | None -> `List []
   | Some result -> `List [opportunity_json result]
 
+let capital_error = "Enter a positive capital amount within the token precision."
+
+let capital value =
+  match positive_units (integer "decimals" value) (text "amount" value) with
+  | None -> `Assoc ["canQuote", `Bool false; "error", `String capital_error]
+  | Some amount -> `Assoc ["canQuote", `Bool true; "error", `Null; "amountIn", z amount]
+
+let quote_capital value =
+  let selected = pool_of_json (Field.member "selected" value) in
+  match quote_amount (integer "decimals" value) checked_amount_out selected
+    (markets value) (address "tokenIn" value) (text "amount" value)
+    (supports_asset_pool (supported_tokens value)) with
+  | None -> `Assoc ["ok", `Bool false; "error", `String capital_error]
+  | Some route -> `Assoc ["ok", `Bool true; "routes", (match route with
+      | None -> `List []
+      | Some result -> `List [opportunity_json result])]
+
 let minimum value = parse_units (integer "decimals" value) (text "minimum" value)
 
 let prepare value =
@@ -110,6 +127,8 @@ let callback function_value = Js.wrap_callback (fun input ->
 
 let () = Js.Unsafe.set Js.Unsafe.global "DEXArbitrage" (Js.Unsafe.obj [|
   "scan", Js.Unsafe.inject (callback scan);
+  "capital", Js.Unsafe.inject (callback capital);
+  "quoteAmount", Js.Unsafe.inject (callback quote_capital);
   "prepare", Js.Unsafe.inject (callback prepare);
   "preview", Js.Unsafe.inject (callback preview);
   "execution", Js.Unsafe.inject (callback execution);

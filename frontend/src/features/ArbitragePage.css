@@ -8,3 +8,12 @@
   margin: 0;
   overflow-wrap: anywhere;
 }
+
+.arbitrage-capital-balance {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+  overflow-wrap: anywhere;
+}

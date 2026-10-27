@@ -35,7 +35,7 @@ import { addLiquidity, removeLiquidity, transferPosition } from "./liquidity";
 import { revokeAllowance, type RevokePlan } from "./allowances";
 import type { RawAllowances } from "../wallet/kernel";
 import { executeWrap } from "./wrapping";
-import { opportunities, executeArbitrage } from "./arbitrage";
+import { opportunities, quoteArbitrage, executeArbitrage } from "./arbitrage";
 import type {
   ArbitrageResult,
   SwapResult,
@@ -340,6 +340,14 @@ export class ExchangeClient {
     supportedTokens: readonly Token[]
   ): Promise<Opportunity[]> {
     return opportunities(this, pool, allPools, tokenIn, supportedTokens);
+  }
+  quoteArbitrage(
+    pool: Pool,
+    tokenIn: string,
+    amount: string,
+    supportedTokens: readonly Token[],
+  ): Promise<Opportunity[]> {
+    return quoteArbitrage(this, pool, tokenIn, amount, supportedTokens);
   }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);

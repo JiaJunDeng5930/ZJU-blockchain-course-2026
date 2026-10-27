@@ -28,6 +28,8 @@ type PreparedWire = {
 };
 type RejectedWire = { ok: false; error: string };
 type Kernel = {
+  capital: (input: string) => string;
+  quoteAmount: (input: string) => string;
   scan: (input: string) => string;
   prepare: (input: string) => string;
   preview: (input: string) => string;
@@ -127,6 +129,33 @@ export function scanArbitrage(
     )
   ) as WireOpportunity[];
   return output.map((route) => decodeOpportunity(route, pools, quotedAtBlock));
+}
+
+export function arbitrageCapitalInput(amount: string, decimals: number): {
+  canQuote: boolean;
+  error: string | null;
+} {
+  return JSON.parse(kernel().capital(JSON.stringify({ amount, decimals: decimals.toString() })));
+}
+
+export function quoteArbitrageAmount(
+  selected: Pool,
+  pools: Pool[],
+  tokenIn: string,
+  amount: string,
+  quotedAtBlock: number,
+  supportedTokens: readonly Token[],
+): Opportunity[] {
+  const output = JSON.parse(kernel().quoteAmount(JSON.stringify({
+    decimals: tokenDecimals(supportedTokens, tokenIn).toString(),
+    selected: poolWire(selected),
+    pools: pools.map(poolWire),
+    tokenIn,
+    amount,
+    supportedTokens: supportedTokens.map((token) => token.address),
+  }))) as { ok: true; routes: WireOpportunity[] } | RejectedWire;
+  if (!output.ok) throw new Error(output.error);
+  return output.routes.map((route) => decodeOpportunity(route, pools, quotedAtBlock));
 }
 
 export function arbitragePreview(

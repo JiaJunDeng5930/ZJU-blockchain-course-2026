@@ -1,5 +1,6 @@
 From Coq Require Import ZArith Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
 From DEXFormal.Spec Require Import Types Units AMM Assets Arbitrage.
+From DEXFormal.Frontend Require Import ArbitrageCapital.
 Local Open Scope Z_scope.
 
 Record execution_summary := ExecutionSummary {
@@ -80,4 +81,4 @@ Proof. unfold scan_supported_assets. apply Arbitrage.scan_supported_has_supporte
 
 Extraction "formal/build/arbitrage/ArbitrageModel.ml"
   scan_supported_assets prepare_supported_assets summarize_execution Arbitrage.preview
-  Units.parse_units_18 AMM.checked_amount_out.
+  Units.parse_units_18 Units.positive_units ArbitrageCapital.quote_amount AMM.checked_amount_out.

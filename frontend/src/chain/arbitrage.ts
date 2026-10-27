@@ -2,10 +2,13 @@ import { getAddress, parseEventLogs } from "viem";
 import { arbitrageAbi, testTokenAbi } from "../generated/abis";
 import {
   prepareArbitrage,
+  arbitrageCapitalInput,
+  quoteArbitrageAmount,
   scanArbitrage,
   summarizeArbitrageExecution,
 } from "../logic/arbitrage";
 import { importAsset } from "./assets";
+import { tokenDecimals } from "./amounts";
 import { assertSupportedPool } from "../logic/assets";
 import type { WalletSession } from "../wallet/session";
 import type { ExchangeClient, SendTransaction } from "./client";
@@ -28,6 +31,21 @@ export async function opportunities(
     Number(block),
     supportedTokens,
   );
+}
+
+export async function quoteArbitrage(
+  client: ExchangeClient,
+  selected: Pool,
+  tokenIn: string,
+  amount: string,
+  supportedTokens: readonly Token[],
+): Promise<Opportunity[]> {
+  assertSupportedPool(selected, supportedTokens);
+  const input = arbitrageCapitalInput(amount, tokenDecimals(supportedTokens, tokenIn));
+  if (!input.canQuote) throw new Error(input.error!);
+  const block = await client.rpc.getBlock({ blockTag: "latest" });
+  const pools = await client.pools(Number(block.number));
+  return quoteArbitrageAmount(selected, pools, tokenIn, amount, Number(block.number), supportedTokens);
 }
 
 export async function executeArbitrage(

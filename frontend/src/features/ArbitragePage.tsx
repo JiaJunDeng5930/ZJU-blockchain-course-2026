@@ -11,7 +11,7 @@ import {
   TokenSelect,
 } from "../components/Forms";
 import { poolAssetsSupported } from "../logic/assets";
-import { arbitragePreview } from "../logic/arbitrage";
+import { arbitrageCapitalInput, arbitragePreview } from "../logic/arbitrage";
 import { formatUnits } from "../logic/units";
 import "./ArbitragePage.css";
 
@@ -24,7 +24,8 @@ export function ArbitragePage({
 }) {
   const { client, snapshot, symbol, run, pending, tokens, amount, session } = useDex();
   const [tokenIn, setTokenIn] = useState(pool.token0);
-  const [minimum, setMinimum] = useState("0.001");
+  const [capital, setCapital] = useState("");
+  const [minimum, setMinimum] = useState("0");
   const [result, setResult] = useState<ArbitrageResult>();
   const [review, setReview] = useState<{
     route: Opportunity;
@@ -39,22 +40,26 @@ export function ArbitragePage({
     session?.epoch,
   ]);
   const supported = poolAssetsSupported(pool, tokens);
+  const principal = tokens.find(
+    (token) => token.address.toLowerCase() === tokenIn.toLowerCase()
+  );
+  const capitalInput = supported && principal
+    ? arbitrageCapitalInput(capital, tokenDecimals(tokens, tokenIn))
+    : undefined;
   const routes = useQuery({
     queryKey: [
       "arbitrage",
       client.key,
       poolKey(pool),
       tokenIn,
+      capital,
       tokens.map((token) => token.address),
     ],
     queryFn: () =>
-      client.opportunities(pool, snapshot.data!.pools, tokenIn, tokens),
+      client.quoteArbitrage(pool, tokenIn, capital, tokens),
     enabled: false,
   });
-  const opportunity = supported && routes.isSuccess ? routes.data?.[0] : undefined;
-  const principal = tokens.find(
-    (token) => token.address.toLowerCase() === tokenIn.toLowerCase()
-  );
+  const opportunity = capitalInput?.canQuote && routes.isSuccess ? routes.data?.[0] : undefined;
   if (!supported || !principal) {
     return (
       <section className="card">
@@ -91,9 +96,26 @@ export function ArbitragePage({
           onChange={setTokenIn}
           addresses={[pool.token0, pool.token1]}
         />
+        <AmountField label="Capital amount" value={capital} onChange={setCapital} />
+        <div className="arbitrage-capital-balance">
+          <span>
+            {balance === undefined
+              ? (session ? "Capital balance unavailable." : "Connect a wallet to use its balance.")
+              : `Balance: ${formatUnits(balance, tokenDecimals(tokens, tokenIn))} ${symbol(tokenIn)}`}
+          </span>
+          <button
+            type="button"
+            className="secondary"
+            disabled={balance === undefined || pending}
+            onClick={() => setCapital(formatUnits(balance!, tokenDecimals(tokens, tokenIn)))}
+          >
+            Max
+          </button>
+        </div>
+        <FormError message={capital === "" ? undefined : capitalInput?.error ?? undefined} />
         <button
           type="button"
-          disabled={pending || routes.isFetching}
+          disabled={!capitalInput?.canQuote || pending || routes.isFetching}
           onClick={() => {
             void routes.refetch();
           }}
@@ -107,7 +129,7 @@ export function ArbitragePage({
           <p role="status">
             {opportunity
               ? "Quoted route available. Pool fees are included; ETH gas is excluded."
-              : "No profitable route in the scanned input sizes after pool fees."}
+              : "No profitable route for this capital amount after pool fees."}
           </p>
         )}
         {opportunity && (
@@ -134,11 +156,6 @@ export function ArbitragePage({
           onChange={setMinimum}
         />
         <FormError message={preview?.error ?? undefined} />
-        {balance === undefined && (
-          <p role="status">
-            {session ? "Capital balance unavailable." : "Connect a wallet to review this route."}
-          </p>
-        )}
         <SubmitButton disabled={!preview?.canExecute || routes.isFetching}>
           Review atomic arbitrage
         </SubmitButton>
