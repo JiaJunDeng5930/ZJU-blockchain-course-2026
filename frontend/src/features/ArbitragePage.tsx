@@ -1,11 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import {
-  formatAmount,
-  poolKey,
-  positiveAmount,
-  reservePrice,
-} from "../chain/amounts";
+import { formatAmount, poolKey, reservePrice } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { ArbitrageResult, Pool } from "../chain/types";
 import {
@@ -13,8 +8,8 @@ import {
   FormError,
   SubmitButton,
   TokenSelect,
-  amountError,
 } from "../components/Forms";
+import { arbitragePreview } from "../logic/arbitrage";
 
 export function ArbitragePage({
   pool,
@@ -34,24 +29,21 @@ export function ArbitragePage({
   });
   const opportunity = routes.data?.[0];
   const [hasScanned, setHasScanned] = useState(false);
-  const routeError =
-    opportunity &&
-    (snapshot.data?.balances[tokenIn] ?? 0n) < opportunity.amountIn
-      ? "Insufficient capital for this route."
-      : undefined;
-  const minError = amountError(minimum);
+  const preview = arbitragePreview(
+    client.deployment.arbitrage,
+    opportunity,
+    minimum,
+    snapshot.data?.balances[tokenIn] ?? 0n,
+  );
   return (
     <div className="workspace">
       <form
         className="card form"
         onSubmit={(event) => {
           event.preventDefault();
-          if (opportunity && !minError && !routeError)
+          if (opportunity && preview.canExecute)
             run("Atomic arbitrage", async (writer) => {
-              const execution = await writer.arbitrage(
-                opportunity,
-                positiveAmount(minimum),
-              );
+              const execution = await writer.arbitrage(opportunity, minimum);
               setResult(execution);
               void routes.refetch();
             });
@@ -66,14 +58,9 @@ export function ArbitragePage({
           }}
           addresses={[pool.token0, pool.token1]}
         />
-        <p>
-          Compare both routes between matching pools. Quotes include two swap
-          fees. For the selected capital token, choose the largest token profit
-          among inputs of 1, 5, 10, 25, 50, 100, 200 and 500.
-        </p>
         <button
           type="button"
-          disabled={pending || routes.isFetching || pool.reserve0 === 0n}
+          disabled={pending || routes.isFetching}
           onClick={() => {
             setHasScanned(true);
             void routes.refetch();
@@ -114,12 +101,8 @@ export function ArbitragePage({
           value={minimum}
           onChange={setMinimum}
         />
-        <FormError message={minError ?? routeError} />
-        <SubmitButton
-          disabled={
-            !opportunity || !!minError || !!routeError || routes.isFetching
-          }
-        >
+        <FormError message={preview.error ?? undefined} />
+        <SubmitButton disabled={!preview.canExecute || routes.isFetching}>
           Approve & execute atomic arbitrage
         </SubmitButton>
         <p>
@@ -145,70 +128,50 @@ export function ArbitragePage({
   );
 }
 function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
-  const { client, symbol } = useDex();
-  const after = useQuery({
-    queryKey: ["execution-pools", result.receipt.hash],
-    queryFn: () => client.pools(result.receipt.blockNumber),
-    staleTime: Infinity,
-  });
+  const { symbol } = useDex();
   return (
     <div data-testid="arbitrage-result">
       <h3>
         Realized token profit: {formatAmount(result.profit)}{" "}
         {symbol(result.tokenIn)}
       </h3>
-      <p>Confirmed in block {result.receipt.blockNumber}. Gas excluded.</p>
-      <code>{result.receipt.hash}</code>
-      {after.error && (
-        <p role="alert">
-          Transaction confirmed; reserve details unavailable:{" "}
-          {after.error.message}
-        </p>
-      )}
-      {after.data && (
-        <table>
-          <thead>
-            <tr>
-              <th>Exchange</th>
-              <th>Reserves before / after</th>
-              <th>Price before / after</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.before
-              .filter((before) =>
-                after.data.some(
-                  (p) =>
-                    poolKey(p) === poolKey(before) &&
-                    (p.reserve0 !== before.reserve0 ||
-                      p.reserve1 !== before.reserve1),
-                ),
-              )
-              .map((before) => {
-                const next = after.data.find(
-                  (p) => poolKey(p) === poolKey(before),
-                )!;
-                return (
-                  <tr key={poolKey(before)}>
-                    <td>{before.exchange.name}</td>
-                    <td>
-                      {formatAmount(before.reserve0)} /{" "}
-                      {formatAmount(before.reserve1)}
-                      <br />
-                      {formatAmount(next.reserve0)} /{" "}
-                      {formatAmount(next.reserve1)}
-                    </td>
-                    <td>
-                      {reservePrice(before)?.toFixed(6)}
-                      <br />
-                      {reservePrice(next)?.toFixed(6)}
-                    </td>
-                  </tr>
-                );
-              })}
-          </tbody>
-        </table>
-      )}
+      <p>
+        Confirmed in block {result.receipt.blockNumber.toString()}. Gas
+        excluded.
+      </p>
+      <code>{result.receipt.transactionHash}</code>
+      <table>
+        <thead>
+          <tr>
+            <th>Exchange</th>
+            <th>Reserves before / after</th>
+            <th>Price before / after</th>
+          </tr>
+        </thead>
+        <tbody>
+          {result.before.map((before) => {
+            const next = result.after.find(
+              (p) => poolKey(p) === poolKey(before),
+            )!;
+            return (
+              <tr key={poolKey(before)}>
+                <td>{before.exchange.name}</td>
+                <td>
+                  {formatAmount(before.reserve0)} /{" "}
+                  {formatAmount(before.reserve1)}
+                  <br />
+                  {formatAmount(next.reserve0)} / {formatAmount(next.reserve1)}
+                </td>
+                <td>
+                  {reservePrice(before)?.toFixed(6)}
+                  <br />
+                  {reservePrice(next)?.toFixed(6)}
+                </td>
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
     </div>
   );
 }
