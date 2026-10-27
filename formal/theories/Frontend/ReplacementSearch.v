@@ -26,10 +26,57 @@ Definition valid_hash hash := match hash with
       Nat.eqb (String.length payload) 64 && Assets.hexadecimal payload
   | _ => false end.
 Definition valid_address value := match Assets.canonical_address value with Some _ => true | None => false end.
+(* The native-string extraction mapping implements pattern matches through a
+   callback. Convert long calldata with the standard extraction mapping first:
+   recursion over the resulting list then remains a direct tail call in OCaml. *)
+Fixpoint even_length_acc (value : list ascii) (parity : bool) : bool :=
+  match value with
+  | [] => parity
+  | _ :: rest => even_length_acc rest (negb parity)
+  end.
+Fixpoint hexadecimal_ascii (value : list ascii) : bool :=
+  match value with
+  | [] => true
+  | character :: rest => if Assets.hex_digit character then hexadecimal_ascii rest else false
+  end.
+Lemma even_length_acc_correct value : forall parity,
+  even_length_acc (list_ascii_of_string value) parity =
+  Bool.eqb (Nat.even (String.length value)) parity.
+Proof.
+  induction value as [|character rest IH]; intros parity.
+  - destruct parity; reflexivity.
+  - cbn [even_length_acc list_ascii_of_string String.length]. rewrite IH.
+    rewrite Nat.even_succ, <- Nat.negb_even.
+    destruct (Nat.even (String.length rest)), parity; reflexivity.
+Qed.
+Lemma even_length_correct value :
+  even_length_acc (list_ascii_of_string value) true = Nat.even (String.length value).
+Proof.
+  rewrite even_length_acc_correct. destruct (Nat.even (String.length value)); reflexivity.
+Qed.
+Lemma hexadecimal_ascii_correct value :
+  hexadecimal_ascii (list_ascii_of_string value) = Assets.hexadecimal value.
+Proof.
+  induction value as [|character rest IH]; [reflexivity|].
+  cbn [hexadecimal_ascii list_ascii_of_string Assets.hexadecimal].
+  rewrite IH. destruct (Assets.hex_digit character); reflexivity.
+Qed.
 Definition valid_input value := match value with
+  | String prefix (String x payload) =>
+      let characters := list_ascii_of_string payload in
+      Ascii.eqb prefix "0"%char && Ascii.eqb x "x"%char &&
+      even_length_acc characters true && hexadecimal_ascii characters
+  | _ => false end.
+Lemma valid_input_matches_length_test value :
+  valid_input value = match value with
   | String prefix (String x payload) => Ascii.eqb prefix "0"%char && Ascii.eqb x "x"%char &&
       Nat.even (String.length payload) && Assets.hexadecimal payload
   | _ => false end.
+Proof.
+  destruct value as [|prefix rest]; [reflexivity|].
+  destruct rest as [|x payload]; [reflexivity|].
+  cbn [valid_input]. rewrite even_length_correct, hexadecimal_ascii_correct. reflexivity.
+Qed.
 (* KNOWN LIMITATION: viem represents account nonces as JavaScript numbers.
    Refuse a nonce outside its exact integer range instead of rounding a slot. *)
 Definition valid_descriptor d := valid_hash (tx_hash d) && valid_address (tx_from d) &&
