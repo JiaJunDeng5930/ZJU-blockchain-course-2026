@@ -208,9 +208,14 @@ function random() {
   return state / 0x100000000;
 }
 async function deadline() {
-  const block = await provider.getBlock("latest");
-  if (!block) throw new Error("Local chain has no latest block");
-  return block.timestamp + 300;
+  // An idle local chain's last mined block can lag the pending execution clock by more than 300s.
+  // ethers' mined-block formatter rejects pending blocks whose block number is null.
+  const block = (await provider.send("eth_getBlockByNumber", [
+    "pending",
+    false,
+  ])) as { timestamp: string } | null;
+  if (!block) throw new Error("Local chain has no pending execution block");
+  return BigInt(block.timestamp) + 300n;
 }
 async function confirmed(
   action: SimulationAction,

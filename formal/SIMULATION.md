@@ -58,3 +58,11 @@ classifies a missing report on the child's `close` event, after its streams have
 closed, rather than on the earlier `exit` event. This ordering repairs an
 observed zero-exit report loss; it is an integration obligation of the trusted
 Node interface and is not claimed as a Rocq theorem.
+
+Transaction deadlines use the RPC pending block timestamp plus the existing
+300-second lifetime. They do not use the worker's wall clock or the last mined
+block timestamp. On an idle local chain, the pending execution context can be
+newer than the last mined block by more than the lifetime; `eth_estimateGas`
+then correctly rejects a deadline calculated from that stale mined timestamp.
+The RPC must provide a pending block whose timestamp describes transaction
+execution; its accuracy remains an explicit external-interface assumption.
