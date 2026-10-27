@@ -46,7 +46,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | Source | Responsibility |
 | --- | --- |
 | `theories/Spec/Types.v` | Raw-unit bounds, shared calls, approval policy, deadlines and abstract atomic outcomes |
-| `theories/Spec/AMM.v`, `Units.v` | Fee-adjusted integer quote, product/bounds arguments, exact amount/slippage parsing and swap parameters |
+| `theories/Spec/AMM.v`, `Units.v` | Fee-adjusted integer quote, product/bounds arguments, token-specific exact amount/slippage parsing and swap parameters; see [token precision](TOKEN-PRECISION.md) |
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
