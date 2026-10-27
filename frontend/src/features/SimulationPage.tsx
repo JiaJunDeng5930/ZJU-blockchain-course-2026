@@ -314,30 +314,37 @@ export function SimulationPage() {
         )}
       </section>
       {data?.journal && data.journal.positions.length > 0 && (
-        <section className="card sources">
-          <h2>Positions created by this run</h2>
+        <details key={data.id} className="card sources simulation-position-records">
+          <summary>
+            Positions created by this run · {data.journal.positions.length}
+          </summary>
           <p>
             {data.journal.transactionCount} transaction receipts received,
             including approvals. These NFTs were minted by this run; existing
             positions are excluded. Redemption records cover worker receipts,
             not external transfers or burns. Check Liquidity for current ownership.
           </p>
-          <div className="table-scroll" style={{ maxHeight: 420 }}>
-            <table>
+          <div
+            className="table-scroll simulation-evidence-scroll"
+            role="region"
+            aria-label="NFT mint and redemption records"
+            tabIndex={0}
+          >
+            <table className="simulation-position-table">
               <thead>
                 <tr>
-                  <th>DEX / pool</th>
-                  <th>NFT</th>
-                  <th>Minted for</th>
-                  <th>Mint transaction</th>
-                  <th>Redemption in this run</th>
+                  <th scope="col">DEX / pool</th>
+                  <th scope="col" className="simulation-record-id">NFT</th>
+                  <th scope="col">Minted for</th>
+                  <th scope="col">Mint transaction</th>
+                  <th scope="col">Redemption in this run</th>
                 </tr>
               </thead>
               <tbody>
                 {data.journal.positions.map((position) => (
                   <tr key={`${position.exchange}:${position.positionId}`}>
                     <td><code>{position.exchange}</code> / #{position.poolId}</td>
-                    <td>#{position.positionId}</td>
+                    <td className="simulation-record-id">#{position.positionId}</td>
                     <td><code>{position.account}</code></td>
                     <td><code>{position.mintHash}</code></td>
                     <td>{position.redeemHash
@@ -348,7 +355,7 @@ export function SimulationPage() {
               </tbody>
             </table>
           </div>
-        </section>
+        </details>
       )}
       {progress && (
         <>
@@ -506,15 +513,20 @@ export function SimulationPage() {
               the service, even if the run later fails; a final run report also
               includes the completed before/after and rollback evidence.
             </p>
-            <div className="table-scroll" style={{ maxHeight: 420 }}>
-              <table>
+            <div
+              className="table-scroll simulation-evidence-scroll"
+              role="region"
+              aria-label="Latest confirmed transaction records"
+              tabIndex={0}
+            >
+              <table className="simulation-activity-table">
                 <thead>
                   <tr>
-                    <th>Action</th>
-                    <th>Account</th>
-                    <th>Block</th>
-                    <th>Result</th>
-                    <th>Transaction hash</th>
+                    <th scope="col">Action</th>
+                    <th scope="col">Account</th>
+                    <th scope="col" className="simulation-record-id">Block</th>
+                    <th scope="col">Result</th>
+                    <th scope="col">Transaction hash</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -524,7 +536,7 @@ export function SimulationPage() {
                       <td title={transaction.account}>
                         {shorten(transaction.account)}
                       </td>
-                      <td>{transaction.blockNumber}</td>
+                      <td className="simulation-record-id">{transaction.blockNumber}</td>
                       <td>
                         {transaction.status === 1
                           ? "Confirmed"

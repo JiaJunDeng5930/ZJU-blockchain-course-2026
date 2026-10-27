@@ -42,6 +42,39 @@
   min-width: 640px;
 }
 
+.simulation-position-records > summary {
+  cursor: pointer;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.simulation-position-records[open] > summary {
+  margin-bottom: 16px;
+}
+
+.simulation-evidence-scroll {
+  max-height: 420px;
+}
+
+.simulation-evidence-scroll th {
+  position: sticky;
+  top: 0;
+  z-index: 1;
+  background: var(--surface);
+}
+
+.simulation-position-table {
+  min-width: 1000px;
+}
+
+.simulation-activity-table {
+  min-width: 760px;
+}
+
+.simulation-record-id {
+  white-space: nowrap;
+}
+
 .simulation-page td,
 .simulation-page th,
 .simulation-page .details dt,
