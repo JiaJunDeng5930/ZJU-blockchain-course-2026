@@ -41,9 +41,6 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
     >
       <summary aria-label="Pool information">
         <span>Pool information</span>
-        <small>
-          {pool.exchange.name} · {symbol(pool.token0)} / {symbol(pool.token1)}
-        </small>
       </summary>
       <div className="liquidity-pool-content">
         <dl className="liquidity-detail-list">
@@ -61,12 +58,22 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
               <tr>
                 <th>NFT</th>
                 <th>Current owner</th>
-                <th>Initial deposit</th>
+                <th>
+                  Initial deposit ({symbol(pool.token0)} / {symbol(pool.token1)})
+                </th>
                 <th>Shares</th>
                 <th>Created</th>
               </tr>
             </thead>
             <tbody>
+              {snapshot.data && sources.length === 0 && (
+                <tr>
+                  <td colSpan={5}>
+                    No active position NFTs in this pool at block{" "}
+                    {snapshot.data.block}.
+                  </td>
+                </tr>
+              )}
               {sources.map((position) => (
                 <tr key={String(position.id)}>
                   <td>#{String(position.id)}</td>
