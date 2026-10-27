@@ -1,0 +1,30 @@
+#create-pool {
+  scroll-margin-top: 6rem;
+}
+
+.available-tokens {
+  margin-block: 1.5rem;
+}
+
+.asset-table caption {
+  padding-block: 0.75rem;
+  text-align: left;
+}
+
+.asset-table code {
+  display: block;
+  min-width: 10rem;
+  max-width: 24rem;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+.asset-table .asset-balance {
+  max-width: 20rem;
+  overflow-wrap: anywhere;
+}
+
+.asset-table button {
+  display: inline-block;
+  min-width: 7rem;
+}

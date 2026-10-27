@@ -1,6 +1,7 @@
-import { useMemo, useSyncExternalStore } from "react";
+import { useMemo, useRef, useSyncExternalStore, type RefObject } from "react";
 import { useDex } from "../chain/DexProvider";
-import { poolLabel } from "../chain/amounts";
+import { poolLabel, shorten } from "../chain/amounts";
+import { formatUnits } from "../logic/units";
 import { dispatchAssetEvent } from "../chain/assets";
 import {
   AssetForms,
@@ -11,9 +12,10 @@ import {
   type AssetEvent,
   type AssetFormsView,
 } from "../logic/assets";
-import type { Pool } from "../chain/types";
+import type { Pool, Token } from "../chain/types";
 import { FormError, SubmitButton, TokenSelect } from "../components/Forms";
 import { WrapAssets } from "./WrapAssets";
+import "./PoolsPage.css";
 
 type FormProps = {
   view: AssetFormsView;
@@ -38,6 +40,7 @@ export function PoolsPage({
     run,
     registerToken,
   } = useDex();
+  const poolForm = useRef<HTMLFormElement>(null);
   const environment = assetEnvironment(
     client.deployment.exchanges,
     tokens,
@@ -121,18 +124,35 @@ export function PoolsPage({
         </div>
       </section>
       <div className="workspace">
-        <CreatePool view={forms} dispatch={dispatch} />
+        <CreatePool view={forms} dispatch={dispatch} formRef={poolForm} />
         <TokenRegistry view={forms} dispatch={dispatch} />
       </div>
+      <AvailableTokens
+        onUseToken={(token) => {
+          dispatch({ kind: "edit", field: "first", value: token.address });
+          poolForm.current!.focus({ preventScroll: true });
+          poolForm.current!.scrollIntoView({
+            behavior: "smooth",
+            block: "start",
+          });
+        }}
+      />
       <WrapAssets />
     </>
   );
 }
-function CreatePool({ view, dispatch }: FormProps) {
+function CreatePool({
+  view,
+  dispatch,
+  formRef,
+}: FormProps & { formRef: RefObject<HTMLFormElement | null> }) {
   const { client } = useDex();
   const draft = view.draft;
   return (
     <form
+      id="create-pool"
+      ref={formRef}
+      tabIndex={-1}
       className="card form"
       onSubmit={(event) => {
         event.preventDefault();
@@ -144,6 +164,7 @@ function CreatePool({ view, dispatch }: FormProps) {
         Exchange
         <select
           aria-label="Create pool exchange"
+          title={draft.exchange}
           value={draft.exchange}
           onChange={(event) =>
             dispatch({
@@ -154,8 +175,12 @@ function CreatePool({ view, dispatch }: FormProps) {
           }
         >
           {client.deployment.exchanges.map((exchange) => (
-            <option key={exchange.address} value={exchange.address}>
-              {exchange.name}
+            <option
+              key={exchange.address}
+              value={exchange.address}
+              title={exchange.address}
+            >
+              {exchange.name} · {shorten(exchange.address)}
             </option>
           ))}
         </select>
@@ -173,14 +198,15 @@ function CreatePool({ view, dispatch }: FormProps) {
       <FormError message={view.poolError ?? undefined} />
       <SubmitButton disabled={!view.canCreatePool}>Create pool</SubmitButton>
       <p>
-        Add liquidity after creating the pool to open it for trading. Use WETH
-        for a market against ETH.
+        Creating a pool does not deposit tokens or mint a position NFT. Add its
+        first liquidity deposit to set the initial price and open it for
+        trading. Use WETH for a market against ETH.
       </p>
     </form>
   );
 }
 function TokenRegistry({ view, dispatch }: FormProps) {
-  const { tokens, catalogError } = useDex();
+  const { catalogError } = useDex();
   const draft = view.draft;
   return (
     <section className="card">
@@ -223,8 +249,9 @@ function TokenRegistry({ view, dispatch }: FormProps) {
         <FormError message={view.deploymentError ?? undefined} />
         <SubmitButton disabled={!view.canDeploy}>Deploy ERC20</SubmitButton>
         <p>
-          Each address can claim 10,000 units of a test token from the wallet
-          panel.
+          New test tokens use 18 decimal places and start with zero supply.
+          Deployment does not fund your wallet. Open the wallet panel to claim
+          10,000 units, then select the token for a new pool below.
         </p>
       </form>
       <form
@@ -261,16 +288,75 @@ function TokenRegistry({ view, dispatch }: FormProps) {
         </p>
       </form>
       <FormError message={catalogError ?? undefined} />
-      <details className="token-import">
-        <summary>Available tokens ({tokens.length})</summary>
-        {tokens.map((token) => (
-          <p key={token.address}>
-            <strong>{token.symbol}</strong> · {token.name}
-            <br />
-            <code>{token.address}</code>
-          </p>
-        ))}
-      </details>
+    </section>
+  );
+}
+
+function AvailableTokens({
+  onUseToken,
+}: {
+  onUseToken: (token: Token) => void;
+}) {
+  const { tokens, session, snapshot } = useDex();
+  return (
+    <section className="card available-tokens">
+      <h2>Available tokens ({tokens.length})</h2>
+      <p>
+        Created and imported tokens appear here. Select a token to use it as the
+        first asset in the new-pool form. Creating or importing a token does not
+        create a market for it.
+      </p>
+      <div className="table-scroll">
+        <table className="asset-table">
+          <caption>
+            {session
+              ? `Balances for ${shorten(session.address)}${snapshot.data ? ` at block ${snapshot.data.block}` : ""}`
+              : "Connect a wallet to read balances."}
+          </caption>
+          <thead>
+            <tr>
+              <th>Token</th>
+              <th>Contract</th>
+              <th>Decimals</th>
+              <th>Your balance</th>
+              <th>New pool</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tokens.map((token) => {
+              // DEFENSE: a newly registered token can precede its refreshed balance snapshot.
+              const balance =
+                snapshot.data?.balances[token.address.toLowerCase()];
+              return (
+                <tr key={token.address}>
+                  <td>
+                    {token.name} ({token.symbol})
+                  </td>
+                  <td>
+                    <code>{token.address}</code>
+                  </td>
+                  <td>{token.decimals}</td>
+                  <td className="asset-balance">
+                    {session && balance !== undefined
+                      ? formatUnits(balance, token.decimals)
+                      : "—"}
+                  </td>
+                  <td>
+                    <button
+                      type="button"
+                      className="secondary"
+                      aria-label={`Use ${token.symbol} ${token.address} as first pool token`}
+                      onClick={() => onUseToken(token)}
+                    >
+                      Use as first token
+                    </button>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </section>
   );
 }
