@@ -1,0 +1,49 @@
+.wrapping {
+  scroll-margin-top: 24px;
+}
+.wrapping > p {
+  max-width: 70ch;
+}
+.wrapping-balances,
+.wrapping-review-values {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.4fr);
+  gap: 12px 20px;
+  margin: 20px 0;
+}
+.wrapping-balances dt,
+.wrapping-review-values dt {
+  color: #68716b;
+  overflow-wrap: anywhere;
+}
+.wrapping-balances dd,
+.wrapping-review-values dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.wrapping-review-values code {
+  font-size: 12px;
+}
+.wrapping-actions,
+.wrapping-direction {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 16px;
+}
+.wrapping-direction {
+  margin-bottom: 20px;
+}
+@media (max-width: 520px) {
+  .wrapping-balances,
+  .wrapping-review-values {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 6px;
+  }
+  .wrapping-balances dd,
+  .wrapping-review-values dd {
+    text-align: left;
+    margin-bottom: 12px;
+  }
+}

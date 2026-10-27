@@ -22,7 +22,7 @@ export function OnboardingGuide() {
     <details className="onboarding" open={!ready}>
       <summary>
         {ready
-          ? "Ready to trade · getting started"
+          ? "Test assets available · getting started"
           : "Get ready for your first trade"}
       </summary>
       <ol>
@@ -41,7 +41,9 @@ export function OnboardingGuide() {
           </strong>
           <p>
             ETH pays transaction gas. The local faucets provide test assets
-            without importing a development private key.
+            without importing a development private key. WETH is created by
+            wrapping ETH, rather than claimed from a faucet. Use Wrap / unwrap
+            next to your wallet's WETH balance; keep some ETH for gas.
           </p>
           {plan.kind === "need-funding" && (
             <button
@@ -73,10 +75,10 @@ export function OnboardingGuide() {
             {ready ? "Choose a pool and trade" : "Then choose a pool"}
           </strong>
           <p>
-            Open Swap, select Harbor or Summit, enter the amount and review the
-            minimum received. Approve &amp; swap first authorizes only that
-            token amount, then submits the swap. If you reject a later step,
-            earlier confirmed approvals stay in place.
+            Open Swap, select a pair and exchange, enter the amount, then choose
+            Review swap. Confirm the route and minimum received before approving
+            the transaction. The wallet may first ask for an ERC20 approval; if
+            you reject a later step, earlier confirmed approvals stay in place.
           </p>
         </li>
       </ol>

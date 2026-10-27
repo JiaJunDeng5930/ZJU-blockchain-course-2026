@@ -12,8 +12,7 @@
 }
 .onboarding ol {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 28px;
+  gap: 16px;
   margin: 20px 0 2px;
   padding-left: 20px;
 }
@@ -28,10 +27,4 @@
 .onboarding button {
   font-size: 12px;
   padding: 9px 12px;
-}
-@media (max-width: 800px) {
-  .onboarding ol {
-    grid-template-columns: 1fr;
-    gap: 16px;
-  }
 }

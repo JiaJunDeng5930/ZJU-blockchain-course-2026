@@ -2,6 +2,7 @@ import { formatAmount, shorten, tokenLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { OnboardingGuide } from "./OnboardingGuide";
+import { Link, useSearchParams } from "react-router-dom";
 
 export function WalletMenu({
   open,
@@ -24,6 +25,9 @@ export function WalletMenu({
     run,
     refresh,
   } = useDex();
+  const [searchParams] = useSearchParams();
+  const wrappingSearch = new URLSearchParams(searchParams);
+  wrappingSearch.set("view", "pools");
   const mismatch =
     wallet.state.kind === "unavailable" &&
     wallet.state.reason === "wrong-network";
@@ -166,7 +170,7 @@ export function WalletMenu({
                         {snapshot.data
                           ? formatAmount(
                               snapshot.data.balances[token.address] ?? 0n,
-                              token.decimals
+                              token.decimals,
                             )
                           : "—"}
                       </strong>
@@ -178,12 +182,24 @@ export function WalletMenu({
                           disabled={pending}
                           onClick={() =>
                             run(`Claim ${token.symbol}`, (writer) =>
-                              writer.faucet(token)
+                              writer.faucet(token),
                             )
                           }
                         >
                           Claim 10,000 {token.symbol}
                         </button>
+                      )}
+                      {token.kind === "wrapped" && (
+                        <Link
+                          className="text"
+                          to={{
+                            search: `?${wrappingSearch}`,
+                            hash: "#wrap-assets",
+                          }}
+                          onClick={onClose}
+                        >
+                          Wrap / unwrap
+                        </Link>
                       )}
                     </div>
                   </div>
