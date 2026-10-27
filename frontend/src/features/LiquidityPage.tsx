@@ -24,7 +24,7 @@ import {
   depositPreview,
   ownedPositions,
   positionView,
-  transferError,
+  prepareTransfer,
   type DepositPlan,
 } from "../logic/liquidity";
 import { PoolActivity } from "./PoolActivity";
@@ -463,6 +463,18 @@ type PositionCardProps = {
   expanded: boolean;
   onToggle: () => void;
 };
+type PositionIntent = {
+  pool: Pool;
+  position: Position;
+  caller: string;
+  submit: ReturnType<typeof useDex>["run"];
+};
+type PositionTransferReview = PositionIntent & { kind: "transfer" };
+type PositionRedemptionReview = PositionIntent & {
+  kind: "redeem";
+  amounts: readonly [bigint, bigint];
+  block: number;
+};
 function PositionCard(props: PositionCardProps) {
   const { snapshot, tokens } = useDex();
   const [recipient, setRecipient] = useState("");
@@ -499,12 +511,22 @@ function SupportedPositionCard({
   recipient,
   onRecipientChange,
 }: PositionCardProps & { pool: Pool } & TransferDraft) {
-  const { client, symbol, pending, session, run, amount, precision } = useDex();
+  const { client, symbol, pending, session, run, snapshot, precision } = useDex();
   const [showMetadata, setShowMetadata] = useState(false);
-  const [review, setReview] = useState<"redeem" | "transfer">();
+  const [review, setReview] = useState<
+    PositionRedemptionReview | PositionTransferReview
+  >();
   const [slippage, setSlippage] = useState("0.5");
+  useEffect(() => setReview(undefined), [
+    session?.kind,
+    session?.address,
+    session?.chainId,
+    session?.epoch,
+  ]);
   const view = positionView(pool, position);
-  const { amounts, currentValue, valueChange, sharePercent } = view;
+  const { amounts, currentValue, valueChange } = view;
+  const exactAmount = (value: bigint, token: string) =>
+    formatUnits(value, precision(token));
   const metadata = useQuery({
     queryKey: [
       "metadata",
@@ -528,11 +550,11 @@ function SupportedPositionCard({
         </div>
         <div className="liquidity-position-assets">
           <span>
-            {amount(amounts[0], pool.token0)}{" "}
+            {exactAmount(amounts[0], pool.token0)}{" "}
             {tokenLabel(pool.token0, symbol(pool.token0))}
           </span>
           <span>
-            {amount(amounts[1], pool.token1)}{" "}
+            {exactAmount(amounts[1], pool.token1)}{" "}
             {tokenLabel(pool.token1, symbol(pool.token1))}
           </span>
         </div>
@@ -548,28 +570,28 @@ function SupportedPositionCard({
       {expanded && (
         <div className="liquidity-position-detail">
           <dl className="liquidity-detail-list">
-            <dt>Shares / pool ownership</dt>
+            <dt>Pool shares (position / total)</dt>
             <dd>
-              {position.shares.toString()} / {sharePercent}%
+              {position.shares.toString()} / {pool.totalShares.toString()}
             </dd>
             <dt>Initial deposit</dt>
             <dd>
-              {amount(position.amount0, pool.token0)} {symbol(pool.token0)} /{" "}
-              {amount(position.amount1, pool.token1)} {symbol(pool.token1)}
+              {exactAmount(position.amount0, pool.token0)} {symbol(pool.token0)} /{" "}
+              {exactAmount(position.amount1, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Redeem quote</dt>
             <dd>
-              {amount(amounts[0], pool.token0)} {symbol(pool.token0)} /{" "}
-              {amount(amounts[1], pool.token1)} {symbol(pool.token1)}
+              {exactAmount(amounts[0], pool.token0)} {symbol(pool.token0)} /{" "}
+              {exactAmount(amounts[1], pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Current value at pool price</dt>
             <dd>
-              {amount(currentValue, pool.token1)} {symbol(pool.token1)}
+              {exactAmount(currentValue, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Compared with holding the initial deposit</dt>
             <dd>
               {view.valueSign}
-              {amount(valueChange, pool.token1)} {symbol(pool.token1)}
+              {exactAmount(valueChange, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Created</dt>
             <dd>
@@ -577,22 +599,43 @@ function SupportedPositionCard({
             </dd>
           </dl>
           <p className="liquidity-small">
-            Fees are included in the redeem quote. The value comparison also
+            Total shares include permanently locked liquidity. Fees are included
+            in the redeem quote. The value comparison also
             reflects price changes and impermanent loss; it is not a separate
             fee balance or a guaranteed return.
           </p>
           <div className="liquidity-position-actions">
             <button
               className="button-primary"
-              disabled={pending || !session}
-              onClick={() => setReview("redeem")}
+              disabled={pending || !session || !snapshot.data}
+              onClick={() => {
+                if (session && snapshot.data)
+                  setReview({
+                    kind: "redeem",
+                    pool,
+                    position,
+                    amounts,
+                    caller: session.address,
+                    submit: run,
+                    block: snapshot.data.block,
+                  });
+              }}
             >
               Burn NFT #{String(position.id)} & redeem
             </button>
             <button
               className="secondary"
               disabled={pending || !session}
-              onClick={() => setReview("transfer")}
+              onClick={() => {
+                if (session)
+                  setReview({
+                    kind: "transfer",
+                    pool,
+                    position,
+                    caller: session.address,
+                    submit: run,
+                  });
+              }}
             >
               Transfer position
             </button>
@@ -608,7 +651,19 @@ function SupportedPositionCard({
               {metadata.isPending ? (
                 <p>Reading metadata…</p>
               ) : metadata.error ? (
-                <p role="alert">{metadata.error.message}</p>
+                <>
+                  <p role="alert">{metadata.error.message}</p>
+                  <button
+                    type="button"
+                    className="text"
+                    disabled={metadata.isFetching}
+                    onClick={() => void metadata.refetch()}
+                  >
+                    {metadata.isFetching
+                      ? "Reading metadata…"
+                      : "Read metadata again"}
+                  </button>
+                </>
               ) : (
                 <pre className="liquidity-metadata">
                   {JSON.stringify(metadata.data, null, 2)}
@@ -618,47 +673,63 @@ function SupportedPositionCard({
           )}
         </div>
       )}
-      {review === "redeem" && (
+      {review?.kind === "redeem" && (
         <ConfirmationDialog
           title="Review position redemption"
           onClose={() => setReview(undefined)}
         >
           <p>
-            {position.exchange.name} ({shorten(position.exchange.address)}),
-            pool #{String(position.poolId)}: NFT #{String(position.id)} will be
-            permanently burned. Both assets, including your share of fees, will
-            be sent to its current owner:
+            {review.position.exchange.name} (
+            {shorten(review.position.exchange.address)}), pool #
+            {String(review.position.poolId)}: NFT #{String(review.position.id)}{" "}
+            will be permanently burned. Both assets, including your share of
+            fees, are sent by the contract to the owner at execution. The owner
+            observed for this quote is:
           </p>
-          <code className="liquidity-recipient">{position.owner}</code>
+          <code className="liquidity-recipient">{review.position.owner}</code>
           <dl className="liquidity-detail-list">
-            <dt title={pool.token0}>
-              Expected {tokenLabel(pool.token0, symbol(pool.token0))}
+            <dt>Trader</dt>
+            <dd className="liquidity-recipient">{review.caller}</dd>
+            <dt>Quote block</dt>
+            <dd>{review.block}</dd>
+            <dt title={review.pool.token0}>
+              Expected{" "}
+              {tokenLabel(review.pool.token0, symbol(review.pool.token0))}
             </dt>
-            <dd>{formatUnits(amounts[0], precision(pool.token0))}</dd>
-            <dt title={pool.token1}>
-              Expected {tokenLabel(pool.token1, symbol(pool.token1))}
+            <dd>
+              {formatUnits(review.amounts[0], precision(review.pool.token0))}
+            </dd>
+            <dt title={review.pool.token1}>
+              Expected{" "}
+              {tokenLabel(review.pool.token1, symbol(review.pool.token1))}
             </dt>
-            <dd>{formatUnits(amounts[1], precision(pool.token1))}</dd>
+            <dd>
+              {formatUnits(review.amounts[1], precision(review.pool.token1))}
+            </dd>
           </dl>
           <AmountField
             label="Redemption slippage (%)"
             value={slippage}
             onChange={setSlippage}
           />
+          <p className="liquidity-small">
+            Slippage edits apply to this fixed quote. Later pool changes do not
+            replace these amounts or minima.
+          </p>
           <FormError message={invalidTolerance} />
           {!invalidTolerance && (
             <p className="liquidity-small">
               Minimum received:{" "}
               {formatUnits(
-                minimumReceived(amounts[0], slippageBps(slippage)),
-                precision(pool.token0),
+                minimumReceived(review.amounts[0], slippageBps(slippage)),
+                precision(review.pool.token0),
               )}{" "}
-              {symbol(pool.token0)} and{" "}
+              {symbol(review.pool.token0)} and{" "}
               {formatUnits(
-                minimumReceived(amounts[1], slippageBps(slippage)),
-                precision(pool.token1),
+                minimumReceived(review.amounts[1], slippageBps(slippage)),
+                precision(review.pool.token1),
               )}{" "}
-              {symbol(pool.token1)}.
+              {symbol(review.pool.token1)}.
             </p>
           )}
           <button
@@ -666,12 +737,12 @@ function SupportedPositionCard({
             disabled={pending || !!invalidTolerance}
             onClick={() => {
               setReview(undefined);
-              run("Redeem position", async (writer) => {
+              review.submit("Redeem position", async (writer) => {
                 onConfirmed(
                   await writer.removeLiquidity(
-                    pool,
-                    position.id,
-                    amounts,
+                    review.pool,
+                    review.position.id,
+                    review.amounts,
                     slippageBps(slippage),
                   ),
                 );
@@ -682,13 +753,12 @@ function SupportedPositionCard({
           </button>
         </ConfirmationDialog>
       )}
-      {review === "transfer" && (
+      {review?.kind === "transfer" && (
         <TransferPositionDialog
           recipient={recipient}
           onRecipientChange={onRecipientChange}
           onConfirmed={onConfirmed}
-          pool={pool}
-          position={position}
+          review={review}
           onClose={() => setReview(undefined)}
         />
       )}
@@ -707,8 +777,14 @@ function UnsupportedPositionCard({
   position: Position;
   onConfirmed: (result: LiquidityConfirmation) => void;
 } & TransferDraft) {
-  const { pending, session } = useDex();
-  const [transferring, setTransferring] = useState(false);
+  const { pending, session, run } = useDex();
+  const [review, setReview] = useState<PositionTransferReview>();
+  useEffect(() => setReview(undefined), [
+    session?.kind,
+    session?.address,
+    session?.chainId,
+    session?.epoch,
+  ]);
   return (
     <article className="liquidity-position">
       <h3>
@@ -718,18 +794,26 @@ function UnsupportedPositionCard({
       <FormError message={unsupportedPoolError} />
       <button
         disabled={pending || !session}
-        onClick={() => setTransferring(true)}
+        onClick={() => {
+          if (session)
+            setReview({
+              kind: "transfer",
+              pool,
+              position,
+              caller: session.address,
+              submit: run,
+            });
+        }}
       >
         Transfer NFT
       </button>
-      {transferring && (
+      {review && (
         <TransferPositionDialog
           recipient={recipient}
           onRecipientChange={onRecipientChange}
           onConfirmed={onConfirmed}
-          pool={pool}
-          position={position}
-          onClose={() => setTransferring(false)}
+          review={review}
+          onClose={() => setReview(undefined)}
         />
       )}
     </article>
@@ -737,22 +821,21 @@ function UnsupportedPositionCard({
 }
 
 function TransferPositionDialog({
-  pool,
-  position,
+  review,
   onClose,
   recipient,
   onRecipientChange,
   onConfirmed,
 }: {
-  pool: Pool;
-  position: Position;
+  review: PositionTransferReview;
   onClose: () => void;
   onConfirmed: (result: LiquidityConfirmation) => void;
 } & TransferDraft) {
-  const { pending, session, run, symbol } = useDex();
-  const recipientError = transferError(
+  const { pending, symbol } = useDex();
+  const { pool, position, caller, submit } = review;
+  const plan = prepareTransfer(
     position.owner,
-    session?.address ?? "",
+    caller,
     recipient,
   );
   return (
@@ -762,6 +845,14 @@ function TransferPositionDialog({
         and all redemption rights to the recipient. You will no longer be able
         to redeem this position.
       </p>
+      <dl className="liquidity-detail-list">
+        <dt>Trader</dt>
+        <dd className="liquidity-recipient">{caller}</dd>
+        <dt>Owner observed at review</dt>
+        <dd className="liquidity-recipient">{position.owner}</dd>
+        <dt>NFT contract</dt>
+        <dd className="liquidity-recipient">{position.exchange.address}</dd>
+      </dl>
       <label>
         Recipient address
         <input
@@ -770,17 +861,19 @@ function TransferPositionDialog({
           placeholder="0x…"
         />
       </label>
-      {recipient && <FormError message={recipientError} />}
+      {recipient && !plan.ok && <FormError message={plan.error} />}
       <button
         className="button-primary"
-        disabled={pending || !!recipientError}
+        disabled={pending || !plan.ok}
         onClick={() => {
-          onClose();
-          run("Transfer position", async (writer) => {
-            onConfirmed(
-              await writer.transferPosition(pool, position.id, recipient),
-            );
-          });
+          if (plan.ok) {
+            onClose();
+            submit("Transfer position", async (writer) => {
+              onConfirmed(
+                await writer.transferPosition(pool, position.id, plan.recipient),
+              );
+            });
+          }
         }}
       >
         Confirm transfer

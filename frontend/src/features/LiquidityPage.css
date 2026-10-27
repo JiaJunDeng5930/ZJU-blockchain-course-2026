@@ -49,7 +49,7 @@
 }
 .liquidity-position-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr) auto;
   gap: 28px;
   align-items: center;
   padding: 22px 24px;
@@ -66,6 +66,8 @@
 }
 .liquidity-position-assets {
   display: grid;
+  min-width: 0;
+  overflow-wrap: anywhere;
   gap: 6px;
   text-align: right;
   font-size: 14px;
@@ -388,7 +390,7 @@
     font-size: 12px !important;
   }
   .liquidity-position-summary {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.2fr);
     gap: 16px;
     padding: 18px 16px;
   }
