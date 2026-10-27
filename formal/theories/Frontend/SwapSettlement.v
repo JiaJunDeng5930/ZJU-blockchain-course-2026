@@ -12,8 +12,11 @@ Record settlement_view := SettlementView {
 
 (* Amounts come from the confirmed event, while quoted is the reviewed quote.
    Gas is deliberately absent: a quote difference has output-token units. *)
+Definition actual_price input output input_places output_places :=
+  price_text output output_places input input_places.
+
 Definition summarize input output quoted input_places output_places :=
-  SettlementView (price_text output output_places input input_places)
+  SettlementView (actual_price input output input_places output_places)
     (output - quoted)
     (match Z.compare output quoted with
      | Eq => Same | Gt => More | Lt => Less

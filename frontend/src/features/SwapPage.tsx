@@ -1,7 +1,7 @@
 import { useEffect, useReducer, useState } from "react";
 import { tokenLabel } from "../chain/amounts";
 import { formatUnits } from "../logic/units";
-import { swapSettlementView } from "../logic/swapSettlement";
+import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
 import {
   createRoutedSwapController,
   type RoutedSwapEvent,
@@ -41,7 +41,6 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
     submit: typeof run;
   }>();
   const [settlement, setSettlement] = useState<SwapResult>();
-  const settlementView = settlement ? swapSettlementView(settlement, tokens) : undefined;
   useEffect(() => setReview(undefined), [
     session?.kind,
     session?.address,
@@ -431,69 +430,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           </button>
         </ConfirmationDialog>
       )}
-      {settlement && settlementView && (
-        <section className="trade-settlement" aria-label="Last confirmed swap">
-          <h2>Last confirmed swap</h2>
-          <dl className="trade-review-values">
-            <dt>Paid</dt>
-            <dd>
-              {formatUnits(settlement.amountIn, precision(settlement.tokenIn))}{" "}
-              {tokenLabel(settlement.tokenIn, symbol(settlement.tokenIn))}
-            </dd>
-            <dt>Received</dt>
-            <dd>
-              {formatUnits(
-                settlement.amountOut,
-                precision(settlement.tokenOut)
-              )}{" "}
-              {tokenLabel(settlement.tokenOut, symbol(settlement.tokenOut))}
-            </dd>
-            <dt>Quoted receive</dt>
-            <dd>
-              {formatUnits(settlement.quoted, precision(settlement.tokenOut))}{" "}
-              {symbol(settlement.tokenOut)}
-            </dd>
-            <dt>Minimum received</dt>
-            <dd>
-              {formatUnits(settlement.minimum, precision(settlement.tokenOut))}{" "}
-              {symbol(settlement.tokenOut)}
-            </dd>
-            <dt>Execution price</dt>
-            <dd>
-              {settlementView.executionPrice ?? "—"}{" "}
-              {tokenLabel(settlement.tokenOut, symbol(settlement.tokenOut))} per 1{" "}
-              {tokenLabel(settlement.tokenIn, symbol(settlement.tokenIn))}
-            </dd>
-            <dt>Compared with quote</dt>
-            <dd>
-              {settlementView.comparison === "same" ? "Matched quote" : (
-                <>{formatUnits(settlementView.quoteDifference, precision(settlement.tokenOut))}{" "}
-                  {tokenLabel(settlement.tokenOut, symbol(settlement.tokenOut))}{" "}
-                  ({settlementView.comparison === "more" ? "more received" : "less received"})</>
-              )}
-            </dd>
-            <dt>Execution fee</dt>
-            <dd>{formatUnits(settlement.gasCostWei, 18)} ETH</dd>
-            <dt>Exchange</dt>
-            <dd title={settlement.pool.exchange.address}>
-              {settlement.pool.exchange.name} #{String(settlement.pool.id)}
-            </dd>
-            <dt>Account / fee payer</dt>
-            <dd>{settlement.receipt.from}</dd>
-            <dt>Confirmed block</dt>
-            <dd>{settlement.receipt.blockNumber.toString()}</dd>
-            <dt>Transaction</dt>
-            <dd>
-              <code>{settlement.receipt.transactionHash}</code>
-            </dd>
-          </dl>
-          <p>
-            Pool fees are already reflected in the actual amounts. ETH execution
-            fee covers this swap only, excluding earlier token approvals.
-            The difference from the quote is an output-token amount, not profit.
-          </p>
-        </section>
-      )}
+      {settlement && <ConfirmedSwapAction execution={settlement} tokens={tokens} quote={settlement} />}
     </div>
   );
 }

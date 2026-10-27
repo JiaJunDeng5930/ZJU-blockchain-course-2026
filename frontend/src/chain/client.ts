@@ -36,6 +36,7 @@ import { addLiquidity, removeLiquidity, transferPosition, readLiquidityReceipt }
 import { revokeAllowance, type RevokePlan } from "./allowances";
 import type { RawAllowances } from "../wallet/kernel";
 import { executeWrap } from "./wrapping";
+import { readSwapReceipt, readTransactionResult, swapExecutionFromEvent } from "./swapReceipt";
 import { opportunities, quoteArbitrage, executeArbitrage, readArbitrageReceipt } from "./arbitrage";
 import type {
   ArbitrageResult,
@@ -356,6 +357,8 @@ export class ExchangeClient {
   ): Promise<Opportunity[]> {
     return quoteArbitrage(this, pool, tokenIn, amount, supportedTokens);
   }
+  swapReceipt(hash: Hex) { return readSwapReceipt(this, hash); }
+  transactionResult(hash: Hex) { return readTransactionResult(this, hash); }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);
   }
@@ -439,17 +442,12 @@ class ExchangeWriter {
     if (!event)
       throw new Error("Confirmed swap is missing its settlement event.");
     return {
-      gasCostWei: executionFeeWei(receipt),
-      pool: plan.pool,
-      tokenIn: event.args.tokenIn,
-      tokenOut: plan.outputToken,
-      amountIn: event.args.amountIn,
-      amountOut: event.args.amountOut,
+      ...swapExecutionFromEvent(plan.pool, receipt, event),
       quoted: plan.quoted,
       minimum: plan.minimum,
-      receipt
     };
   }
+
   async swap(
     pool: Pool,
     tokenIn: string,

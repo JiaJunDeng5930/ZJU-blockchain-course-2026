@@ -358,17 +358,6 @@
   }
 }
 
-.trade-settlement {
-  margin-top: 24px;
-  padding: 22px;
-  border: 1px solid #e4e7ed;
-  border-radius: 16px;
-  background: #fff;
-}
-.trade-settlement h2 {
-  margin: 0 0 20px;
-  font-size: 18px;
-}
 .trade-review-values {
   display: grid;
   grid-template-columns: minmax(110px, 1fr) minmax(0, 2fr);

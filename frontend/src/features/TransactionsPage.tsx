@@ -13,8 +13,8 @@ import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmedLiquidityAction } from "../components/ConfirmedLiquidityAction";
 import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction";
-import { arbitrageReceiptAvailable } from "../logic/arbitrageReceipt";
-import { liquidityReceiptAvailable } from "../logic/liquidityReceipt";
+import { transactionResultAvailable } from "../logic/swapReceipt";
+import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
 export function TransactionsPage() {
   const { history, wallet, client } = useDex();
   const [query, setQuery] = useState<ActivityQuery | null>(null);
@@ -150,19 +150,10 @@ export function TransactionsPage() {
                   <td>
                     {"hash" in entry && entry.hash && <code>{entry.hash}</code>}
                     {entry.state === "confirmed" &&
-                      entry.descriptor?.to === null && (
-                        <CreatedContractReceipt entry={entry} />
-                      )}
-                    {entry.state === "confirmed" &&
-                      liquidityReceiptAvailable(
-                        client.deployment.exchanges,
+                      transactionResultAvailable(
+                        client.deployment,
                         entry.descriptor,
-                      ) && <LiquidityReceipt entry={entry} />}
-                    {entry.state === "confirmed" &&
-                      arbitrageReceiptAvailable(
-                        client.deployment.arbitrage,
-                        entry.descriptor,
-                      ) && <ArbitrageReceipt entry={entry} />}
+                      ) && <TransactionReceipt entry={entry} />}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
                         {replacement.kind === "repriced"
@@ -217,148 +208,65 @@ export function TransactionsPage() {
   );
 }
 
-function LiquidityReceipt({
+function TransactionReceipt({
   entry,
 }: {
   entry: Extract<JournalView, { state: "confirmed" }>;
 }) {
   const { client } = useDex();
+  // Archives have been scoped and re-observed by the wallet kernel before display.
   const result = useQuery({
     queryKey: [
-      "liquidity-receipt",
+      "transaction-result",
       client.deployment.rpcUrl,
       client.key,
       entry.instance,
       entry.id,
       entry.hash,
     ],
-    queryFn: () => client.liquidityReceipt(entry.hash as Hex),
+    queryFn: () => client.transactionResult(entry.hash as Hex),
     enabled: false,
     retry: false,
   });
   return (
     <div>
-      {result.data && (
-        <ConfirmedLiquidityAction
-          result={result.data.confirmation}
-          tokens={result.data.tokens}
+      {result.data?.kind === "swap" && (
+        <ConfirmedSwapAction
+          execution={result.data.details.execution}
+          tokens={result.data.details.tokens}
         />
       )}
-      {result.data === null && (
-        <p>
-          No liquidity operation from this deployment was found in the receipt.
-        </p>
+      {result.data?.kind === "liquidity" && (
+        <ConfirmedLiquidityAction
+          result={result.data.details.confirmation}
+          tokens={result.data.details.tokens}
+        />
       )}
-      {result.error && (
-        <p role="alert">
-          Liquidity receipt could not be read: {result.error.message}
-        </p>
+      {result.data?.kind === "arbitrage" && (
+        <ConfirmedArbitrageAction
+          result={result.data.details.result}
+          tokens={result.data.details.tokens}
+        />
       )}
-      <button
-        className="text"
-        type="button"
-        disabled={result.isFetching}
-        onClick={() => void result.refetch()}
-      >
-        {result.isFetching
-          ? "Reading liquidity receipt…"
-          : "Read liquidity result"}
-      </button>
-    </div>
-  );
-}
-
-function CreatedContractReceipt({
-  entry,
-}: {
-  entry: Extract<JournalView, { state: "confirmed" }>;
-}) {
-  const { client } = useDex();
-  // The kernel exposes only archives from this RPC/genesis/deployment scope;
-  // restored confirmations have already been re-observed on that same RPC.
-  const receipt = useQuery({
-    queryKey: [
-      "created-contract-receipt",
-      client.deployment.rpcUrl,
-      client.key,
-      entry.instance,
-      entry.id,
-      entry.hash,
-    ],
-    queryFn: () =>
-      client.rpc.getTransactionReceipt({ hash: entry.hash as Hex }),
-    enabled: false,
-    retry: false,
-  });
-  return (
-    <div>
-      {receipt.data?.status === "success" && receipt.data.contractAddress ? (
+      {result.data?.kind === "creation" && (
         <>
           <p>
-            Created contract: <code>{receipt.data.contractAddress}</code>
+            Created contract: <code>{result.data.address}</code>
           </p>
           <p>
             Copy this address into Pools &amp; tokens → Import to read its
             metadata.
           </p>
         </>
-      ) : receipt.data ? (
-        <p>The observed receipt contains no successful contract creation.</p>
-      ) : null}
-      {receipt.error && (
-        <p role="alert">
-          Creation receipt could not be read: {receipt.error.message}
-        </p>
-      )}
-      <button
-        className="text"
-        type="button"
-        disabled={receipt.isFetching}
-        onClick={() => void receipt.refetch()}
-      >
-        {receipt.isFetching
-          ? "Reading creation receipt…"
-          : "Read created contract"}
-      </button>
-    </div>
-  );
-}
-
-function ArbitrageReceipt({
-  entry,
-}: {
-  entry: Extract<JournalView, { state: "confirmed" }>;
-}) {
-  const { client } = useDex();
-  const result = useQuery({
-    queryKey: [
-      "arbitrage-receipt",
-      client.deployment.rpcUrl,
-      client.key,
-      entry.instance,
-      entry.id,
-      entry.hash,
-    ],
-    queryFn: () => client.arbitrageReceipt(entry.hash as Hex),
-    enabled: false,
-    retry: false,
-  });
-  return (
-    <div>
-      {result.data && (
-        <ConfirmedArbitrageAction
-          result={result.data.result}
-          tokens={result.data.tokens}
-        />
       )}
       {result.data === null && (
         <p>
-          No arbitrage operation from this deployment was found in the receipt.
+          No supported operation from this deployment was found in the receipt.
         </p>
       )}
       {result.error && (
         <p role="alert">
-          Arbitrage receipt could not be read: {result.error.message}
+          Transaction result could not be read: {result.error.message}
         </p>
       )}
       <button
@@ -368,8 +276,8 @@ function ArbitrageReceipt({
         onClick={() => void result.refetch()}
       >
         {result.isFetching
-          ? "Reading arbitrage receipt…"
-          : "Read arbitrage result"}
+          ? "Reading transaction result…"
+          : "Read transaction result"}
       </button>
     </div>
   );

@@ -16,6 +16,15 @@ let summarize input =
     "comparison", `String comparison]
   |> Yojson.Basic.to_string |> Js.string
 
+let actual_price input =
+  let value = Js.to_string input |> Yojson.Basic.from_string in
+  let integer key = Field.member key value |> Field.to_string |> Z.of_string in
+  let price = Kernel.actual_price (integer "amountIn") (integer "amountOut")
+    (integer "inputPlaces") (integer "outputPlaces") in
+  (match price with None -> `Null | Some text -> `String text)
+  |> Yojson.Basic.to_string |> Js.string
+
 let () =
   Js.Unsafe.set Js.Unsafe.global "DEXSwapSettlement"
-    (Js.Unsafe.obj [|"summarize", Js.Unsafe.inject (Js.wrap_callback summarize)|])
+    (Js.Unsafe.obj [|"summarize", Js.Unsafe.inject (Js.wrap_callback summarize);
+      "actualPrice", Js.Unsafe.inject (Js.wrap_callback actual_price)|])

@@ -34,8 +34,7 @@ export type PoolCreationConfirmation = {
   receipt: TransactionReceipt;
 };
 export type AssetCreationConfirmation =
-  | TokenCreationConfirmation
-  | PoolCreationConfirmation;
+  TokenCreationConfirmation | PoolCreationConfirmation;
 export type Deployment = {
   schemaVersion: 1;
   chainId: number;
@@ -103,17 +102,31 @@ export type ArbitrageReceiptDetails = {
   result: ArbitrageResult;
   tokens: readonly [Token, Token];
 };
-export type SwapResult = {
+export type PoolIdentity = Pick<Pool, "exchange" | "id" | "token0" | "token1">;
+export type SwapExecution = {
   gasCostWei: bigint;
-  pool: Pool;
+  pool: PoolIdentity;
+  trader: string;
+  recipient: string;
   tokenIn: string;
   tokenOut: string;
   amountIn: bigint;
   amountOut: bigint;
-  quoted: bigint;
-  minimum: bigint;
   receipt: TransactionReceipt;
 };
+export type SwapResult = SwapExecution & {
+  quoted: bigint;
+  minimum: bigint;
+};
+export type SwapReceiptDetails = {
+  execution: SwapExecution;
+  tokens: readonly [Token, Token];
+};
+export type RecoveredTransactionResult =
+  | { kind: "swap"; details: SwapReceiptDetails }
+  | { kind: "liquidity"; details: LiquidityReceiptDetails }
+  | { kind: "arbitrage"; details: ArbitrageReceiptDetails }
+  | { kind: "creation"; address: string; receipt: TransactionReceipt };
 export type WrappingConfirmation = {
   kind: "wrap" | "unwrap";
   token: string;

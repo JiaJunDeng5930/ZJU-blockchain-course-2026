@@ -93,7 +93,16 @@ export async function readLiquidityReceipt(
   client: ExchangeClient,
   hash: Hex,
 ): Promise<LiquidityReceiptDetails | null> {
-  const receipt = await client.rpc.getTransactionReceipt({ hash });
+  return liquidityReceiptFromReceipt(
+    client,
+    await client.rpc.getTransactionReceipt({ hash }),
+  );
+}
+
+export async function liquidityReceiptFromReceipt(
+  client: ExchangeClient,
+  receipt: TransactionReceipt,
+): Promise<LiquidityReceiptDetails | null> {
   const events = parseEventLogs({
     abi: miniDexAbi,
     eventName: ["LiquidityAdded", "LiquidityRemoved", "Transfer"],

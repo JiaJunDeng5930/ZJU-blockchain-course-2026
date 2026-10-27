@@ -309,3 +309,16 @@ asset addresses and the event's before/after reserves; they do not claim
 transaction-local LP supply or other mutable pool state. Asset metadata uses the
 receipt block. ABI decoding, complete receipt logs and historical RPC reads remain
 external assumptions, checked through the independent public acceptance flow.
+
+Swap receipt recovery distinguishes actual execution from the reviewed quote in
+its types. Historical execution has no quoted/minimum fields. The extracted
+price function is shared with live quote comparison; a past receipt never
+manufactures a quote from the output amount or current pool price. The extracted
+selector accepts one swap emitted by the configured direct exchange target,
+while the unified result dispatcher gives a configured arbitrage execution its
+own operation kind despite its inner Swap logs. Failed receipts have no successful
+result and an unavailable transaction descriptor keeps manual recovery reachable.
+The common React query only renders the extracted operation choice and reuses
+existing domain decoders. ABI facts, complete logs, historical pool identity and
+token metadata remain external assumptions; no EVM proof is claimed for this
+adapter. Public same-block and lifecycle acceptance checks the binding.

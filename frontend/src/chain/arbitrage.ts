@@ -274,7 +274,16 @@ export async function readArbitrageReceipt(
   client: ExchangeClient,
   hash: Hex,
 ): Promise<ArbitrageReceiptDetails | null> {
-  const receipt = await client.rpc.getTransactionReceipt({ hash });
+  return arbitrageReceiptFromReceipt(
+    client,
+    await client.rpc.getTransactionReceipt({ hash }),
+  );
+}
+
+export async function arbitrageReceiptFromReceipt(
+  client: ExchangeClient,
+  receipt: TransactionReceipt,
+): Promise<ArbitrageReceiptDetails | null> {
   const evidence = decodeArbitrageEvents(client, receipt);
   if (evidence === null) return null;
   const blockNumber = receipt.blockNumber;

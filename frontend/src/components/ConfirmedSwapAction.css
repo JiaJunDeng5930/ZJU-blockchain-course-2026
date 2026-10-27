@@ -1,0 +1,35 @@
+.confirmed-swap {
+  margin-top: 1rem;
+  padding: 1.25rem;
+  border: 1px solid #e4e8ed;
+  border-radius: 1rem;
+}
+.confirmed-swap h2 {
+  margin: 0 0 1rem;
+  font-size: 1.05rem;
+}
+.confirmed-swap dl {
+  display: grid;
+  grid-template-columns: minmax(7rem, 1fr) minmax(0, 2fr);
+  gap: 0.65rem 1rem;
+}
+.confirmed-swap dt {
+  color: #667085;
+}
+.confirmed-swap dd {
+  margin: 0;
+  overflow-wrap: anywhere;
+}
+.confirmed-swap p {
+  color: #667085;
+  line-height: 1.55;
+}
+@media (max-width: 550px) {
+  .confirmed-swap dl {
+    grid-template-columns: 1fr;
+    gap: 0.3rem;
+  }
+  .confirmed-swap dd {
+    margin-bottom: 0.6rem;
+  }
+}
