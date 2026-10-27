@@ -22,6 +22,7 @@ import { activeOwners } from "../logic/ledger";
 import { aggregateActivity } from "../logic/liquidity";
 import { approvalNeeded } from "../logic/units";
 import { makeSwapParameters } from "../logic/trade";
+import type { RoutedSwapPlan } from "../logic/routing";
 import { runtimeCodeMatches } from "../logic/assets";
 import {
   importAsset,
@@ -394,6 +395,15 @@ class ExchangeWriter {
           value: funding.amountWei,
         }),
       { kind: "dev-faucet", sender: funder }
+    );
+  }
+  routedSwap(plan: RoutedSwapPlan) {
+    return this.swap(
+      plan.pool,
+      plan.inputToken,
+      plan.input,
+      plan.quoted,
+      plan.slippage
     );
   }
   async swap(

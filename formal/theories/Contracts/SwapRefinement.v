@@ -6,6 +6,7 @@
 Require Import RocqOfSolidity.RocqOfSolidity.
 Require Import RocqOfSolidity.simulations.RocqOfSolidity.
 Require Import DEXFormal.Spec.AMM.
+Require DEXFormal.Spec.Routing.
 Require Import DEXFormal.Contracts.SwapGenerated.
 Definition deployed_code := SwapGenerated.SwapProperties.deployed.code.
 Definition program := [deployed_code].
@@ -104,4 +105,23 @@ Proof.
   rewrite (bounded_quote_total _ _ _ Hdomain) in Hquote.
   injection Hquote as Houtput. rewrite <- Houtput.
   now apply calculate_amount_out_runs.
+Qed.
+
+Theorem routed_swap_quote_matches_contract env environment draft plan state :
+  Environment.code_name env = deployed_code.(Code.hex_name) ->
+  Routing.next_effect environment draft (Routing.DraftEvent SubmitDraft) = Routing.Execute plan ->
+  Run.t program env state (Result.Ok [Routing.prepared_output plan])
+    (calculate_amount_out env
+      (input_reserve (Routing.prepared_direction plan))
+      (output_reserve (Routing.prepared_direction plan)) (Routing.prepared_input plan)) state.
+Proof.
+  intros Henv Hrequest.
+  pose proof (Routing.execution_uses_shared_frontend _ _ _ _ Hrequest) as Hfrontend.
+  pose proof (Routing.execution_environment_is_selected_pool _ _ _ _ Hrequest) as [_ Hcurrent].
+  pose proof (Routing.frontend_request_keeps_token _ _ _ _ _ _ Hfrontend) as Htoken.
+  pose proof (frontend_swap_quote_matches_contract env (Routing.prepared_environment plan)
+    (Routing.draft draft) _ _ _ _ state Henv Hfrontend) as Hrun.
+  unfold Routing.prepared_direction. unfold draft_orientation in Hrun.
+  rewrite Hcurrent in Hrun. cbn [Routing.pool_environment] in Hrun.
+  rewrite <- Htoken in Hrun. exact Hrun.
 Qed.

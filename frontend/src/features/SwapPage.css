@@ -37,6 +37,8 @@
   margin-bottom: 15px;
 }
 .trade-market select {
+  flex: 1 1 0;
+  min-width: 0;
   width: 100%;
   max-width: 100%;
   padding: 6px 22px 6px 8px;

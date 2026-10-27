@@ -1,7 +1,9 @@
 import { useReducer, useState } from "react";
-import { poolKey } from "../chain/amounts";
 import { formatUnits } from "../logic/units";
-import { createSwapController, type SwapEvent } from "../logic/trade";
+import {
+  createRoutedSwapController,
+  type RoutedSwapEvent,
+} from "../logic/routing";
 import { useDex } from "../chain/DexProvider";
 import type { Pool } from "../chain/types";
 import "./SwapPage.css";
@@ -13,33 +15,39 @@ type SwapPageProps = {
 };
 
 export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
-  const { snapshot, symbol, session, pending, run, amount, precision, tokens } =
-    useDex();
-  const [controller] = useState(() => createSwapController(pool.token0));
+  const {
+    client,
+    snapshot,
+    symbol,
+    session,
+    pending,
+    run,
+    amount,
+    precision,
+    tokens,
+  } = useDex();
+  const [controller] = useState(() => createRoutedSwapController(pool.token0));
   const [, render] = useReducer((value: boolean) => !value, false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const context = {
     tokens,
     pool,
+    pools: snapshot.data?.pools ?? [],
+    exchanges: client.deployment.exchanges,
+    block: snapshot.data?.block,
     balances: snapshot.data?.balances,
     connected: !!session,
     pending,
   };
   const view = controller.view(context);
   const { inputToken, outputToken, balance, outputBalance } = view;
-  function dispatch(event: SwapEvent) {
+  function dispatch(event: RoutedSwapEvent) {
     const { effect } = controller.dispatch(event, context);
     render();
     if (effect?.kind === "wallet") onOpenWallet();
     if (effect?.kind === "swap") {
-      run("Swap tokens", (writer) =>
-        writer.swap(
-          pool,
-          effect.inputToken,
-          effect.input,
-          effect.quoted,
-          effect.slippage
-        )
+      run(`Swap on ${effect.pool.exchange.name} #${effect.pool.id}`, (writer) =>
+        writer.routedSwap(effect)
       );
     }
   }
@@ -70,15 +78,38 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
         <div className="trade-market">
           <select
             id="trade-market"
-            aria-label="Active pool"
-            value={poolKey(pool)}
+            aria-label="Trading pair"
+            value={view.pairKey ?? ""}
             disabled={pending}
             onChange={(event) => onPoolChange(event.target.value)}
           >
-            {snapshot.data?.pools.map((market) => (
-              <option key={poolKey(market)} value={poolKey(market)}>
-                {market.exchange.name} · {symbol(market.token0)}/
-                {symbol(market.token1)}
+            {view.pairKey === null && <option value="">Select a pair</option>}
+            {view.pairs.map((pair) => (
+              <option key={pair.key} value={pair.key}>
+                {symbol(pair.token0)}/{symbol(pair.token1)}
+              </option>
+            ))}
+          </select>
+          <select
+            aria-label="Exchange"
+            value={view.mode === "auto" ? "auto" : view.manualKey ?? ""}
+            disabled={pending}
+            onChange={(event) =>
+              dispatch({ kind: "route", value: event.target.value })
+            }
+          >
+            <option value="auto">Best quote</option>
+            {view.manualUnavailable && (
+              <option value={view.manualKey ?? ""}>Unavailable pool</option>
+            )}
+            {view.routes.map((route) => (
+              <option key={route.key} value={route.key}>
+                {route.pool.exchange.name} #{String(route.pool.id)}
+                {route.quoted === undefined
+                  ? " · No quote"
+                  : ` · ${amount(route.quoted, view.outputToken)} ${symbol(
+                      view.outputToken
+                    )}`}
               </option>
             ))}
           </select>
@@ -225,6 +256,11 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
 
         {view.amount !== undefined && (
           <div className="trade-summary">
+            {view.route && (
+              <span>
+                {view.route.exchange.name} #{String(view.route.id)}
+              </span>
+            )}
             <span>{view.feePercent}% pool fee</span>
             <span>Slippage {view.slippageText}%</span>
           </div>
@@ -238,6 +274,12 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <span>Trade details</span>
             </summary>
             <dl>
+              <dt>Exchange</dt>
+              <dd>
+                {view.route?.exchange.name} #{String(view.route?.id)}
+              </dd>
+              <dt>Quote block</dt>
+              <dd>{view.block}</dd>
               <dt>Minimum received</dt>
               <dd>
                 {view.minimum === undefined
@@ -261,6 +303,10 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <dt>Deadline</dt>
               <dd>{view.deadlineText}</dd>
             </dl>
+            <p>
+              Best quote compares direct pools in this deployment after pool
+              fees. Network gas is separate.
+            </p>
             <p>
               Token approval may require a separate confirmation before the
               swap. Gas is paid in ETH.

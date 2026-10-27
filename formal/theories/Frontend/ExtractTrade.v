@@ -1,5 +1,5 @@
 From Coq Require Import Extraction ExtrOcamlNativeString ExtrOcamlZBigInt.
-From DEXFormal.Spec Require Import Types Units AMM.
+From DEXFormal.Spec Require Import Types Units AMM Routing.
 
 Extraction Language OCaml.
 Extraction Blacklist String List.
@@ -16,4 +16,9 @@ Separate Extraction
   AMM.preview_pool_funded AMM.swap_can_max AMM.swap_max_text AMM.swap_reverse_text
   AMM.make_swap_parameters AMM.swap_parameters_error AMM.pool_fee_percent
   AMM.swap_deadline_text AMM.initial_draft AMM.draft_orientation AMM.draft_balance
-  AMM.draft_output_balance AMM.draft_preview AMM.step_draft AMM.draft_effect.
+  AMM.draft_output_balance AMM.draft_preview AMM.step_draft AMM.draft_effect
+  Routing.initial Routing.reconcile Routing.step Routing.next_effect
+  Routing.pairs Routing.pair_key Routing.pool_key Routing.route_catalog Routing.route_quote
+  Routing.selected_pool Routing.selected_environment Routing.current_preview
+  Routing.can_submit Routing.disabled Routing.action Routing.message
+  Routing.manual_key Routing.manual_unavailable Routing.view_block.

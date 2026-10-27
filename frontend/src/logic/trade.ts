@@ -8,12 +8,14 @@ type RawController = {
 };
 type TradeRuntime = {
   create(token0: string): RawController;
+  createRouted(token0: string): RawController;
   makeParameters(request: string): string;
   parameterError: string;
 };
 declare global {
   var DEXTrade: TradeRuntime;
 }
+export { contextJSON as serializeSwapContext, decode as decodeSwapView };
 
 type WireEffect =
   | null

@@ -10,8 +10,8 @@ const configuration = JSON.parse(
   await readFile(
     process.env.DEX_TOOLCHAIN_ENV ??
       join(root, ".local/toolchain/environment.json"),
-    "utf8",
-  ),
+    "utf8"
+  )
 );
 const env = { ...process.env, ...configuration };
 const coq = env.DEX_COQ_ROOT;
@@ -33,12 +33,14 @@ async function run(command, args) {
     maxBuffer: 64 * 1024 * 1024,
   });
   transcript.push(
-    `$ ${command} ${args.join(" ")}\n${result.stdout ?? ""}${result.stderr ?? ""}`,
+    `$ ${command} ${args.join(" ")}\n${result.stdout ?? ""}${
+      result.stderr ?? ""
+    }`
   );
   await writeFile(log, transcript.join("\n"));
   if (result.error || result.status !== 0)
     throw new Error(
-      `${result.error?.message ?? "Verification command failed"}. See ${log}`,
+      `${result.error?.message ?? "Verification command failed"}. See ${log}`
     );
   return result.stdout;
 }
@@ -48,16 +50,22 @@ const sources = [
   "Spec/Units.v",
   "Spec/Assets.v",
   "Spec/AMM.v",
+  "Spec/Routing.v",
   "Contracts/SwapGenerated.v",
   "Contracts/SwapRefinement.v",
+];
+const theorems = [
+  "calculate_amount_out_runs",
+  "frontend_swap_quote_matches_contract",
+  "routed_swap_quote_matches_contract",
 ];
 const snapshots = new Map(
   await Promise.all(
     sources.map(async (source) => [
       source,
       await readFile(join(root, "formal/theories", source)),
-    ]),
-  ),
+    ])
+  )
 );
 for (const [source, bytes] of snapshots) {
   await mkdir(dirname(join(build, source)), { recursive: true });
@@ -115,8 +123,9 @@ try {
   await writeFile(
     auditSource,
     "Require Import DEXFormal.Contracts.SwapRefinement.\n" +
-      "Print Assumptions SwapRefinement.calculate_amount_out_runs.\n" +
-      "Print Assumptions SwapRefinement.frontend_swap_quote_matches_contract.\n",
+      theorems
+        .map((name) => `Print Assumptions SwapRefinement.${name}.\n`)
+        .join("")
   );
   const auditOutput = await run(join(coq, "bin/coqc"), [
     "-q",
@@ -126,7 +135,7 @@ try {
   ]);
   const coqlib = (await run(join(coq, "bin/coqc"), ["-where"])).trim();
   const assumptions = assumptionAudit.auditAssumptions(auditOutput, {
-    expectedReports: 2,
+    expectedReports: theorems.length,
     coqlib,
   });
   // DEFENSE: another feature can change a shared model during the slow kernel check.
@@ -141,17 +150,14 @@ try {
     compiler,
     kernelCheck: "coqchk passed",
     assumptions,
-    theorems: [
-      "calculate_amount_out_runs",
-      "frontend_swap_quote_matches_contract",
-    ],
+    theorems,
     scope:
       "Positive swaps in the bounded uint112 reserve domain; actual inherited AMMMath helper under the official optimized generated-Yul Run.t relation. The extracted frontend request quotes equal its results and it preserves the initial State. ABI decoding, MiniDEX storage integration, ERC20 effects and EVM bytecode remain outside this refinement.",
     sources: Object.fromEntries(
-      [...snapshots].map(([source, bytes]) => [source, hash(bytes)]),
+      [...snapshots].map(([source, bytes]) => [source, hash(bytes)])
     ),
     translation: JSON.parse(
-      await readFile(join(root, "formal/build/swap-translation.json"), "utf8"),
+      await readFile(join(root, "formal/build/swap-translation.json"), "utf8")
     ),
     log,
   };
@@ -162,13 +168,17 @@ try {
       status: "proved",
       theorems: report.theorems,
       report: "formal/build/swap-proof.json",
-    }),
+    })
   );
 } catch (error) {
   await mkdir(dirname(reportPath), { recursive: true });
   await writeFile(
     reportPath,
-    `${JSON.stringify({ status: "proof-error", error: error.message, log }, null, 2)}\n`,
+    `${JSON.stringify(
+      { status: "proof-error", error: error.message, log },
+      null,
+      2
+    )}\n`
   );
   throw error;
 }
