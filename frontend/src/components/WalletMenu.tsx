@@ -1,4 +1,4 @@
-import { formatAmount, shorten } from "../chain/amounts";
+import { formatAmount, shorten, tokenLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmationDialog } from "./ConfirmationDialog";
 import { OnboardingGuide } from "./OnboardingGuide";
@@ -134,8 +134,7 @@ export function WalletMenu({
                 <div className="wallet-asset">
                   <span className="asset-mark">Ξ</span>
                   <div>
-                    <strong>ETH</strong>
-                    <small>Network fees</small>
+                    <strong title="Used for network fees">ETH</strong>
                   </div>
                   <div className="wallet-asset-amount">
                     <strong>
@@ -159,9 +158,8 @@ export function WalletMenu({
                     <span className="asset-mark">
                       {token.symbol.slice(0, 2)}
                     </span>
-                    <div>
-                      <strong>{token.symbol}</strong>
-                      <small>{token.name}</small>
+                    <div title={`${token.name} · ${token.address}`}>
+                      <strong>{tokenLabel(token.address, token.symbol)}</strong>
                     </div>
                     <div className="wallet-asset-amount">
                       <strong>
@@ -175,6 +173,8 @@ export function WalletMenu({
                       {token.kind === "faucet" && (
                         <button
                           className="text"
+                          aria-label={`Claim 10,000 ${token.symbol} (${token.address})`}
+                          title={token.address}
                           disabled={pending}
                           onClick={() =>
                             run(`Claim ${token.symbol}`, (writer) =>

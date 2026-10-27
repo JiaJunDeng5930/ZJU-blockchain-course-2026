@@ -494,9 +494,6 @@ th {
   font-size: 13px;
   font-weight: 550;
 }
-.wallet-asset small {
-  font-size: 11px;
-}
 .wallet-asset-amount {
   margin-left: auto;
   display: grid;
