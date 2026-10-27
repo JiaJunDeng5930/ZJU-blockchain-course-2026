@@ -1,5 +1,21 @@
 # Frontend public acceptance
 
+## Explicit pool locations
+
+Run `npm run test:pool-location`, or invoke
+`contracts/node_modules/.bin/tsx frontend/acceptance/pool-location-public.mts`
+after building the current sources. Three isolated real-chain scenarios pass
+URL query values through the public pool-selection entry point, then check an
+explicit-pool swap against actual events and reserves, re-resolve the same URL
+against an updated snapshot, and reject a real pool outside the active
+deployment without wallet writes. An explicit removal of the parameter permits
+default selection. Results are saved to
+`.local/pool-location-public-*/result.json`.
+
+This checks the domain-to-SDK binding. It does not prove browser push/pop or
+React Swap's separate Best quote routing policy. The pure selection properties
+are proved in Rocq rather than repeated as implementation-shaped unit tests.
+
 ## Confirmed creation and metadata discovery
 
 Run `npm run test:creation-results`, or invoke

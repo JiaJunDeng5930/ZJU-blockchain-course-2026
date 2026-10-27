@@ -59,8 +59,16 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Assets.v`, `Frontend/AssetsForms.v` | Verified asset catalog, pool compatibility, creation/import/faucet decisions and form effects |
 | `theories/Spec/Wrapping.v`, `Frontend/WrappingModel.v` | ETH/WETH principal and maximum gas budget decisions |
 | `theories/Spec/Simulation.v`, `Frontend/SimulationModel.v` | Valid options, request identity, command exclusion, recovery and job-specific stop |
+| `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
 
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
+
+Pool selection distinguishes an absent URL parameter from an explicit empty or
+unknown key. `explicit_pool_is_not_substituted`, `missing_pool_has_no_match`,
+`default_pool_is_first` and `selected_pool_is_available` establish the four
+selection guarantees. The public adapter maps a selected key back to its Pool
+from the same snapshot. Its real-chain acceptance checks the domain-to-SDK
+binding, not React Router's browser history or Swap's separate best-route policy.
 
 The NFT replay contract is an ordered event stream from one ERC721 contract at one fixed block. Asset activation requires observed metadata and supported decimals; persisted metadata alone grants no faucet capability. Wallet results belong to the request/session that issued them. A confirmed transaction and a later failed read are distinct events. A submitted transaction whose receipt cannot be read remains submitted; an unknown submission result is not classified as a known non-submission.
 

@@ -20,6 +20,7 @@
     "test:allowances": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/allowances-public.mts",
     "test:precision": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/precision-public.mts",
     "test:routing": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/routing-public.mts",
+    "test:pool-location": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/pool-location-public.mts",
     "test:replacements": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/replacements-public.mts",
     "test:deadlines": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/deadlines-public.mts",
     "test:simulation": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/simulation-public.mts",
