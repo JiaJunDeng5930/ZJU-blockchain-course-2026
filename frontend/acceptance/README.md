@@ -459,6 +459,15 @@ been burned. Independent RPC events, historical token balances, metadata and
 native debits establish the reported identities, quantities, precision and
 execution fees; the runner does not recompute the AMM or fee formulas.
 
+During the transfer, a real transaction-metadata RPC failure leaves the public
+confirmed journal entry without a descriptor. Its manual-receipt policy and
+read API must still expose the actual transfer evidence. This checks the
+external adapter binding rather than repeating the policy's pure proof.
+
+The same isolated chain also includes a real transfer followed by redemption
+in one block. Both transactions must succeed in that order, and the transfer
+must remain recoverable when the NFT no longer exists at the end of its block.
+
 Actual approvals and same-ABI events from an unconfigured DEX must produce no
 liquidity result. An actual reverted receipt must reject. A real HTTP 503 for
 receipt reads must remain visible; retrying after recovery must return the

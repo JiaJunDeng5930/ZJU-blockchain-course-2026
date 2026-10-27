@@ -4,11 +4,12 @@ import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import { readFile, readdir, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { getAddress, maxUint256, parseEventLogs, parseUnits, type Abi,
+import { createWalletClient, getAddress, http, maxUint256, parseEventLogs, parseUnits, type Abi,
   type Hex, type TransactionReceipt } from "viem";
 import { ExchangeClient } from "../src/chain/client";
 import type { Deployment, LiquidityConfirmation, Pool, Token } from "../src/chain/types";
 import { positionView } from "../src/logic/liquidity";
+import { liquidityReceiptAvailable } from "../src/logic/liquidityReceipt";
 import { WalletController } from "../src/wallet/session";
 import { isolatedChain, root, until } from "./support/chain.mts";
 
@@ -46,16 +47,21 @@ async function main() {
   let wallet: WalletController | undefined;
   let denyReceipts = false;
   let deniedRequests = 0;
+  let denyDescriptions = false;
+  let deniedDescriptions = 0;
   const proxy = createServer(async (request, response) => {
     const chunks: Buffer[] = [];
     for await (const chunk of request) chunks.push(Buffer.from(chunk));
     const body = Buffer.concat(chunks).toString();
     const calls = JSON.parse(body);
-    if (denyReceipts && (Array.isArray(calls) ? calls : [calls])
-      .some(call => call.method === "eth_getTransactionReceipt")) {
-      deniedRequests++;
+    const methods = (Array.isArray(calls) ? calls : [calls]).map(call => call.method);
+    const receiptDenied = denyReceipts && methods.includes("eth_getTransactionReceipt");
+    const descriptionDenied = denyDescriptions && methods.includes("eth_getTransactionByHash");
+    if (receiptDenied || descriptionDenied) {
+      if (receiptDenied) deniedRequests++;
+      if (descriptionDenied) deniedDescriptions++;
       response.writeHead(503, { "content-type": "text/plain" });
-      response.end("Receipt endpoint unavailable during acceptance");
+      response.end("Selected RPC method unavailable during acceptance");
       return;
     }
     const upstream = await fetch(environment.rpcUrl, { method: "POST",
@@ -128,7 +134,7 @@ async function main() {
     for (const token of [first, six]) await send(token, base.abi, "approve", [harbor, maxUint256]);
     const ordered = (firstAmount: bigint, sixAmount: bigint) => same(pool.token0, first)
       ? [firstAmount, sixAmount] as const : [sixAmount, firstAmount] as const;
-    await send(harbor, dex.abi, "addLiquidity", [pool.id,
+    const seedReceipt = await send(harbor, dex.abi, "addLiquidity", [pool.id,
       ...ordered(parseUnits("1000", 18), parseUnits("2000", 6)), 0n, 0n,
       (await read.getBlock()).timestamp + 1200n]);
     const actor = accounts[1], recipient = accounts[2];
@@ -157,10 +163,24 @@ async function main() {
     const id = event(mintReceipt, "LiquidityAdded").positionId as bigint;
     evidence.marketMovement = await send(harbor, dex.abi, "swap", [pool.id,
       first, parseUnits("25", 18), 0n, accounts[0], (await read.getBlock()).timestamp + 1200n]);
-    await perform("Transfer position", async writer => {
-      const result = await writer.transferPosition(pool, id, recipient);
-      hashes.push({ kind: "transfer", hash: result.receipt.transactionHash });
-    });
+    denyDescriptions = true;
+    try {
+      await perform("Transfer position", async writer => {
+        const result = await writer.transferPosition(pool, id, recipient);
+        hashes.push({ kind: "transfer", hash: result.receipt.transactionHash });
+      });
+    } finally { denyDescriptions = false; }
+    const undescribed = await until(() => wallet!.kernel.getSnapshot().journal.find(entry =>
+      entry.state === "confirmed" && same(entry.hash, hashes[1].hash)), entry => !!entry,
+    "confirmed transfer despite unavailable transaction metadata");
+    assert(undescribed && undescribed.state === "confirmed");
+    assert(deniedDescriptions > 0);
+    assert.equal(undescribed.descriptor, null);
+    assert(liquidityReceiptAvailable(deployment.exchanges, undescribed.descriptor));
+    const manuallyRead = await client.liquidityReceipt(undescribed.hash as Hex);
+    assert(manuallyRead && manuallyRead.confirmation.kind === "transfer");
+    assert.equal(manuallyRead.confirmation.receipt.transactionHash, hashes[1].hash);
+    evidence.unavailableDescription = { deniedRequests: deniedDescriptions, entry: undescribed, manuallyRead };
     await select(recipient);
     const snapshot = await client.snapshot(recipient, tokens);
     const position = snapshot.positions.find(p => same(p.exchange.address, harbor) && p.id === id);
@@ -238,6 +258,49 @@ async function main() {
     assert.notDeepEqual(redeemed, deposited, "The real intervening swap distinguishes the historical deposit from redemption");
     evidence.savedHashes = saved;
     scenarios.push("Restored history recovers mixed-precision mint, transfer and new-owner redemption after NFT burn using saved hashes");
+    scenarios.push("Real transaction metadata failure leaves a confirmed transfer reachable through the manual receipt policy and read API");
+
+    const seedId = event(seedReceipt, "LiquidityAdded").positionId as bigint;
+    const recipientWallet = createWalletClient({ account: recipient, chain: environment.chain,
+      transport: http(environment.rpcUrl) });
+    let sameBlockTransfer: Hex, sameBlockRedemption: Hex;
+    await rpc("evm_setAutomine", [false]);
+    try {
+      const pending = await read.getBlock({ blockTag: "pending" });
+      assert(pending.baseFeePerGas !== null);
+      sameBlockTransfer = await admin.writeContract({ address: harbor, abi: dex.abi,
+        functionName: "safeTransferFrom", args: [accounts[0], recipient, seedId],
+        gas: 1_000_000n, gasPrice: pending.baseFeePerGas + 2_000_000_000n });
+      sameBlockRedemption = await recipientWallet.writeContract({ address: harbor, abi: dex.abi,
+        functionName: "removeLiquidity", args: [seedId, 0n, 0n, pending.timestamp + 1200n],
+        gas: 1_000_000n, gasPrice: pending.baseFeePerGas + 1_000_000_000n });
+      await rpc("evm_mine");
+    } finally { await rpc("evm_setAutomine", [true]); }
+    const [transferReceipt, redemptionReceipt] = await Promise.all([
+      read.getTransactionReceipt({ hash: sameBlockTransfer! }),
+      read.getTransactionReceipt({ hash: sameBlockRedemption! }),
+    ]);
+    assert.equal(transferReceipt.status, "success");
+    assert.equal(redemptionReceipt.status, "success");
+    assert.equal(transferReceipt.blockNumber, redemptionReceipt.blockNumber);
+    assert(transferReceipt.transactionIndex < redemptionReceipt.transactionIndex);
+    await assert.rejects(read.readContract({ address: harbor, abi: dex.abi,
+      functionName: "ownerOf", args: [seedId], blockNumber: transferReceipt.blockNumber }));
+    const restoredTransfer = await restored.liquidityReceipt(transferReceipt.transactionHash);
+    assert(restoredTransfer && restoredTransfer.confirmation.kind === "transfer");
+    const transferEvent = event(transferReceipt, "Transfer");
+    assert.equal(restoredTransfer.confirmation.positionId, transferEvent.tokenId);
+    assert.equal(restoredTransfer.confirmation.pool.id, event(seedReceipt, "LiquidityAdded").poolId);
+    assert(same(restoredTransfer.confirmation.pool.exchange.address, harbor));
+    assert(same(restoredTransfer.confirmation.from, transferEvent.from as string));
+    assert(same(restoredTransfer.confirmation.to, transferEvent.to as string));
+    assert(same(restoredTransfer.confirmation.from, accounts[0]));
+    assert(same(restoredTransfer.confirmation.to, recipient));
+    assert.deepEqual(restoredTransfer.tokens.map(token => token.address.toLowerCase()),
+      [pool.token0.toLowerCase(), pool.token1.toLowerCase()]);
+    assert.deepEqual(restoredTransfer.tokens.map(token => token.decimals).sort((a, b) => a - b), [6, 18]);
+    evidence.sameBlockRedemption = { transferReceipt, redemptionReceipt, restoredTransfer };
+    scenarios.push("A transfer remains recoverable when its recipient redeems and burns the NFT later in the same block");
 
     const approval = await send(first, base.abi, "approve", [harbor, 0n]);
     assert.equal(await restored.liquidityReceipt(approval.transactionHash), null);
