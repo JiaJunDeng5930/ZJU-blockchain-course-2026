@@ -36,3 +36,34 @@ This runner drives the public `WalletKernel` with wallet observations, operation
 The scenarios cover 45 mixed transaction records across three pages, every status group, faucet senders and beneficiaries, reobserving a canonical account, wallet switching and disconnection, empty-result reset, non-mutating navigation, and receipt updates that preserve a valid page or clamp a vanished page. A separate 41-pending-transaction scenario checks shrinking results. An archive emitted by the real public kernel is recovered into a new kernel and remains navigable without restoring an active operation. Expected scenario results are defined from these public behaviors; the runner does not read the filtering or pagination implementation.
 
 Each run records its scenario results and extracted-bundle SHA256 in `.local/activity-public-*/result.json`. These local execution artifacts are not committed. Run the TypeScript command above to check both acceptance runners.
+
+## Token allowance management
+
+Build the production artifacts and extracted bundle, then run:
+
+```sh
+npm run build
+contracts/node_modules/.bin/tsx frontend/acceptance/allowances-public.mts
+```
+
+This runner starts its own Hardhat node and invokes the public `ExchangeClient`,
+`WalletController` and `AllowanceController` SDKs through a real RPC proxy. It
+checks observed allowances and revoke transactions against actual chain state,
+including WETH and a pre-existing maximum uint256 allowance. Other owners,
+spenders, token balances and populated pool reserves must remain unchanged.
+Cancelling, selecting a zero allowance or selecting an unsupported spender must
+not send a transaction. Account changes and delayed observations must not reuse
+another owner's records or prepared operation.
+
+A small test-only ERC20 fixture returns `false` from `approve`, as permitted by
+ERC-20. It is compiled separately with the installed native compiler, outside
+production contract sources. Controlled RPC faults distinguish an unavailable
+allowance from zero and a confirmed transaction from an unverified post-read.
+These are faults at external interfaces; the extracted business logic is not
+mocked. The runner does not read private model state or open a browser.
+
+Each run retains its compiler output, isolated chain log, RPC wallet-write log
+and `result.json` in `.local/allowances-public-*`, including the extracted bundle
+SHA256. Setup transactions use the upstream node directly, so wallet-write
+counts represent only SDK operations through the proxy. The main development
+node and `shared/deployment.json` are unchanged.
