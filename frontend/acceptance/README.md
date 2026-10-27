@@ -235,3 +235,26 @@ and fixture compiler output stay in that directory. The runner stops its own
 node and wallet controller and does not use the browser or development services.
 This accepts the public transaction-result boundary, not React rendering,
 wallet-provider honesty, compiler correctness or EVM semantics.
+
+## Asset preparation and pool creation
+
+After building the frontend kernel and contract artifacts:
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/asset-setup-public.mts
+```
+
+One isolated ledger exercises the public wallet/writer interfaces from an
+unfunded account through ETH and ERC20 funding, a new eighteen-decimal test
+token with zero initial supply, token import, and an empty pool on the selected
+DEX. Deployment receipts, on-chain metadata, account balances and actual pool
+records provide the evidence. The administrative ETH faucet may mine an empty
+block; it must not invent a wallet transaction or change another account.
+
+Real wrapping and unwrapping are checked using transaction value and calldata,
+successful receipts, ERC20 mint/burn Transfer logs and native/token balances.
+Wrapping the entire ETH balance and unwrapping with no ETH for gas must reject
+before sending: the public wallet error and pending state, nonce and balances
+are observed independently. No second gas-budget model supplies the oracle.
+Evidence and source fingerprints remain under `.local/asset-setup-public-*/`;
+the runner does not use the browser or development services.
