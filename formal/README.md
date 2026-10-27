@@ -51,6 +51,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
+| `theories/Frontend/ArbitrageCapital.v` | Exact user-entered capital for manual route comparison, reusing the shared arbitrage candidate calculation |
 | `theories/Frontend/Wallet.v`, `Transactions.v`, `TransactionsProofs.v` | Wallet/session identity, stale replies, signature authority, submission uncertainty and immutable confirmation history |
 | `theories/Frontend/ReplacementSearch.v` | Private receipt observation for a journal entry's bound descriptor; see [transaction confirmation details](TRANSACTION-REPLACEMENTS.md) |
 | `theories/Frontend/TransactionHistory.v` | Per-page archive ownership, read-only recovery and storage failure policy; see [transaction history](TRANSACTION-HISTORY.md) |
@@ -62,6 +63,25 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
 
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
+
+Manual arbitrage uses `Frontend/ArbitrageCapital.v` to parse one exact capital
+amount at the token's declared precision and compare routes using that amount.
+It reuses the shared candidate calculation rather than replacing the simulator's
+finite search or adding another AMM formula. The public `quoteArbitrage` adapter
+reads pools at one block; its returned routes retain the input amount and quote
+block. A quote does not establish wallet funding. Execution still uses the
+existing balance, approval, minimum-profit and captured-request checks. Public
+real-chain acceptance checks the binding to actual approvals, events, token
+transfers and reserves; it does not prove React rendering or the EVM.
+
+`scan_at_exact_capital`, `scan_at_profitable`, `scan_at_members` and
+`scan_at_maximum` establish the selected candidate's capital, positive profit,
+pool provenance and maximum quoted profit among the enumerated routes.
+`quote_amount_exact`, `quote_amount_supported` and `quote_amount_invalid` connect
+that search to exact token-unit parsing and supported assets, rejecting invalid
+amounts without a fallback to automatic capital sizes. These seven theorems are
+closed under the global context. Maximum profit here fixes the user's input;
+it is not an optimization over all possible capital amounts.
 
 Pool selection distinguishes an absent URL parameter from an explicit empty or
 unknown key. `explicit_pool_is_not_substituted`, `missing_pool_has_no_match`,

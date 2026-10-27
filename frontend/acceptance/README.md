@@ -274,6 +274,22 @@ A normal twenty-round run exercises twenty funded addresses. A fresh controller 
 
 This checks the service and worker obligations at the Rocq model's external boundary, rather than repeating the model's pure transition proofs. It does not test React, browsers, wallet extensions or arbitrary external RPC providers. Results, source and generated-kernel fingerprints, HTTP observations, service logs and chain logs are saved in `.local/simulation-public-*/`. Both spawned process groups are stopped and the isolated node's exit is observed before a successful result is published.
 
+## Exact capital for manual arbitrage
+
+```sh
+npm run test:arbitrage-capital
+```
+
+This runner uses the public `quoteArbitrage` and wallet writer entrypoints on an
+isolated real chain. It checks nonpreset capital amounts for 18- and 6-decimal
+tokens, replacement quotes for changed amounts, no-profit markets, rejected
+amount inputs, and an unfunded caller that must not send approval or execution
+transactions. Actual token transfers and pool events establish that the quoted
+capital reaches both legs of one atomic execution and that the reported profit
+matches the caller's balance change. No production quote formula is copied into
+the oracle. These checks bind the extracted logic to the public adapters and
+chain effects; they do not validate DOM behavior or prove EVM semantics.
+
 ## Realized atomic arbitrage amounts and execution fee
 
 After building the production frontend and contract artifacts, run:
