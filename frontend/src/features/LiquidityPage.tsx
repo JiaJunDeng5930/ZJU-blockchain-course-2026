@@ -1,170 +1,349 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { formatUnits, getAddress, ZeroAddress } from "ethers";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import {
+  AmountField,
+  FormError,
+  amountError,
+  toleranceError,
+} from "../components/Forms";
 import {
   depositAmounts,
   formatAmount,
+  minimumReceived,
+  poolKey,
   positiveAmount,
   sameAddress,
   slippageBps,
 } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { Pool, Position } from "../chain/types";
-import {
-  AmountField,
-  FormError,
-  SubmitButton,
-  amountError,
-  toleranceError,
-} from "../components/Forms";
+import { PoolActivity } from "./PoolActivity";
+import "./LiquidityPage.css";
 
 export function LiquidityPage({ pool }: { pool: Pool }) {
-  const { snapshot, session, symbol, run } = useDex();
-  const [amount0, setAmount0] = useState("100");
-  const [amount1, setAmount1] = useState("100");
+  const { snapshot, session, pending, symbol } = useDex();
+  const [creating, setCreating] = useState(false);
+  const [managed, setManaged] = useState<string>();
+  const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
+  const pools = snapshot.data?.pools ?? [];
+  const positions = (snapshot.data?.positions ?? [])
+    .filter(
+      (position) => session && sameAddress(position.owner, session.address),
+    )
+    .sort((a, b) => Number(b.createdAt - a.createdAt) || Number(b.id - a.id));
+  const inspected =
+    pools.find((candidate) => poolKey(candidate) === inspectedPool) ?? pool;
+
+  return (
+    <div className="liquidity-page">
+      <header className="liquidity-heading">
+        <div>
+          <h1>Your liquidity</h1>
+          <p>Manage your pool positions and the assets they hold.</p>
+        </div>
+        <button
+          className="button-primary liquidity-new"
+          disabled={pending || !session}
+          onClick={() => setCreating(true)}
+        >
+          New position
+        </button>
+      </header>
+      <section className="liquidity-positions" aria-label="My positions">
+        <div className="liquidity-list-heading">
+          <h2>My positions</h2>
+          <span>{positions.length} active</span>
+        </div>
+        {!session ? (
+          <div className="liquidity-empty">
+            <h3>Connect a wallet to see your positions</h3>
+            <p>
+              Your ERC721 positions give you the right to redeem a share of the
+              pool.
+            </p>
+          </div>
+        ) : positions.length === 0 ? (
+          <div className="liquidity-empty">
+            <div className="liquidity-empty-mark" aria-hidden="true">
+              +
+            </div>
+            <h3>No liquidity positions yet</h3>
+            <p>
+              Add two tokens to a pool and receive a position NFT. Trading fees
+              remain in the pool and contribute to its reserves.
+            </p>
+            <button
+              className="button-primary"
+              disabled={pending}
+              onClick={() => setCreating(true)}
+            >
+              Create your first position
+            </button>
+          </div>
+        ) : (
+          <div className="liquidity-position-list">
+            {positions.map((position) => {
+              const key = `${position.exchange.address}:${position.id}`;
+              return (
+                <PositionCard
+                  key={key}
+                  position={position}
+                  expanded={managed === key}
+                  onToggle={() => setManaged(managed === key ? undefined : key)}
+                />
+              );
+            })}
+          </div>
+        )}
+      </section>
+      <section
+        className="liquidity-explore"
+        aria-label="Explore pool liquidity"
+      >
+        <div>
+          <h2>Explore a pool</h2>
+          <p>Inspect reserves, liquidity providers and trading fees.</p>
+        </div>
+        <label className="liquidity-pool-select">
+          Pool
+          <select
+            aria-label="Liquidity pool"
+            value={poolKey(inspected)}
+            onChange={(event) => setInspectedPool(event.target.value)}
+          >
+            {pools.map((candidate) => (
+              <option key={poolKey(candidate)} value={poolKey(candidate)}>
+                {symbol(candidate.token0)} / {symbol(candidate.token1)} ·{" "}
+                {candidate.exchange.name}
+              </option>
+            ))}
+          </select>
+        </label>
+        <PoolActivity key={poolKey(inspected)} pool={inspected} />
+      </section>
+      {creating && (
+        <CreatePosition initialPool={pool} onClose={() => setCreating(false)} />
+      )}
+    </div>
+  );
+}
+
+function CreatePosition({
+  initialPool,
+  onClose,
+}: {
+  initialPool: Pool;
+  onClose: () => void;
+}) {
+  const { snapshot, symbol, pending, session, run } = useDex();
+  const [selection, setSelection] = useState(poolKey(initialPool));
+  const [amount0, setAmount0] = useState("");
+  const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
-  const error0 = amountError(amount0, snapshot.data?.balances[pool.token0]);
-  const error1 = amountError(amount1, snapshot.data?.balances[pool.token1]);
-  const errorSlippage = toleranceError(slippage);
-  const invalid = error0 ?? error1 ?? errorSlippage;
+  const [reviewing, setReviewing] = useState(false);
+  const pools = snapshot.data!.pools;
+  const pool = pools.find((candidate) => poolKey(candidate) === selection)!;
+  const error0 = amountError(amount0, snapshot.data!.balances[pool.token0]);
+  const error1 = amountError(amount1, snapshot.data!.balances[pool.token1]);
+  const invalid = error0 ?? error1 ?? toleranceError(slippage);
   const used =
     !error0 && !error1
       ? depositAmounts(pool, positiveAmount(amount0), positiveAmount(amount1))
       : undefined;
-  const positions = snapshot.data?.positions ?? [];
-  const mine = positions.filter(
-    (position) => session && sameAddress(position.owner, session.address),
-  );
-  const sources = positions.filter(
-    (position) =>
-      sameAddress(position.exchange.address, pool.exchange.address) &&
-      position.poolId === pool.id,
-  );
+  function changeAmount(value: string, index: 0 | 1) {
+    if (index === 0) setAmount0(value);
+    else setAmount1(value);
+    if (pool.totalShares === 0n) return;
+    if (value === "") {
+      if (index === 0) setAmount1("");
+      else setAmount0("");
+      return;
+    }
+    if (!amountError(value)) {
+      const converted =
+        index === 0
+          ? (positiveAmount(value) * pool.reserve1) / pool.reserve0
+          : (positiveAmount(value) * pool.reserve0) / pool.reserve1;
+      if (index === 0) setAmount1(formatUnits(converted, 18));
+      else setAmount0(formatUnits(converted, 18));
+    }
+  }
   return (
-    <>
-      <div className="workspace">
+    <ConfirmationDialog
+      title={reviewing ? "Review new position" : "New liquidity position"}
+      onClose={onClose}
+    >
+      {reviewing && used ? (
+        <div className="liquidity-create-review">
+          <p className="liquidity-market-name">
+            {symbol(pool.token0)} / {symbol(pool.token1)} · {pool.exchange.name}
+          </p>
+          <dl className="liquidity-review-amounts">
+            <dt>{symbol(pool.token0)}</dt>
+            <dd>{formatAmount(used[0], 8)}</dd>
+            <dt>{symbol(pool.token1)}</dt>
+            <dd>{formatAmount(used[1], 8)}</dd>
+          </dl>
+          <p>
+            You receive an ERC721 position NFT. Its share of both pool assets,
+            including retained trading fees, can be redeemed later.
+          </p>
+          <dl className="liquidity-detail-list">
+            <dt>Minimum {symbol(pool.token0)} deposited</dt>
+            <dd>
+              {formatAmount(minimumReceived(used[0], slippageBps(slippage)), 8)}
+            </dd>
+            <dt>Minimum {symbol(pool.token1)} deposited</dt>
+            <dd>
+              {formatAmount(minimumReceived(used[1], slippageBps(slippage)), 8)}
+            </dd>
+            <dt>Slippage tolerance</dt>
+            <dd>{slippage}%</dd>
+            <dt>Recipient</dt>
+            <dd>
+              <code>{session?.address}</code>
+            </dd>
+          </dl>
+          <p className="liquidity-small">
+            Approve each token if needed, then confirm the deposit. Unused
+            amounts stay in your wallet.
+          </p>
+          <div className="liquidity-dialog-actions">
+            <button className="secondary" onClick={() => setReviewing(false)}>
+              Back
+            </button>
+            <button
+              className="button-primary"
+              disabled={pending || !session || !!invalid}
+              onClick={() => {
+                onClose();
+                run("Add liquidity", (writer) =>
+                  writer.addLiquidity(
+                    pool,
+                    positiveAmount(amount0),
+                    positiveAmount(amount1),
+                    slippageBps(slippage),
+                  ),
+                );
+              }}
+            >
+              Approve & mint position NFT
+            </button>
+          </div>
+        </div>
+      ) : (
         <form
-          className="card form"
+          className="liquidity-create-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!invalid)
-              run("Add liquidity", (writer) =>
-                writer.addLiquidity(
-                  pool,
-                  positiveAmount(amount0),
-                  positiveAmount(amount1),
-                  slippageBps(slippage),
-                ),
-              );
+            if (!invalid) setReviewing(true);
           }}
         >
-          <h2>Add liquidity</h2>
-          <p>
-            Supply both tokens to mint an ERC721 position. Existing pools take
-            only the amounts needed at their current ratio.
-          </p>
-          <AmountField
-            label={`${symbol(pool.token0)} maximum`}
-            name="Liquidity token 0"
-            value={amount0}
-            onChange={setAmount0}
-          />
-          <AmountField
-            label={`${symbol(pool.token1)} maximum`}
-            name="Liquidity token 1"
-            value={amount1}
-            onChange={setAmount1}
-          />
-          <AmountField
-            label="Slippage tolerance (%)"
-            name="Liquidity slippage"
-            value={slippage}
-            onChange={setSlippage}
-          />
-          <FormError message={invalid} />
-          {used && (
-            <p>
-              Estimated deposit: {formatAmount(used[0])} {symbol(pool.token0)} +{" "}
-              {formatAmount(used[1])} {symbol(pool.token1)}. Remaining tokens
-              stay in your wallet.
+          <label>
+            Pool
+            <select
+              aria-label="Position pool"
+              value={selection}
+              onChange={(event) => {
+                setSelection(event.target.value);
+                setAmount0("");
+                setAmount1("");
+              }}
+            >
+              {pools.map((candidate) => (
+                <option key={poolKey(candidate)} value={poolKey(candidate)}>
+                  {symbol(candidate.token0)} / {symbol(candidate.token1)} ·{" "}
+                  {candidate.exchange.name}
+                </option>
+              ))}
+            </select>
+          </label>
+          {pool.totalShares === 0n && (
+            <p className="liquidity-notice">
+              This pool has no liquidity. Your first deposit sets the starting
+              price.
             </p>
           )}
-          <SubmitButton disabled={!!invalid}>
-            Approve & mint position NFT
-          </SubmitButton>
-        </form>
-        <section className="card">
-          <h2>My positions</h2>
-          <p>
-            Burn a position to receive its share of current reserves, including
-            fees. Original deposited amounts are historical.
-          </p>
-          {mine.length === 0 && <p>No active positions in this account.</p>}
-          {mine.map((position) => (
-            <PositionCard
-              key={`${position.exchange.address}:${position.id}`}
-              position={position}
-              slippage={slippage}
+          <div className="liquidity-deposit-token">
+            <AmountField
+              label={symbol(pool.token0)}
+              name="Liquidity token 0"
+              value={amount0}
+              onChange={(value) => changeAmount(value, 0)}
             />
-          ))}
-        </section>
-      </div>
-      <section className="card sources">
-        <h2>Liquidity sources · active pool</h2>
-        <div className="table-scroll">
-          <table>
-            <thead>
-              <tr>
-                <th>NFT</th>
-                <th>Current owner</th>
-                <th>Initial deposit</th>
-                <th>Shares</th>
-                <th>Created</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sources.map((position) => (
-                <tr key={String(position.id)}>
-                  <td>#{String(position.id)}</td>
-                  <td>
-                    <code>{position.owner}</code>
-                  </td>
-                  <td>
-                    {formatAmount(position.amount0)} /{" "}
-                    {formatAmount(position.amount1)}
-                  </td>
-                  <td>{formatAmount(position.shares)}</td>
-                  <td>
-                    {new Date(
-                      Number(position.createdAt) * 1000,
-                    ).toLocaleString()}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-    </>
+            <small>
+              Balance {formatAmount(snapshot.data!.balances[pool.token0] ?? 0n)}{" "}
+              {symbol(pool.token0)}
+            </small>
+          </div>
+          <div className="liquidity-deposit-token">
+            <AmountField
+              label={symbol(pool.token1)}
+              name="Liquidity token 1"
+              value={amount1}
+              onChange={(value) => changeAmount(value, 1)}
+            />
+            <small>
+              Balance {formatAmount(snapshot.data!.balances[pool.token1] ?? 0n)}{" "}
+              {symbol(pool.token1)}
+            </small>
+          </div>
+          <FormError message={amount0 || amount1 ? invalid : undefined} />
+          <details className="liquidity-settings">
+            <summary>Settings · {slippage}% slippage</summary>
+            <AmountField
+              label="Slippage tolerance (%)"
+              name="Liquidity slippage"
+              value={slippage}
+              onChange={setSlippage}
+            />
+            <FormError message={toleranceError(slippage)} />
+          </details>
+          <button
+            className="button-primary liquidity-review-button"
+            type="submit"
+            disabled={pending || !!invalid}
+          >
+            Review position
+          </button>
+        </form>
+      )}
+    </ConfirmationDialog>
   );
 }
+
 function PositionCard({
   position,
-  slippage,
+  expanded,
+  onToggle,
 }: {
   position: Position;
-  slippage: string;
+  expanded: boolean;
+  onToggle: () => void;
 }) {
   const { client, snapshot, symbol, pending, session, run } = useDex();
   const [showMetadata, setShowMetadata] = useState(false);
+  const [review, setReview] = useState<"redeem" | "transfer">();
+  const [slippage, setSlippage] = useState("0.5");
+  const [recipient, setRecipient] = useState("");
   const pool = snapshot.data!.pools.find(
-    (p) =>
-      sameAddress(p.exchange.address, position.exchange.address) &&
-      p.id === position.poolId,
+    (candidate) =>
+      sameAddress(candidate.exchange.address, position.exchange.address) &&
+      candidate.id === position.poolId,
   )!;
   const amounts = [
     (pool.reserve0 * position.shares) / pool.totalShares,
     (pool.reserve1 * position.shares) / pool.totalShares,
   ] as const;
+  const heldValue =
+    (position.amount0 * pool.reserve1) / pool.reserve0 + position.amount1;
+  const currentValue =
+    (amounts[0] * pool.reserve1) / pool.reserve0 + amounts[1];
+  const valueChange = currentValue - heldValue;
+  const sharePercent =
+    Number((position.shares * 1000000n) / pool.totalShares) / 10000;
   const metadata = useQuery({
     queryKey: [
       "metadata",
@@ -176,60 +355,206 @@ function PositionCard({
     enabled: showMetadata,
   });
   const invalidTolerance = toleranceError(slippage);
+  let recipientError: string | undefined;
+  try {
+    const address = getAddress(recipient);
+    if (address === ZeroAddress || sameAddress(address, position.owner))
+      recipientError = "Choose a different, nonzero recipient address.";
+  } catch {
+    recipientError = "Enter a valid Ethereum recipient address.";
+  }
   return (
-    <article className="position">
-      <h3>
-        {position.exchange.name} · NFT #{String(position.id)}
-      </h3>
-      <p>
-        {symbol(pool.token0)}/{symbol(pool.token1)} · pool #{String(pool.id)}
-      </p>
-      <dl className="details">
-        <dt>Shares</dt>
-        <dd>{formatAmount(position.shares)}</dd>
-        <dt>Initial deposit</dt>
-        <dd>
-          {formatAmount(position.amount0)} / {formatAmount(position.amount1)}
-        </dd>
-        <dt>Redeem quote</dt>
-        <dd>
-          {formatAmount(amounts[0])} {symbol(pool.token0)} /{" "}
-          {formatAmount(amounts[1])} {symbol(pool.token1)}
-        </dd>
-        <dt>Created</dt>
-        <dd>{new Date(Number(position.createdAt) * 1000).toLocaleString()}</dd>
-      </dl>
-      <button
-        className="secondary"
-        disabled={pending || !session || !!invalidTolerance}
-        onClick={() =>
-          run("Redeem position", (writer) =>
-            writer.removeLiquidity(
-              pool,
-              position.id,
-              amounts,
-              slippageBps(slippage),
-            ),
-          )
-        }
-      >
-        Burn NFT #{String(position.id)} & redeem
-      </button>
-      <button className="text" onClick={() => setShowMetadata(!showMetadata)}>
-        View on-chain metadata
-      </button>
-      {showMetadata && (
-        <div>
-          {metadata.isPending ? (
-            <p>Reading metadata…</p>
-          ) : metadata.error ? (
-            <p role="alert">{metadata.error.message}</p>
-          ) : (
-            <pre className="result">
-              {JSON.stringify(metadata.data, null, 2)}
-            </pre>
+    <article className="liquidity-position">
+      <div className="liquidity-position-summary">
+        <div className="liquidity-position-identity">
+          <div className="liquidity-token-pair" aria-hidden="true">
+            <span>{symbol(pool.token0).slice(0, 1)}</span>
+            <span>{symbol(pool.token1).slice(0, 1)}</span>
+          </div>
+          <div>
+            <strong>
+              {symbol(pool.token0)} / {symbol(pool.token1)}
+            </strong>
+            <h3>
+              {position.exchange.name} · NFT #{String(position.id)}
+            </h3>
+          </div>
+        </div>
+        <div className="liquidity-position-assets">
+          <span>
+            {formatAmount(amounts[0])} {symbol(pool.token0)}
+          </span>
+          <span>
+            {formatAmount(amounts[1])} {symbol(pool.token1)}
+          </span>
+        </div>
+        <button
+          className="secondary liquidity-manage"
+          aria-label={`Manage NFT #${position.id}`}
+          aria-expanded={expanded}
+          onClick={onToggle}
+        >
+          {expanded ? "Close" : "Manage"}
+        </button>
+      </div>
+      {expanded && (
+        <div className="liquidity-position-detail">
+          <dl className="liquidity-detail-list">
+            <dt>Shares / pool ownership</dt>
+            <dd>
+              {formatAmount(position.shares)} / {sharePercent.toFixed(4)}%
+            </dd>
+            <dt>Initial deposit</dt>
+            <dd>
+              {formatAmount(position.amount0)} {symbol(pool.token0)} /{" "}
+              {formatAmount(position.amount1)} {symbol(pool.token1)}
+            </dd>
+            <dt>Redeem quote</dt>
+            <dd>
+              {formatAmount(amounts[0])} {symbol(pool.token0)} /{" "}
+              {formatAmount(amounts[1])} {symbol(pool.token1)}
+            </dd>
+            <dt>Current value at pool price</dt>
+            <dd>
+              {formatAmount(currentValue)} {symbol(pool.token1)}
+            </dd>
+            <dt>Compared with holding the initial deposit</dt>
+            <dd>
+              {valueChange >= 0n ? "+" : ""}
+              {formatAmount(valueChange)} {symbol(pool.token1)}
+            </dd>
+            <dt>Created</dt>
+            <dd>
+              {new Date(Number(position.createdAt) * 1000).toLocaleString()}
+            </dd>
+          </dl>
+          <p className="liquidity-small">
+            Fees are included in the redeem quote. The value comparison also
+            reflects price changes and impermanent loss; it is not a separate
+            fee balance or a guaranteed return.
+          </p>
+          <div className="liquidity-position-actions">
+            <button
+              className="button-primary"
+              disabled={pending || !session}
+              onClick={() => setReview("redeem")}
+            >
+              Burn NFT #{String(position.id)} & redeem
+            </button>
+            <button
+              className="secondary"
+              disabled={pending || !session}
+              onClick={() => setReview("transfer")}
+            >
+              Transfer position
+            </button>
+            <button
+              className="text"
+              onClick={() => setShowMetadata(!showMetadata)}
+            >
+              View on-chain metadata
+            </button>
+          </div>
+          {showMetadata && (
+            <div>
+              {metadata.isPending ? (
+                <p>Reading metadata…</p>
+              ) : metadata.error ? (
+                <p role="alert">{metadata.error.message}</p>
+              ) : (
+                <pre className="liquidity-metadata">
+                  {JSON.stringify(metadata.data, null, 2)}
+                </pre>
+              )}
+            </div>
           )}
         </div>
+      )}
+      {review === "redeem" && (
+        <ConfirmationDialog
+          title="Review position redemption"
+          onClose={() => setReview(undefined)}
+        >
+          <p>
+            NFT #{String(position.id)} will be permanently burned. Both assets,
+            including your share of fees, will be sent to its current owner:
+          </p>
+          <code className="liquidity-recipient">{position.owner}</code>
+          <dl className="liquidity-detail-list">
+            <dt>Expected {symbol(pool.token0)}</dt>
+            <dd>{formatAmount(amounts[0])}</dd>
+            <dt>Expected {symbol(pool.token1)}</dt>
+            <dd>{formatAmount(amounts[1])}</dd>
+          </dl>
+          <AmountField
+            label="Redemption slippage (%)"
+            value={slippage}
+            onChange={setSlippage}
+          />
+          <FormError message={invalidTolerance} />
+          {!invalidTolerance && (
+            <p className="liquidity-small">
+              Minimum received:{" "}
+              {formatAmount(minimumReceived(amounts[0], slippageBps(slippage)))}{" "}
+              {symbol(pool.token0)} and{" "}
+              {formatAmount(minimumReceived(amounts[1], slippageBps(slippage)))}{" "}
+              {symbol(pool.token1)}.
+            </p>
+          )}
+          <button
+            className="button-primary"
+            disabled={pending || !!invalidTolerance}
+            onClick={() => {
+              setReview(undefined);
+              run("Redeem position", (writer) =>
+                writer.removeLiquidity(
+                  pool,
+                  position.id,
+                  amounts,
+                  slippageBps(slippage),
+                ),
+              );
+            }}
+          >
+            Confirm redemption
+          </button>
+        </ConfirmationDialog>
+      )}
+      {review === "transfer" && (
+        <ConfirmationDialog
+          title="Transfer liquidity position"
+          onClose={() => setReview(undefined)}
+        >
+          <p>
+            Transfer NFT #{String(position.id)} and all redemption rights to the
+            recipient. You will no longer be able to redeem this position.
+          </p>
+          <label>
+            Recipient address
+            <input
+              value={recipient}
+              onChange={(event) => setRecipient(event.target.value)}
+              placeholder="0x…"
+            />
+          </label>
+          {recipient && <FormError message={recipientError} />}
+          <button
+            className="button-primary"
+            disabled={pending || !!recipientError}
+            onClick={() => {
+              setReview(undefined);
+              run("Transfer position", (writer) =>
+                writer.transferPosition(
+                  pool,
+                  position.id,
+                  getAddress(recipient),
+                ),
+              );
+            }}
+          >
+            Confirm transfer
+          </button>
+        </ConfirmationDialog>
       )}
     </article>
   );

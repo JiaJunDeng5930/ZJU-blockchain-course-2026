@@ -1,4 +1,5 @@
 import { expect, test, type Locator, type Page } from "@playwright/test";
+import { expectStatus, goToWorkspace, selectLocalAccount } from "./navigation";
 import { readFileSync } from "node:fs";
 import {
   Contract,
@@ -21,18 +22,6 @@ const provider = new JsonRpcProvider(deployment.rpcUrl, deployment.chainId, {
   cacheTimeout: -1,
 });
 
-async function confirmed(page: Page, operation: string) {
-  await expect(
-    page.getByRole("status").filter({ hasText: `${operation} confirmed` }),
-  ).toBeVisible();
-}
-async function selectAccount(page: Page, account: string) {
-  await page.getByLabel("Test account").selectOption(account.toLowerCase());
-  await expect(page.getByLabel("Connected account")).toHaveAttribute(
-    "title",
-    new RegExp(`^${account}$`, "i"),
-  );
-}
 function positionCard(page: Page, id: bigint): Locator {
   return page.locator("article").filter({
     has: page.getByRole("heading", { name: new RegExp(`NFT #${id}$`) }),
@@ -42,6 +31,7 @@ function positionCard(page: Page, id: bigint): Locator {
 test("a provider can review, cancel, transfer and redeem an NFT with a retained liquidity history", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 581, height: 900 });
   const accounts: string[] = await provider.send("eth_accounts", []);
   const providerAddress = accounts[18];
   const recipientAddress = accounts[19];
@@ -56,27 +46,51 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
   const positionId: bigint = await exchange.nextPositionId();
 
   await page.goto("/");
-  await selectAccount(page, providerAddress);
-  await page.getByRole("button", { name: "Liquidity", exact: true }).click();
+  await selectLocalAccount(page, providerAddress);
+  await goToWorkspace(page, "Liquidity");
+  const newPosition = page.getByRole("button", {
+    name: "New position",
+    exact: true,
+  });
+  await expect(newPosition).toBeVisible();
+  const primaryBounds = await newPosition.boundingBox();
+  expect(primaryBounds!.y + primaryBounds!.height).toBeLessThan(900);
+  await expect(page.getByLabel("Liquidity token 0")).not.toBeVisible();
+  await newPosition.click();
+  const supply = page.getByRole("dialog", {
+    name: "New liquidity position",
+    exact: true,
+  });
+  await expect(supply).toBeVisible();
   await page.getByLabel("Liquidity token 0").fill("50");
   await page.getByLabel("Liquidity token 1").fill("50");
+  await supply
+    .getByRole("button", { name: "Review position", exact: true })
+    .click();
+  await expect(
+    page.getByRole("dialog", { name: "Review new position", exact: true }),
+  ).toContainText("ERC721 position NFT");
   await page
     .getByRole("button", { name: "Approve & mint position NFT" })
     .click();
-  await confirmed(page, "Add liquidity");
+  await expectStatus(page, "Add liquidity confirmed");
   await expect
     .poll(() => exchange.ownerOf(positionId))
     .toMatch(new RegExp(`^${providerAddress}$`, "i"));
   // A real trade after the deposit distinguishes mark-to-market changes from a static original deposit.
-  await page.getByRole("button", { name: "Swap", exact: true }).click();
+  await goToWorkspace(page, "Swap");
   await page.getByLabel("Swap amount").fill("500");
   await page
-    .getByRole("button", { name: "Approve & swap", exact: true })
+    .getByRole("form", { name: "Swap tokens", exact: true })
+    .getByRole("button", { name: "Swap", exact: true })
     .click();
-  await confirmed(page, "Swap tokens");
-  await page.getByRole("button", { name: "Liquidity", exact: true }).click();
+  await expectStatus(page, "Swap tokens confirmed");
+  await goToWorkspace(page, "Liquidity");
   const original = positionCard(page, positionId);
   await expect(original).toBeVisible();
+  await original
+    .getByRole("button", { name: `Manage NFT #${positionId}`, exact: true })
+    .click();
   await expect(original).toContainText(
     "Compared with holding the initial deposit",
   );
@@ -116,8 +130,9 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
     .poll(displayedBenchmark, { timeout: 10_000 })
     .toBeCloseTo(Number(formatEther(redeemValue - holdingValue)), 4);
 
+  await page.locator('summary[aria-label="Pool information"]').click();
   await page.getByRole("button", { name: "Show pool history" }).click();
-  const history = page.locator("section").filter({
+  const history = page.locator("details").filter({
     has: page.getByRole("heading", {
       name: "Pool activity and fees",
       exact: true,
@@ -227,10 +242,13 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
     .toBe(recipientAddress.toLowerCase());
   await expect(original).not.toBeVisible();
 
-  await selectAccount(page, recipientAddress);
-  await page.getByRole("button", { name: "Liquidity", exact: true }).click();
+  await selectLocalAccount(page, recipientAddress);
+  await goToWorkspace(page, "Liquidity");
   const received = positionCard(page, positionId);
   await expect(received).toBeVisible();
+  await received
+    .getByRole("button", { name: `Manage NFT #${positionId}`, exact: true })
+    .click();
   const before0: bigint = await token0.balanceOf(recipientAddress);
   const before1: bigint = await token1.balanceOf(recipientAddress);
   const priorOwner0: bigint = await token0.balanceOf(providerAddress);
@@ -263,7 +281,7 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
     .getByRole("dialog", { name: "Review position redemption" })
     .getByRole("button", { name: "Confirm redemption", exact: true })
     .click();
-  await confirmed(page, "Redeem position");
+  await expectStatus(page, "Redeem position confirmed");
   await expect(received).not.toBeVisible();
   const received0: bigint =
     (await token0.balanceOf(recipientAddress)) - before0;
@@ -277,7 +295,13 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
   expect(await token1.balanceOf(providerAddress)).toBe(priorOwner1);
   await expect(exchange.ownerOf(positionId)).rejects.toThrow();
 
-  await page.getByRole("button", { name: "Show pool history" }).click();
+  const poolInformation = page
+    .locator("details")
+    .filter({ has: page.locator('summary[aria-label="Pool information"]') });
+  if ((await poolInformation.getAttribute("open")) === null)
+    await page.locator('summary[aria-label="Pool information"]').click();
+  if (await page.getByRole("button", { name: "Show pool history" }).isVisible())
+    await page.getByRole("button", { name: "Show pool history" }).click();
   const removed = history
     .getByRole("row")
     .filter({

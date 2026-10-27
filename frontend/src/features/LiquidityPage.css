@@ -1,0 +1,481 @@
+.liquidity-page {
+  max-width: 1000px;
+  margin: 0 auto;
+  padding: 4px 0 40px;
+}
+.liquidity-heading {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 24px;
+  margin: 0 0 36px;
+}
+.liquidity-heading h1 {
+  font-size: 30px;
+  letter-spacing: -0.9px;
+  margin: 0 0 8px;
+}
+.liquidity-heading p,
+.liquidity-explore p {
+  font-size: 14px;
+  color: #758094;
+  margin: 0;
+}
+.liquidity-new {
+  white-space: nowrap;
+}
+.liquidity-list-heading {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 15px;
+}
+.liquidity-list-heading h2 {
+  font-size: 17px;
+  margin: 0;
+}
+.liquidity-list-heading span {
+  font-size: 12px;
+  color: #758094;
+}
+.liquidity-position-list {
+  border: 1px solid #e3e7ee;
+  border-radius: 16px;
+  background: #fff;
+  overflow: hidden;
+}
+.liquidity-position + .liquidity-position {
+  border-top: 1px solid #e8ebf1;
+}
+.liquidity-position-summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto auto;
+  gap: 28px;
+  align-items: center;
+  padding: 22px 24px;
+}
+.liquidity-position-identity {
+  display: flex;
+  gap: 14px;
+  align-items: center;
+  min-width: 0;
+}
+.liquidity-position-identity strong {
+  font-size: 17px;
+  font-weight: 600;
+}
+.liquidity-position-identity h3 {
+  font-size: 12px;
+  font-weight: 400;
+  color: #758094;
+  margin: 7px 0 0;
+}
+.liquidity-token-pair {
+  display: flex;
+  flex-shrink: 0;
+  padding-right: 4px;
+}
+.liquidity-token-pair span {
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: #eef2ff;
+  color: #335cff;
+  font-size: 14px;
+  font-weight: 600;
+  border: 2px solid #fff;
+}
+.liquidity-token-pair span + span {
+  margin-left: -9px;
+  background: #e8edf4;
+  color: #53627b;
+}
+.liquidity-position-assets {
+  display: grid;
+  gap: 6px;
+  text-align: right;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.liquidity-manage {
+  font-size: 13px !important;
+  padding: 8px 13px !important;
+}
+.liquidity-position-detail {
+  border-top: 1px solid #edf0f5;
+  padding: 22px 24px;
+  background: #fcfdff;
+}
+.liquidity-detail-list {
+  display: grid;
+  grid-template-columns: minmax(140px, 1fr) minmax(0, 1.4fr);
+  gap: 12px 24px;
+  font-size: 13px;
+  line-height: 1.6;
+  margin: 0 0 18px;
+}
+.liquidity-detail-list dt {
+  color: #758094;
+}
+.liquidity-detail-list dd {
+  margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+.liquidity-detail-list code {
+  font-size: 11px;
+}
+.liquidity-small {
+  font-size: 12px !important;
+  color: #758094 !important;
+  line-height: 1.7 !important;
+}
+.liquidity-position-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-top: 22px;
+  align-items: center;
+}
+.liquidity-position-actions button {
+  font-size: 12px;
+}
+.liquidity-empty {
+  border: 1px dashed #d8dfe9;
+  border-radius: 16px;
+  min-height: 260px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 30px;
+}
+.liquidity-empty h3 {
+  font-size: 19px;
+  margin: 12px 0;
+}
+.liquidity-empty p {
+  max-width: 430px;
+  color: #758094;
+  font-size: 13px;
+  margin: 0 0 22px;
+  line-height: 1.7;
+}
+.liquidity-empty-mark {
+  height: 36px;
+  width: 36px;
+  border: 1px solid #dce3ed;
+  border-radius: 10px;
+  display: grid;
+  place-items: center;
+  font-size: 23px;
+  color: #758094;
+}
+.liquidity-explore {
+  margin-top: 42px;
+}
+.liquidity-explore > div h2 {
+  font-size: 17px;
+  margin: 0 0 8px;
+}
+.liquidity-pool-select {
+  display: grid;
+  gap: 8px;
+  font-size: 12px;
+  color: #758094;
+  margin-top: 20px;
+  max-width: 350px;
+}
+.liquidity-pool-select select {
+  font-size: 13px;
+}
+.liquidity-pool-details {
+  margin-top: 16px;
+  border: 1px solid #e3e7ee;
+  border-radius: 12px;
+  background: #fff;
+}
+.liquidity-pool-details > summary {
+  padding: 18px 20px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  list-style: none;
+}
+.liquidity-pool-details > summary::after {
+  content: "+";
+  font-size: 18px;
+  font-weight: 400;
+  color: #758094;
+}
+.liquidity-pool-details[open] > summary::after {
+  content: "−";
+}
+.liquidity-pool-details > summary small {
+  font-size: 12px;
+  color: #758094;
+  font-weight: 400;
+  margin-left: auto;
+}
+.liquidity-pool-content {
+  padding: 20px;
+  border-top: 1px solid #edf0f5;
+}
+.liquidity-pool-content h3 {
+  font-size: 14px;
+  margin: 24px 0 8px;
+}
+.liquidity-table-scroll {
+  overflow: auto;
+  max-height: 330px;
+  border: 1px solid #edf0f5;
+  border-radius: 8px;
+  margin-top: 16px;
+}
+.liquidity-table-scroll table {
+  margin: 0;
+  width: 100%;
+  font-size: 11px;
+  min-width: 630px;
+}
+.liquidity-table-scroll th {
+  position: sticky;
+  top: 0;
+  background: #f8f9fb;
+  color: #758094;
+  white-space: nowrap;
+}
+.liquidity-table-scroll td,
+.liquidity-table-scroll th {
+  padding: 12px;
+  border-bottom: 1px solid #edf0f5;
+}
+.liquidity-table-scroll code {
+  font-size: 10px;
+  white-space: nowrap;
+}
+.liquidity-history-heading {
+  display: flex;
+  justify-content: space-between;
+  gap: 24px;
+  align-items: center;
+  margin: 24px 0 18px;
+}
+.liquidity-history-heading h3 {
+  margin: 0 0 8px;
+}
+.liquidity-history-heading p {
+  margin: 0;
+}
+.liquidity-history-heading button {
+  white-space: nowrap;
+  font-size: 12px;
+}
+.liquidity-pagination {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-top: 16px;
+  font-size: 11px;
+  color: #758094;
+}
+.liquidity-pagination button {
+  font-size: 11px;
+  padding: 8px;
+}
+.liquidity-create-form {
+  display: grid;
+  gap: 18px;
+  margin-top: 20px;
+}
+.liquidity-create-form > label {
+  font-size: 13px;
+}
+.liquidity-create-form select {
+  font-size: 13px;
+}
+.liquidity-deposit-token {
+  background: #f6f8fb;
+  border-radius: 12px;
+  padding: 16px;
+}
+.liquidity-deposit-token label {
+  font-size: 13px;
+}
+.liquidity-deposit-token input {
+  background: transparent !important;
+  border: 0 !important;
+  padding: 6px 0 !important;
+  font-size: 27px !important;
+  box-shadow: none !important;
+}
+.liquidity-deposit-token small {
+  color: #758094;
+  font-size: 11px;
+}
+.liquidity-settings {
+  font-size: 12px;
+  color: #758094;
+}
+.liquidity-settings summary {
+  cursor: pointer;
+}
+.liquidity-settings label {
+  margin-top: 14px;
+  font-size: 12px;
+}
+.liquidity-notice {
+  padding: 12px 14px;
+  background: #f0f4ff;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #53668d;
+  line-height: 1.6;
+}
+.liquidity-review-button {
+  width: 100%;
+}
+.liquidity-market-name {
+  color: #758094;
+  font-size: 13px;
+}
+.liquidity-review-amounts {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 14px;
+  background: #f6f8fb;
+  border-radius: 12px;
+  padding: 20px;
+  margin: 20px 0;
+  font-size: 18px;
+}
+.liquidity-review-amounts dt {
+  color: #758094;
+  font-size: 14px;
+}
+.liquidity-review-amounts dd {
+  margin: 0;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+.liquidity-create-review > p {
+  font-size: 13px;
+  line-height: 1.7;
+}
+.liquidity-dialog-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+.liquidity-dialog-actions button {
+  font-size: 12px;
+}
+.liquidity-metadata {
+  white-space: pre-wrap;
+  max-height: 300px;
+  overflow: auto;
+  background: #f3f5f9;
+  border-radius: 8px;
+  padding: 16px;
+  font-size: 11px;
+  line-height: 1.7;
+}
+.liquidity-recipient {
+  display: block;
+  overflow-wrap: anywhere;
+  font-size: 11px;
+  margin-bottom: 22px;
+}
+@media (max-width: 650px) {
+  .liquidity-heading {
+    align-items: flex-start;
+    margin-bottom: 26px;
+    gap: 14px;
+  }
+  .liquidity-heading h1 {
+    font-size: 25px;
+  }
+  .liquidity-heading p {
+    font-size: 12px;
+    max-width: 220px;
+  }
+  .liquidity-new {
+    padding: 10px 12px !important;
+    font-size: 12px !important;
+  }
+  .liquidity-position-summary {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 16px;
+    padding: 18px 16px;
+  }
+  .liquidity-position-identity {
+    gap: 10px;
+  }
+  .liquidity-position-identity strong {
+    font-size: 15px;
+  }
+  .liquidity-position-identity h3 {
+    font-size: 10px;
+  }
+  .liquidity-token-pair span {
+    width: 27px;
+    height: 27px;
+    font-size: 11px;
+  }
+  .liquidity-position-assets {
+    font-size: 12px;
+  }
+  .liquidity-manage {
+    grid-column: 1/-1;
+    justify-self: end;
+  }
+  .liquidity-position-detail {
+    padding: 18px 16px;
+  }
+  .liquidity-detail-list {
+    grid-template-columns: minmax(105px, 1fr) minmax(0, 1.25fr);
+    gap: 11px 16px;
+    font-size: 11px;
+  }
+  .liquidity-position-actions {
+    gap: 8px;
+  }
+  .liquidity-pool-details > summary small {
+    display: none;
+  }
+  .liquidity-history-heading {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .liquidity-pagination {
+    flex-wrap: wrap;
+  }
+  .liquidity-pagination span {
+    order: -1;
+    flex-basis: 100%;
+    text-align: center;
+  }
+  .liquidity-dialog-actions {
+    flex-direction: column;
+  }
+  .liquidity-dialog-actions button {
+    width: 100%;
+  }
+  .liquidity-pool-content {
+    padding: 16px;
+  }
+  .liquidity-explore {
+    margin-top: 30px;
+  }
+}
