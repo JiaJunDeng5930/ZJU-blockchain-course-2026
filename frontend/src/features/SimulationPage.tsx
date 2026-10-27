@@ -1,5 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from "react";
-import { formatEther } from "viem";
+import { Fragment, useCallback, useEffect, useRef, useState } from "react";
 import type {
   SimulationAction,
   SimulationJob,
@@ -12,7 +11,14 @@ import {
   type SimulationEvent,
 } from "../logic/simulation";
 import { useDex } from "../chain/DexProvider";
-import { formatAmount, shorten } from "../chain/amounts";
+import {
+  formatPrice,
+  shorten,
+  tokenDecimals,
+  tokenLabel,
+} from "../chain/amounts";
+import { formatUnits } from "../logic/units";
+import "./SimulationPage.css";
 
 const actionLabels: Record<SimulationAction, string> = {
   swap: "Swap",
@@ -38,7 +44,10 @@ const stateLabels: Record<SimulationJob["state"], string> = {
   failed: "Failed",
 };
 export function SimulationPage() {
-  const { symbol, refresh } = useDex();
+  const { symbol, refresh, tokens } = useDex();
+  const asset = (address: string) => tokenLabel(address, symbol(address));
+  const amount = (value: string, address: string) =>
+    formatUnits(BigInt(value), tokenDecimals(tokens, address));
   const [controller] = useState(() => new SimulationController());
   const [view, setView] = useState(() => controller.view());
   const refreshRef = useRef(refresh);
@@ -68,11 +77,11 @@ export function SimulationPage() {
                 type: "failure",
                 requestId: effect.requestId,
                 error: error instanceof Error ? error.message : String(error),
-              }).view
-            )
+              }).view,
+            ),
         );
     },
-    [controller]
+    [controller],
   );
   useEffect(() => {
     dispatch({ type: "poll" });
@@ -86,7 +95,7 @@ export function SimulationPage() {
     progress?.arbitrages.find((item) => item.hash === selectedArbitrage) ??
     progress?.arbitrages.at(-1);
   return (
-    <div>
+    <div className="simulation-page">
       <section className="card">
         <h2>20-account market simulation</h2>
         <p>
@@ -201,11 +210,11 @@ export function SimulationPage() {
             {data?.reportAvailable && (
               <a
                 href={`/api/simulation/report?jobId=${encodeURIComponent(
-                  data.id ?? ""
+                  data.id ?? "",
                 )}`}
                 download
               >
-                Download complete report
+                Download run report
               </a>
             )}
           </div>
@@ -235,6 +244,38 @@ export function SimulationPage() {
           </p>
         )}
         {data?.error && <p role="alert">{data.error}</p>}
+        {data?.id && data.options && (
+          <dl className="details simulation-run">
+            <dt>Run ID</dt>
+            <dd>
+              <code>{data.id}</code>
+            </dd>
+            <dt>Run settings</dt>
+            <dd>
+              Seed {data.options.seed} · minimum {data.options.rounds} rounds
+              and {data.options.durationSeconds} seconds ·{" "}
+              {data.options.intervalMs} ms interval
+            </dd>
+            {progress && (
+              <>
+                <dt>Started</dt>
+                <dd>
+                  <time dateTime={progress.startedAt}>
+                    {progress.startedAt}
+                  </time>
+                </dd>
+              </>
+            )}
+            {data.finishedAt && (
+              <>
+                <dt>Finished</dt>
+                <dd>
+                  <time dateTime={data.finishedAt}>{data.finishedAt}</time>
+                </dd>
+              </>
+            )}
+          </dl>
+        )}
         {data?.state === "stopping" && (
           <p>
             Finishing the current transaction and redeeming positions created by
@@ -251,64 +292,75 @@ export function SimulationPage() {
       </section>
       {progress && (
         <>
-          <div className="balances" aria-label="Simulation metrics">
+          <dl className="simulation-metrics" aria-label="Simulation metrics">
             <div>
-              <small>Active addresses</small>
-              <strong>{progress.activeAccounts} / 20</strong>
+              <dt>Active addresses</dt>
+              <dd>{progress.activeAccounts} / 20</dd>
             </div>
             <div>
-              <small>Swaps</small>
-              <strong>{progress.counts.swap}</strong>
+              <dt>Swaps</dt>
+              <dd>{progress.counts.swap}</dd>
             </div>
             <div>
-              <small>Liquidity added / removed</small>
-              <strong>
+              <dt>Liquidity added / removed</dt>
+              <dd>
                 {progress.counts.addLiquidity} /{" "}
                 {progress.counts.removeLiquidity}
-              </strong>
+              </dd>
             </div>
             <div>
-              <small>Profitable arbitrages</small>
-              <strong>{progress.counts.arbitrage}</strong>
+              <dt>Atomic arbitrages</dt>
+              <dd>{progress.counts.arbitrage}</dd>
             </div>
             <div>
-              <small>Transactions recorded</small>
-              <strong>{progress.transactionCount}</strong>
+              <dt>Transactions recorded</dt>
+              <dd>{progress.transactionCount}</dd>
             </div>
-          </div>
+          </dl>
           <div className="workspace">
             <section className="card">
               <h2>Markets</h2>
               <p>
-                Prices are {symbol(progress.markets[0].token1)} per{" "}
-                {symbol(progress.markets[0].token0)}. Both markets trade the
-                same pair; their reserves and prices evolve independently.
+                Prices are {asset(progress.markets[0].token1)} per{" "}
+                {asset(progress.markets[0].token0)}. Both markets trade the same
+                pair; their reserves and prices evolve independently.
               </p>
               <PriceHistory snapshots={progress.marketHistory} />
-              <table>
-                <thead>
-                  <tr>
-                    <th>Exchange</th>
-                    <th>
-                      Reserves {symbol(progress.markets[0].token0)} /{" "}
-                      {symbol(progress.markets[0].token1)}
-                    </th>
-                    <th>Price</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {progress.markets.map((market) => (
-                    <tr key={market.address}>
-                      <td>{market.exchange}</td>
-                      <td>
-                        {formatAmount(BigInt(market.reserve0), 18)} /{" "}
-                        {formatAmount(BigInt(market.reserve1), 18)}
-                      </td>
-                      <td>{market.priceToken1PerToken0.toFixed(6)}</td>
+              <div className="table-scroll">
+                <table className="simulation-amounts">
+                  <thead>
+                    <tr>
+                      <th>Exchange</th>
+                      <th>Reserve {asset(progress.markets[0].token0)}</th>
+                      <th>Reserve {asset(progress.markets[0].token1)}</th>
+                      <th>
+                        {symbol(progress.markets[0].token1)} per{" "}
+                        {symbol(progress.markets[0].token0)}
+                      </th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {progress.markets.map((market) => (
+                      <tr key={market.address}>
+                        <td title={market.address}>
+                          {market.exchange} #{market.poolId} ·{" "}
+                          {shorten(market.address)}
+                        </td>
+                        <td>{amount(market.reserve0, market.token0)}</td>
+                        <td>{amount(market.reserve1, market.token1)}</td>
+                        <td>
+                          {formatPrice(
+                            BigInt(market.reserve1),
+                            tokenDecimals(tokens, market.token1),
+                            BigInt(market.reserve0),
+                            tokenDecimals(tokens, market.token0),
+                          )}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </section>
             <section className="card">
               <h2>Arbitrage profit</h2>
@@ -319,10 +371,12 @@ export function SimulationPage() {
               </p>
               <dl className="details">
                 {progress.profits.map((profit) => (
-                  <div key={profit.token}>
-                    <dt>{profit.symbol}</dt>
-                    <dd>{formatAmount(BigInt(profit.amount), 18, 8)}</dd>
-                  </div>
+                  <Fragment key={profit.token}>
+                    <dt title={profit.token}>
+                      {tokenLabel(profit.token, profit.symbol)}
+                    </dt>
+                    <dd>{amount(profit.amount, profit.token)}</dd>
+                  </Fragment>
                 ))}
               </dl>
               {progress.arbitrages.length === 0 ? (
@@ -341,8 +395,8 @@ export function SimulationPage() {
                       {[...progress.arbitrages].reverse().map((item) => (
                         <option key={item.hash} value={item.hash}>
                           {item.buyExchange} → {item.sellExchange} · +
-                          {formatAmount(BigInt(item.profit), 18)}{" "}
-                          {symbol(item.capitalToken)}
+                          {amount(item.profit, item.capitalToken)}{" "}
+                          {asset(item.capitalToken)} · {shorten(item.hash)}
                         </option>
                       ))}
                     </select>
@@ -360,16 +414,28 @@ export function SimulationPage() {
               Counts include confirmed swaps, deposits, redemptions and
               arbitrages; ERC20 approvals do not count as market participation.
             </p>
-            <div className="markets">
-              {progress.accounts.map((account, index) => (
-                <div key={account}>
-                  <strong>Account {index + 1}</strong>
-                  <small title={account}>{shorten(account)}</small>
-                  <span>
-                    {progress.accountOperations[account]} confirmed operations
-                  </span>
-                </div>
-              ))}
+            <div className="table-scroll">
+              <table>
+                <thead>
+                  <tr>
+                    <th>Account</th>
+                    <th>Confirmed market operations</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {progress.accounts.map((account, index) => (
+                    <tr key={account}>
+                      <td title={account}>
+                        Account {index + 1} · {shorten(account)}
+                      </td>
+                      <td>
+                        {progress.accountOperations[account]} confirmed
+                        operations
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
           </section>
           <section className="card sources">
@@ -436,55 +502,79 @@ export function SimulationPage() {
   );
 }
 function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
-  const { symbol } = useDex();
+  const { symbol, tokens } = useDex();
+  const asset = (address: string) => tokenLabel(address, symbol(address));
+  const amount = (value: string, address: string) =>
+    formatUnits(BigInt(value), tokenDecimals(tokens, address));
   return (
-    <div>
+    <div className="simulation-execution">
       <dl className="details">
-        <dt>Capital</dt>
+        <dt title={item.capitalToken}>Capital · {asset(item.capitalToken)}</dt>
+        <dd>{amount(item.amountIn, item.capitalToken)}</dd>
+        <dt>Quoted token profit</dt>
         <dd>
-          {formatAmount(BigInt(item.amountIn), 18)} {symbol(item.capitalToken)}
+          {amount(item.expectedProfit, item.capitalToken)}{" "}
+          {asset(item.capitalToken)}
         </dd>
         <dt>Realized token profit</dt>
         <dd>
-          {formatAmount(BigInt(item.profit), 18, 8)} {symbol(item.capitalToken)}
+          {amount(item.profit, item.capitalToken)} {asset(item.capitalToken)}
         </dd>
-        <dt>ETH gas cost</dt>
-        <dd>{formatEther(BigInt(item.gasCostWei))}</dd>
+        <dt>Execution fee</dt>
+        <dd>{formatUnits(BigInt(item.gasCostWei), 18)} ETH</dd>
       </dl>
+      <p>
+        The ETH fee covers this atomic transaction. Earlier ERC20 approvals are
+        separate transactions.
+      </p>
       <code>{item.hash}</code>
-      <table>
-        <thead>
-          <tr>
-            <th>Exchange</th>
-            <th>Price before / after</th>
-            <th>Reserves before / after</th>
-          </tr>
-        </thead>
-        <tbody>
-          {item.before.map((before) => {
-            const after = item.after.find(
-              (market) => market.address === before.address
-            )!;
-            return (
-              <tr key={before.address}>
-                <td>{before.exchange}</td>
-                <td>
-                  {before.priceToken1PerToken0.toFixed(6)}
-                  <br />
-                  {after.priceToken1PerToken0.toFixed(6)}
-                </td>
-                <td>
-                  {formatAmount(BigInt(before.reserve0), 18)} /{" "}
-                  {formatAmount(BigInt(before.reserve1), 18)}
-                  <br />
-                  {formatAmount(BigInt(after.reserve0), 18)} /{" "}
-                  {formatAmount(BigInt(after.reserve1), 18)}
-                </td>
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
+      <div className="table-scroll">
+        <table className="simulation-amounts">
+          <thead>
+            <tr>
+              <th>Pool</th>
+              <th>State</th>
+              <th>Reserve {asset(item.before[0].token0)}</th>
+              <th>Reserve {asset(item.before[0].token1)}</th>
+              <th>
+                {symbol(item.before[0].token1)} per{" "}
+                {symbol(item.before[0].token0)}
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {item.before.map((before) => {
+              const after = item.after.find(
+                (market) => market.address === before.address,
+              )!;
+              return (
+                [
+                  ["Before", before],
+                  ["After", after],
+                ] as const
+              ).map(([state, market]) => (
+                <tr key={`${market.address}:${state}`}>
+                  <td title={market.address}>
+                    {market.exchange} #{market.poolId} ·{" "}
+                    {shorten(market.address)}
+                  </td>
+                  <td>{state}</td>
+                  <td>{amount(market.reserve0, market.token0)}</td>
+                  <td>{amount(market.reserve1, market.token1)}</td>
+                  <td>
+                    {formatPrice(
+                      BigInt(market.reserve1),
+                      tokenDecimals(tokens, market.token1),
+                      BigInt(market.reserve0),
+                      tokenDecimals(tokens, market.token0),
+                    )}
+                  </td>
+                </tr>
+              ));
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -492,7 +582,7 @@ function PriceHistory({ snapshots }: { snapshots: MarketSnapshot[][] }) {
   if (snapshots.length < 2)
     return <p>Waiting for a second market update to draw the price history…</p>;
   const values = snapshots.flatMap((markets) =>
-    markets.map((market) => market.priceToken1PerToken0)
+    markets.map((market) => market.priceToken1PerToken0),
   );
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
@@ -526,7 +616,7 @@ function PriceHistory({ snapshots }: { snapshots: MarketSnapshot[][] }) {
                     145 -
                     ((markets[index].priceToken1PerToken0 - minimum) / range) *
                       125
-                  }`
+                  }`,
               )
               .join(" ")}
           />
@@ -538,10 +628,11 @@ function PriceHistory({ snapshots }: { snapshots: MarketSnapshot[][] }) {
             key={market.address}
             style={{ color: colors[index], marginRight: 20 }}
           >
-            {market.exchange}
+            {market.exchange} #{market.poolId}
           </span>
         ))}{" "}
-        · latest {snapshots.length} observed updates
+        · latest {snapshots.length} observed updates, oldest to newest. Chart
+        prices are rounded; updates are not evenly spaced in time.
       </figcaption>
     </figure>
   );

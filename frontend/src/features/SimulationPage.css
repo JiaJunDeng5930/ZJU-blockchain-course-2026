@@ -1,0 +1,37 @@
+.simulation-metrics {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+  gap: 0 24px;
+  margin: 24px 0;
+}
+
+.simulation-metrics > div {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.simulation-metrics dd {
+  margin: 0;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.simulation-page .simulation-amounts {
+  min-width: 640px;
+}
+
+.simulation-page td,
+.simulation-page .details dd,
+.simulation-execution > code {
+  overflow-wrap: anywhere;
+  font-variant-numeric: tabular-nums;
+}
+
+.simulation-run {
+  padding-top: 12px;
+  border-top: 1px solid var(--line);
+}
