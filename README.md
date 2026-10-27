@@ -130,7 +130,7 @@ redeem1 = floor(positionShares × reserve1 / totalShares)
 
 投入、转让和赎回后，Confirmed liquidity action 保留最近一次成功回执的实际结果：投入与赎回的双币数量、份额、NFT 编号与所有者，或该 NFT 转让事件的发送方与接收方，以及执行账户、区块和交易哈希。新铸造的 NFT 会直接展开；转让或烧毁使原卡片离开持仓列表后，确认结果仍可查看。赎回数量包含储备中累积的手续费及市场变化，不能把相对初始存币的差额单独称为手续费收益。
 
-刷新或重新打开页面后，在 Activity 的对应已确认记录中点击 Read liquidity result，可按保存的交易哈希恢复投入、转让或赎回结果。NFT 后续已经转让或烧毁也不影响原回执的查看；数量、原始接收者和手续费来自那笔交易，代币精度与池信息按回执区块读取。读取失败时可再次点击，已确认交易不会因此变为失败。此功能只解释当前部署交易所的单次流动性操作，不把历史事件中的接收者当作当前 NFT 持有人。
+刷新或重新打开页面后，在 Tools → Transactions 的对应已确认记录中点击 Read liquidity result，可按保存的交易哈希恢复投入、转让或赎回结果。NFT 后续已经转让或烧毁也不影响原回执的查看；数量、原始接收者和手续费来自那笔交易，代币精度与池信息按回执区块读取。读取失败时可再次点击，已确认交易不会因此变为失败。此功能只解释当前部署交易所的单次流动性操作，不把历史事件中的接收者当作当前 NFT 持有人。
 
 同一页面、同一目标池的投入草稿在关闭窗口或钱包拒签后保留，可再次打开 New position 审阅；选择其他池时重新建立草稿。
 
@@ -364,6 +364,12 @@ NFT 编号只在对应 DEX 合约内唯一。当前赎回确认显示 DEX、池�
 ![NFT转让后的双方地址与回执](docs/screenshots/30-liquidity-confirmed-transfer.jpg)
 
 ![新持有人赎回收到的实际资产与回执](docs/screenshots/31-liquidity-confirmed-redemption.jpg)
+
+以下是在刷新页面后，通过 Read liquidity result 恢复的同一 NFT #65。截图时演示链仍停在区块 851，仅重新读取已保存的交易哈希：
+
+![恢复区块850的NFT转移事件及双方地址](docs/screenshots/48-restored-liquidity-transfer.jpg)
+
+![恢复区块851的新持有人赎回数量与实际费用](docs/screenshots/47-restored-liquidity-redemption.jpg)
 
 区块 851 的赎回审阅固定报价和观测所有者，滑点修改只作用于该报价。下图仅打开初始 NFT 的窗口并关闭，没有烧毁或提交交易：
 
