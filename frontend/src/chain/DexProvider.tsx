@@ -1,5 +1,18 @@
-import { createContext, useContext, useState, type ReactNode } from "react";
-import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useMemo,
+  useState,
+  type ReactNode,
+} from "react";
+import {
+  useMutation,
+  useQueries,
+  useQuery,
+  useQueryClient,
+} from "@tanstack/react-query";
 import type { TransactionResponse } from "ethers";
 import { ExchangeClient, type Writer } from "./client";
 import { errorMessage, sameAddress } from "./amounts";
@@ -14,7 +27,28 @@ function useDexState(client: ExchangeClient) {
     JSON.parse(localStorage.getItem(registryKey) ?? "[]"),
   );
   const [journal, setJournal] = useState<JournalEntry[]>([]);
-  const tokens = [...client.deployment.tokens, ...customTokens];
+  const tokens = useMemo(
+    () => [...client.deployment.tokens, ...customTokens],
+    [client, customTokens],
+  );
+  const registerTokens = useCallback(
+    (additions: Token[]) => {
+      setCustomTokens((current) => {
+        const known = [...client.deployment.tokens, ...current];
+        const added = additions.filter(
+          (token) =>
+            !known.some((existing) =>
+              sameAddress(existing.address, token.address),
+            ),
+        );
+        if (added.length === 0) return current;
+        const next = [...current, ...added];
+        localStorage.setItem(registryKey, JSON.stringify(next));
+        return next;
+      });
+    },
+    [client, registryKey],
+  );
   const session =
     wallet.state.kind === "ready" ? wallet.state.session : undefined;
   const accounts = useQuery({
@@ -30,8 +64,39 @@ function useDexState(client: ExchangeClient) {
       tokens.map((token) => token.address).join(":"),
     ],
     queryFn: () => client.snapshot(session?.address, tokens),
+    // Catalog discovery must not unmount a trade in progress. A changed wallet
+    // still waits for its own balances instead of displaying the previous owner’s.
+    placeholderData: (previous, previousQuery) =>
+      previousQuery?.queryKey[2] === session?.address ? previous : undefined,
     refetchInterval: 5000,
   });
+  const unknownPoolTokens = [
+    ...new Set(
+      (snapshot.data?.pools ?? [])
+        .flatMap((pool) => [pool.token0, pool.token1])
+        .map((address) => address.toLowerCase()),
+    ),
+  ].filter(
+    (address) => !tokens.some((token) => sameAddress(token.address, address)),
+  );
+  const discoveries = useQueries({
+    queries: unknownPoolTokens.map((address) => ({
+      queryKey: ["token-metadata", client.key, address],
+      queryFn: () => client.importToken(address),
+      staleTime: Infinity,
+      // DEFENSE: permissionless pools can contain tokens without supported metadata;
+      // keep their address visible without blocking other markets or retrying reads.
+      retry: false,
+      retryOnMount: false,
+      refetchOnWindowFocus: false,
+    })),
+  });
+  useEffect(() => {
+    const found = discoveries.flatMap((query) =>
+      query.data ? [query.data] : [],
+    );
+    if (found.length) registerTokens(found);
+  }, [discoveries, registerTokens]);
   const mutation = useMutation({
     mutationFn: async (operation: {
       label: string;
@@ -104,11 +169,7 @@ function useDexState(client: ExchangeClient) {
     return `Connected to chain ${client.deployment.chainId}`;
   }
   function registerToken(token: Token) {
-    if (tokens.some((existing) => sameAddress(existing.address, token.address)))
-      return;
-    const next = [...customTokens, token];
-    localStorage.setItem(registryKey, JSON.stringify(next));
-    setCustomTokens(next);
+    registerTokens([token]);
   }
   return {
     client,
