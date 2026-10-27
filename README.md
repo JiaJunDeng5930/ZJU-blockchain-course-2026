@@ -132,7 +132,11 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 
 另一次任务运行中主动停止，最终状态为 `stopped`；已添加的流动性安全赎回，停止后的报告仍可下载。记录保存在 `.local/simulation-delivery-acceptance.json`，不提交仓库。本次验收直接使用 HTTP 与链上公开入口，没有使用浏览器查错。
 
-完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。后面的截图继续保留为迁移前的历史操作记录。
+完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。后面的截图分别标明当前页面与历史钱包记录。
+
+交易期限使用公开 RPC 的 `pending` 区块时间。`ExchangeClient.transactionTimestamp()` 提供这个外部观测，Rocq 据此构造网页交易的 1200 秒期限；模拟 worker 同样读取 pending 时间，使用 300 秒期限。`latest` 只表示上一已挖区块，浏览器时钟也不代表下一次执行块；最终是否到期由合约按执行块时间检查。
+
+时钟修复后的公开入口验收完成 **20 轮、20 个活跃地址、7.007 秒**，报告可下载，实际失败套利的回滚检查通过。首笔交换的期限比实际执行块时间晚 300 秒；另经公开 SDK 完成交换、添加流动性与赎回，三笔交易的期限均比执行块时间晚 1200 秒。记录保存在 `.local/simulation-clock-acceptance.json`、`.local/swap-clock-acceptance.json` 与 `.local/liquidity-clock-acceptance.json`。这是对时钟接口的运行验收，形式化范围如下文所述。
 
 ## 形式化开发与验证
 
@@ -158,47 +162,39 @@ npm run formal:verify
 npm test
 ```
 
+本次 `npm run formal:verify` 的八项统一检查全部通过，包括前端提取构建、三组生产 helper 的 SMT 检查和四组 IR 精化检查。
+
 生成内核与 ABI 不提交仓库。提取构建记录输入哈希、编译器与输出哈希；完整日志和验证报告保存在 `.local/formal/`。Solidity SMT 与 IR 精化分别运行，不能把 JavaScript 构建通过当成 Solidity 证明通过。浏览器场景不作为此次错误发现或形式化结论的依据。既有公开合约入口验收覆盖领取、WETH、建池、NFT 转让和赎回、手续费/滑点/期限、20 地址操作，以及原子套利成功和失败回滚；测试通过只说明该运行覆盖的外部行为。
 
 ## 项目运行截图
 
-以下截图来自形式化迁移前的真实本地链与浏览器操作，记录账户、链 ID、余额、交易确认、NFT 与套利流程。它们用于展示既有操作过程，不代表当前提取内核或当前编译字节码已经通过相同浏览器流程。
+以下五张图记录当前版本的真实页面，仅用于展示交付界面，不作为形式化证明或浏览器错误发现的依据。
 
-### 领取与交易
+### 兑换
 
-![兑换卡片与交易确认](docs/screenshots/01-swap.png)
+![当前 Swap 页面](docs/screenshots/10-formal-swap.jpg)
 
-### NFT 流动性与来源
+### 流动性与 NFT
 
-![NFT份额、创建时间、赎回估值和池的流动性来源](docs/screenshots/02-liquidity.png)
+![当前 Liquidity 页面](docs/screenshots/11-formal-liquidity.jpg)
 
-### 代币创建、建池与 WETH
+### 资产与交易池
 
-![双交易所池、代币部署、建池与ETH包装](docs/screenshots/03-pools.png)
+![当前 Pools and tokens 页面](docs/screenshots/12-formal-assets.jpg)
 
-### 原子套利结果
+### 原子套利
 
-![实际利润和两池价格、储备前后变化](docs/screenshots/04-arbitrage.png)
+![当前 Arbitrage 页面](docs/screenshots/13-formal-arbitrage.jpg)
 
-### 区块链交互记录
+### 多用户模拟
 
-![批准、执行、交易哈希、区块与gas](docs/screenshots/05-transactions.png)
+![当前 Simulation 页面](docs/screenshots/14-formal-simulation.jpg)
 
-### 钱包与新账户准备
+### 历史 MetaMask 确认
 
-![新钱包准备](docs/screenshots/06-first-wallet.png)
+下面这张图来自形式化迁移前的真实钱包演示，保留为历史操作记录；它不代表当前提取内核或当前字节码的验收。详细历史记录见[迁移前真实钱包演示](docs/wallet-demo.md)。
 
-### 网页多用户模拟
-
-![市场模拟与原子套利证据](docs/screenshots/06-simulation.png)
-
-### NFT 赎回确认
-
-![赎回预计数量与最低收到](docs/screenshots/07-liquidity-review.png)
-
-### 真实 MetaMask 确认
-
-![MetaMask交换确认](docs/screenshots/wallet-06-swap-confirm.png)
+![迁移前 MetaMask 交换确认](docs/screenshots/wallet-06-swap-confirm.png)
 
 ## 参考资料
 

@@ -59,6 +59,10 @@ A translation command checks generation, not the semantic refinement theorem. Re
 
 The NFT replay contract is an ordered event stream from one ERC721 contract at one fixed block. Asset activation requires observed metadata and supported decimals; persisted metadata alone grants no faucet capability. Wallet results belong to the request/session that issued them. A confirmed transaction and a later failed read are distinct events. A submitted transaction whose receipt cannot be read remains submitted; an unknown submission result is not classified as a known non-submission.
 
+The call-time interface is `ExchangeClient.transactionTimestamp()`: it reads the RPC pending block timestamp, not the last mined block or the browser clock. The model treats this value as an external chain-time observation and constructs the 1200-second frontend deadline. The simulation worker reads the same kind of observation and uses its existing 300-second window. Pending is provisional; the contract checks expiry against the actual execution block timestamp. The arithmetic theorem does not assume that a wallet signs or a transaction mines before that deadline.
+
+This adapter correction was exercised through the public simulation endpoint (20 rounds, 20 active accounts, completed report and rollback check) and the public writer SDK (successful swap, add and redeem). The observed transaction deadlines were respectively 300 and 1200 seconds after their actual mined timestamps. These results exercise the time adapter; RPC and mining remain external assumptions.
+
 ## Actual Solidity evidence
 
 SMTChecker harnesses import production helper code rather than a second arithmetic implementation:
