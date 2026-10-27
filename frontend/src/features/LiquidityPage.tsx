@@ -1,4 +1,9 @@
-import { poolAssetsSupported, unsupportedPoolError } from "../logic/assets";
+import {
+  assetPoolPrice,
+  poolAssetsSupported,
+  unsupportedPoolError,
+} from "../logic/assets";
+import { formatUnits } from "../logic/units";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -25,18 +30,25 @@ import {
 import { PoolActivity } from "./PoolActivity";
 import "./LiquidityPage.css";
 
-export function LiquidityPage({ pool }: { pool: Pool }) {
+export function LiquidityPage({
+  pool,
+  creating,
+  onCreatingChange: setCreating,
+}: {
+  pool: Pool;
+  creating: boolean;
+  onCreatingChange: (creating: boolean) => void;
+}) {
   const { snapshot, session, pending, symbol, tokens } = useDex();
-  const [creating, setCreating] = useState(false);
   const [managed, setManaged] = useState<string>();
   const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
   const pools = snapshot.data?.pools ?? [];
   const supportedPools = pools.filter((candidate) =>
-    poolAssetsSupported(candidate, tokens)
+    poolAssetsSupported(candidate, tokens),
   );
   const positions = ownedPositions(
     snapshot.data?.positions ?? [],
-    session?.address ?? ""
+    session?.address ?? "",
   );
   const inspected =
     pools.find((candidate) => poolKey(candidate) === inspectedPool) ?? pool;
@@ -129,7 +141,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
           pools={supportedPools}
           initialPool={
             supportedPools.find(
-              (candidate) => poolKey(candidate) === poolKey(pool)
+              (candidate) => poolKey(candidate) === poolKey(pool),
             ) ?? supportedPools[0]
           }
           onClose={() => setCreating(false)}
@@ -163,9 +175,11 @@ function CreatePosition({
     slippage,
     snapshot.data!.balances[pool.token0] ?? 0n,
     snapshot.data!.balances[pool.token1] ?? 0n,
-    tokens
+    tokens,
   );
-  const invalid = decision.ok ? undefined : decision.error ?? undefined;
+  const exactAmount = (value: bigint, token: string) =>
+    formatUnits(value, precision(token));
+  const invalid = decision.ok ? undefined : (decision.error ?? undefined);
   const used = decision.ok
     ? ([decision.used0, decision.used1] as const)
     : undefined;
@@ -183,44 +197,70 @@ function CreatePosition({
       title={reviewing ? "Review new position" : "New liquidity position"}
       onClose={onClose}
     >
-      {reviewing && used ? (
+      {reviewing && used && decision.ok ? (
         <div className="liquidity-create-review">
-          <p className="liquidity-market-name">
-            {poolLabel(pool, symbol)}
-          </p>
+          <p className="liquidity-market-name">{poolLabel(pool, symbol)}</p>
           <dl className="liquidity-review-amounts">
             <dt title={pool.token0}>
               {tokenLabel(pool.token0, symbol(pool.token0))}
             </dt>
-            <dd>{amount(used[0], pool.token0, 8)}</dd>
+            <dd>{exactAmount(used[0], pool.token0)}</dd>
             <dt title={pool.token1}>
               {tokenLabel(pool.token1, symbol(pool.token1))}
             </dt>
-            <dd>{amount(used[1], pool.token1, 8)}</dd>
+            <dd>{exactAmount(used[1], pool.token1)}</dd>
           </dl>
           <p>
             You receive an ERC721 position NFT. Its share of both pool assets,
             including retained trading fees, can be redeemed later.
           </p>
+          {pool.totalShares === 0n && (
+            <p>
+              Your deposit sets the starting price. A small part of the first
+              deposit stays permanently locked in the pool; the estimated shares
+              below belong to your NFT.
+            </p>
+          )}
           <dl className="liquidity-detail-list">
+            <dt>
+              {pool.totalShares === 0n ? "Starting price" : "Deposit ratio"}
+            </dt>
+            <dd>
+              {assetPoolPrice(
+                used[0],
+                used[1],
+                precision(pool.token0),
+                precision(pool.token1),
+                symbol(pool.token0),
+                symbol(pool.token1),
+              )}
+            </dd>
+            <dt>Estimated position shares</dt>
+            <dd>{decision.shares.toString()}</dd>
+            <dt title={pool.token0}>
+              Unspent {tokenLabel(pool.token0, symbol(pool.token0))}
+            </dt>
+            <dd>{exactAmount(decision.unused0, pool.token0)}</dd>
+            <dt title={pool.token1}>
+              Unspent {tokenLabel(pool.token1, symbol(pool.token1))}
+            </dt>
+            <dd>{exactAmount(decision.unused1, pool.token1)}</dd>
             <dt title={pool.token0}>
               Minimum {tokenLabel(pool.token0, symbol(pool.token0))} deposited
             </dt>
             <dd>
-              {amount(
+              {exactAmount(
                 minimumReceived(used[0], slippageBps(slippage)),
                 pool.token0,
-                8
               )}
             </dd>
             <dt title={pool.token1}>
               Minimum {tokenLabel(pool.token1, symbol(pool.token1))} deposited
             </dt>
             <dd>
-              {amount(
+              {exactAmount(
                 minimumReceived(used[1], slippageBps(slippage)),
                 pool.token1,
-                8
               )}
             </dd>
             <dt>Slippage tolerance</dt>
@@ -248,8 +288,8 @@ function CreatePosition({
                     pool,
                     positiveAmount(amount0, precision(pool.token0)),
                     positiveAmount(amount1, precision(pool.token1)),
-                    slippageBps(slippage)
-                  )
+                    slippageBps(slippage),
+                  ),
                 );
               }}
             >
@@ -359,7 +399,7 @@ function PositionCard(props: PositionCardProps) {
   const pool = snapshot.data!.pools.find(
     (candidate) =>
       sameAddress(candidate.exchange.address, position.exchange.address) &&
-      candidate.id === position.poolId
+      candidate.id === position.poolId,
   )!;
   return poolAssetsSupported(pool, tokens) ? (
     <SupportedPositionCard
@@ -386,7 +426,7 @@ function SupportedPositionCard({
   recipient,
   onRecipientChange,
 }: PositionCardProps & { pool: Pool } & TransferDraft) {
-  const { client, symbol, pending, session, run, amount } = useDex();
+  const { client, symbol, pending, session, run, amount, precision } = useDex();
   const [showMetadata, setShowMetadata] = useState(false);
   const [review, setReview] = useState<"redeem" | "transfer">();
   const [slippage, setSlippage] = useState("0.5");
@@ -408,25 +448,19 @@ function SupportedPositionCard({
     <article className="liquidity-position">
       <div className="liquidity-position-summary">
         <div className="liquidity-position-identity">
-          <div className="liquidity-token-pair" aria-hidden="true">
-            <span>{symbol(pool.token0).slice(0, 1)}</span>
-            <span>{symbol(pool.token1).slice(0, 1)}</span>
-          </div>
-          <div>
-            <strong>
-              {symbol(pool.token0)} / {symbol(pool.token1)}
-            </strong>
-            <h3>
-              {position.exchange.name} · NFT #{String(position.id)}
-            </h3>
-          </div>
+          <strong title={position.exchange.address}>
+            {position.exchange.name} · pool #{String(pool.id)} · NFT #
+            {String(position.id)}
+          </strong>
         </div>
         <div className="liquidity-position-assets">
           <span>
-            {amount(amounts[0], pool.token0)} {symbol(pool.token0)}
+            {amount(amounts[0], pool.token0)}{" "}
+            {tokenLabel(pool.token0, symbol(pool.token0))}
           </span>
           <span>
-            {amount(amounts[1], pool.token1)} {symbol(pool.token1)}
+            {amount(amounts[1], pool.token1)}{" "}
+            {tokenLabel(pool.token1, symbol(pool.token1))}
           </span>
         </div>
         <button
@@ -527,11 +561,11 @@ function SupportedPositionCard({
             <dt title={pool.token0}>
               Expected {tokenLabel(pool.token0, symbol(pool.token0))}
             </dt>
-            <dd>{amount(amounts[0], pool.token0)}</dd>
+            <dd>{formatUnits(amounts[0], precision(pool.token0))}</dd>
             <dt title={pool.token1}>
               Expected {tokenLabel(pool.token1, symbol(pool.token1))}
             </dt>
-            <dd>{amount(amounts[1], pool.token1)}</dd>
+            <dd>{formatUnits(amounts[1], precision(pool.token1))}</dd>
           </dl>
           <AmountField
             label="Redemption slippage (%)"
@@ -542,14 +576,14 @@ function SupportedPositionCard({
           {!invalidTolerance && (
             <p className="liquidity-small">
               Minimum received:{" "}
-              {amount(
+              {formatUnits(
                 minimumReceived(amounts[0], slippageBps(slippage)),
-                pool.token0
+                precision(pool.token0),
               )}{" "}
               {symbol(pool.token0)} and{" "}
-              {amount(
+              {formatUnits(
                 minimumReceived(amounts[1], slippageBps(slippage)),
-                pool.token1
+                precision(pool.token1),
               )}{" "}
               {symbol(pool.token1)}.
             </p>
@@ -564,8 +598,8 @@ function SupportedPositionCard({
                   pool,
                   position.id,
                   amounts,
-                  slippageBps(slippage)
-                )
+                  slippageBps(slippage),
+                ),
               );
             }}
           >
@@ -596,7 +630,10 @@ function UnsupportedPositionCard({
   const [transferring, setTransferring] = useState(false);
   return (
     <article className="liquidity-position">
-      <h3>Position NFT #{String(position.id)}</h3>
+      <h3>
+        {position.exchange.name} · pool #{String(pool.id)} · NFT #
+        {String(position.id)}
+      </h3>
       <FormError message={unsupportedPoolError} />
       <button
         disabled={pending || !session}
@@ -624,17 +661,18 @@ function TransferPositionDialog({
   recipient,
   onRecipientChange,
 }: { pool: Pool; position: Position; onClose: () => void } & TransferDraft) {
-  const { pending, session, run } = useDex();
+  const { pending, session, run, symbol } = useDex();
   const recipientError = transferError(
     position.owner,
     session?.address ?? "",
-    recipient
+    recipient,
   );
   return (
     <ConfirmationDialog title="Transfer liquidity position" onClose={onClose}>
       <p>
-        Transfer NFT #{String(position.id)} and all redemption rights to the
-        recipient. You will no longer be able to redeem this position.
+        Transfer {poolLabel(pool, symbol)} position NFT #{String(position.id)}{" "}
+        and all redemption rights to the recipient. You will no longer be able
+        to redeem this position.
       </p>
       <label>
         Recipient address
@@ -651,7 +689,7 @@ function TransferPositionDialog({
         onClick={() => {
           onClose();
           run("Transfer position", (writer) =>
-            writer.transferPosition(pool, position.id, recipient)
+            writer.transferPosition(pool, position.id, recipient),
           );
         }}
       >

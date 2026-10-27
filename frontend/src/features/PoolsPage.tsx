@@ -1,6 +1,6 @@
 import { useMemo, useSyncExternalStore } from "react";
 import { useDex } from "../chain/DexProvider";
-import { shorten } from "../chain/amounts";
+import { poolLabel } from "../chain/amounts";
 import { dispatchAssetEvent } from "../chain/assets";
 import {
   AssetForms,
@@ -19,7 +19,13 @@ type FormProps = {
   view: AssetFormsView;
   dispatch: (event: AssetEvent) => void;
 };
-export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
+export function PoolsPage({
+  onSelect,
+  onProvideLiquidity,
+}: {
+  onSelect: (pool: Pool) => void;
+  onProvideLiquidity: (pool: Pool) => void;
+}) {
   const {
     client,
     session,
@@ -37,7 +43,7 @@ export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
     tokens,
     snapshot.data?.pools ?? [],
     !!session,
-    pending
+    pending,
   );
   const controller = useMemo(() => new AssetForms(environment), [client]);
   useSyncExternalStore(controller.subscribe, controller.snapshot);
@@ -45,7 +51,7 @@ export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
   const dispatch = (event: AssetEvent) =>
     dispatchAssetEvent(
       { client, controller, environment, run, registerToken },
-      event
+      event,
     );
   return (
     <>
@@ -63,11 +69,10 @@ export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
               className="market"
               key={`${pool.exchange.address}:${pool.id}`}
             >
-              <p>
-                {pool.exchange.name} · pool #{String(pool.id)}
-              </p>
-              <h3>
-                {symbol(pool.token0)} / {symbol(pool.token1)}
+              <h3
+                title={`${pool.exchange.address} · ${pool.token0} / ${pool.token1}`}
+              >
+                {poolLabel(pool, symbol)}
               </h3>
               {poolAssetsSupported(pool, tokens) ? (
                 <>
@@ -78,7 +83,7 @@ export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
                       precision(pool.token0),
                       precision(pool.token1),
                       symbol(pool.token0),
-                      symbol(pool.token1)
+                      symbol(pool.token1),
                     )}
                   </p>
                   <p>
@@ -90,12 +95,23 @@ export function PoolsPage({ onSelect }: { onSelect: (pool: Pool) => void }) {
               ) : (
                 <p>{unsupportedPoolError}</p>
               )}
-              <code title={pool.exchange.address}>
-                {shorten(pool.exchange.address)}
-              </code>
+              {pool.totalShares === 0n && (
+                <p>The first deposit sets the starting price.</p>
+              )}
               <button
                 className="text"
-                disabled={!poolAssetsSupported(pool, tokens)}
+                disabled={
+                  pending || !session || !poolAssetsSupported(pool, tokens)
+                }
+                onClick={() => onProvideLiquidity(pool)}
+              >
+                Add liquidity
+              </button>
+              <button
+                className="text"
+                disabled={
+                  !poolAssetsSupported(pool, tokens) || pool.totalShares === 0n
+                }
                 onClick={() => onSelect(pool)}
               >
                 Trade this pool

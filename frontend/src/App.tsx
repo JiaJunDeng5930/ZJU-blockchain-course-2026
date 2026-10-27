@@ -107,6 +107,7 @@ function Workspace() {
   const [search, setSearch] = useSearchParams();
   const [walletOpen, setWalletOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
+  const [creatingPosition, setCreatingPosition] = useState(false);
   const tools = useRef<HTMLDivElement>(null);
   const toolsButton = useRef<HTMLButtonElement>(null);
   const page =
@@ -116,17 +117,19 @@ function Workspace() {
   const pool =
     snapshot.data?.pools.find((item) => poolKey(item) === selected) ??
     snapshot.data?.pools[0];
-  function goTo(name: WorkspaceName) {
+  function goTo(name: WorkspaceName, nextPool?: string) {
     const route = workspaces.find(
       (workspace) => workspace.name === name,
     )!.route;
     setSearch((previous) => {
       const next = new URLSearchParams(previous);
       next.set("view", route);
+      if (nextPool !== undefined) next.set("pool", nextPool);
       return next;
     });
     setToolsOpen(false);
     setWalletOpen(false);
+    setCreatingPosition(false);
   }
   function selectPool(key: string) {
     setSearch(
@@ -268,9 +271,10 @@ function Workspace() {
           </div>
         ) : page === "Pools & tokens" ? (
           <PoolsPage
-            onSelect={(next) => {
-              selectPool(poolKey(next));
-              goTo("Swap");
+            onSelect={(next) => goTo("Swap", poolKey(next))}
+            onProvideLiquidity={(next) => {
+              goTo("Liquidity", poolKey(next));
+              setCreatingPosition(true);
             }}
           />
         ) : !pool ? (
@@ -292,7 +296,12 @@ function Workspace() {
             onOpenWallet={() => setWalletOpen(true)}
           />
         ) : page === "Liquidity" ? (
-          <LiquidityPage key={poolKey(pool)} pool={pool} />
+          <LiquidityPage
+            key={poolKey(pool)}
+            pool={pool}
+            creating={creatingPosition}
+            onCreatingChange={setCreatingPosition}
+          />
         ) : (
           <>
             <div className="tool-page-heading">

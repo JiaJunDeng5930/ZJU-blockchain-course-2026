@@ -64,34 +64,6 @@
   font-size: 17px;
   font-weight: 600;
 }
-.liquidity-position-identity h3 {
-  font-size: 12px;
-  font-weight: 400;
-  color: #758094;
-  margin: 7px 0 0;
-}
-.liquidity-token-pair {
-  display: flex;
-  flex-shrink: 0;
-  padding-right: 4px;
-}
-.liquidity-token-pair span {
-  display: grid;
-  place-items: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 50%;
-  background: #eef2ff;
-  color: #335cff;
-  font-size: 14px;
-  font-weight: 600;
-  border: 2px solid #fff;
-}
-.liquidity-token-pair span + span {
-  margin-left: -9px;
-  background: #e8edf4;
-  color: #53627b;
-}
 .liquidity-position-assets {
   display: grid;
   gap: 6px;
@@ -350,7 +322,7 @@
 }
 .liquidity-review-amounts {
   display: grid;
-  grid-template-columns: 1fr auto;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 14px;
   background: #f6f8fb;
   border-radius: 12px;
@@ -364,6 +336,8 @@
 }
 .liquidity-review-amounts dd {
   margin: 0;
+  text-align: right;
+  overflow-wrap: anywhere;
   font-weight: 500;
   font-variant-numeric: tabular-nums;
 }
@@ -423,14 +397,6 @@
   }
   .liquidity-position-identity strong {
     font-size: 15px;
-  }
-  .liquidity-position-identity h3 {
-    font-size: 10px;
-  }
-  .liquidity-token-pair span {
-    width: 27px;
-    height: 27px;
-    font-size: 11px;
   }
   .liquidity-position-assets {
     font-size: 12px;
