@@ -1,5 +1,21 @@
 # Frontend public acceptance
 
+## Confirmed creation and metadata discovery
+
+Run `npm run test:creation-results`, or invoke
+`contracts/node_modules/.bin/tsx frontend/acceptance/creation-results-public.mts`
+after building the current sources. This independent runner uses the public
+wallet/exchange interfaces, real receipts and an isolated RPC proxy.
+
+Three scenarios check successful deployment despite a subsequent metadata-read
+failure, identity of equal pool IDs on different exchanges followed by first
+provision, and a real duplicate-pool race that mines the original call with
+status zero. Metadata recovery reads the same deployed address without another
+creation transaction. The ordinary cold-start deployment input is retained as
+the external check for the extracted long-calldata validator; no Node stack or
+optimization flags are added. Results and runtime source fingerprints are saved
+to `.local/creation-results-public-*/result.json`.
+
 ## First-deposit ownership
 
 Run `npm run test:initial-liquidity` from the repository root. With an already

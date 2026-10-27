@@ -114,6 +114,17 @@ checks received confirmations, funding rejection before writes and real reverted
 transactions; it does not establish crash recovery or coverage of submissions
 whose confirmation was never reported. See [ADR 013](../docs/adr/013-preserve-simulation-receipt-evidence.md).
 
+`Frontend/ReplacementSearch.v` converts the calldata payload once using the
+standard `list_ascii_of_string` extraction mapping, then checks parity and
+hexadecimal characters with tail-recursive list scans. Native-string elimination
+callbacks had retained JavaScript call frames even for a Rocq tail recursion.
+`even_length_acc_correct`, `even_length_correct`, `hexadecimal_ascii_correct`
+and `valid_input_matches_length_test` establish equivalence to the original
+length-and-hexadecimal condition. This changes the implementation of validation,
+not the accepted calldata. The public creation acceptance retains the ordinary
+cold-start deployment input that exposed the stack overflow; neither Node stack
+limits nor compiler flags are changed to accommodate it.
+
 ## Actual Solidity evidence
 
 SMTChecker harnesses import production helper code rather than a second arithmetic implementation:

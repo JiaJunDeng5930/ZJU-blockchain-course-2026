@@ -68,7 +68,13 @@ npm --prefix frontend run dev
 
 自定义代币列表按部署地址保存在当前浏览器中，刷新后继续可用。链上的代币、池和 NFT 数据由合约维护。
 
+创建结果按真实回执展示新合约地址，或交易所、池编号和实际代币对，并保留执行账户、区块与交易哈希。代币元数据发现独立进行；读取失败可重读同一地址，已确认的部署不会被标成失败或重新发送。新池的注资入口只使用后续快照中匹配交易所和编号的真实池状态。离开或刷新后，可在 Transactions 的已确认合约创建记录中按需读取部署地址，再使用已有 Import 入口。设计原因见 [ADR 014](docs/adr/014-separate-creation-confirmation-and-discovery.md)。
+
+SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用 `client.importToken(result.address)` 独立取得已验证元数据。`createPool` 返回包含交易所和池编号的 `PoolCreationConfirmation`，不把创建回执当成当前储备快照；网页已集成这些步骤。
+
 运行 `npm run test:asset-setup`，可在隔离链上通过公开钱包接口验收从无资金账户领取测试资产、创建并领取新代币、在指定交易所建空池，以及真实包装和解包的连续流程。验收使用实际部署回执、代币元数据、交易和余额变化；测试 ETH 充值不伪装为链上交易，无法支付 gas 的转换会在发送前拒绝。
+
+运行 `npm run test:creation-results`，可验收创建确认与后续元数据故障恢复、两交易所的池身份，以及并发重复建池导致的真实链上回滚。
 
 ## 功能与实现分析
 
@@ -134,7 +140,7 @@ Stop simulation 不会把尚未结束的交易当作取消：它等待当前交�
 
 启动准备阶段会检查 20 个发送账户有无 ETH，以及固定种子兑换和套利扫描所需的代币。已知准备调用无法执行时，任务在任何写操作前失败，并提示需补足的账户和资产；可通过钱包面板领取测试资产后重新开始，不自动补款。
 
-Failed 不会撤回此前已确认的交易。**Download transaction journal** 可下载该任务已记录的全量回执，不受页面最近 100 笔进度窗口限制；NFT 证据列出所属交易所、编号、铸造账户和是否已记录赎回。没有赎回记录不等于 NFT 当前仍归原账户，应按这些标识到 Liquidity 核对。未完成清理的故障运行不会冒充完整报告。日志只保证 worker 已收到并传出的确认记录，进程未知提交与服务进程丢失不在此保证内；交接方式和边界见 [ADR 013](docs/adr/013-preserve-simulation-receipt-evidence.md)。
+Failed 不会撤回此前已确认的交易。**Download transaction journal** 可下载该任务已记录的全量回执，不受页面最近 100 笔进度窗口限制。NFT 证据默认收起，展开后列出所属交易所、编号、铸造账户和是否已记录赎回；长表保留局部滚动和固定列头，也可聚焦后用键盘滚动。没有赎回记录不等于 NFT 当前仍归原账户，应按这些标识到 Liquidity 核对。未完成清理的故障运行不会冒充完整报告。日志只保证 worker 已收到并传出的确认记录，进程未知提交与服务进程丢失不在此保证内；交接方式和边界见 [ADR 013](docs/adr/013-preserve-simulation-receipt-evidence.md)。
 
 控制服务只监听本机，接收有界的固定参数并运行已有模拟器，不接受 shell 命令。dev 与 preview 都代理该服务；网站生产构建本身不能代替本地控制服务。参见 [ADR 004](docs/adr/004-local-simulation-control.md)。
 
@@ -349,7 +355,9 @@ NFT 编号只在对应 DEX 合约内唯一。当前赎回确认显示 DEX、池�
 
 服务升级后保留了同一任务编号和原始报告；210 笔回执、50 个本次铸造 NFT 的铸造及赎回记录仍可读取。下图只读取已有结果，没有重新运行或提交交易：
 
-![保留的运行身份、全量交易日志与 NFT 证据](docs/screenshots/37-simulation-receipt-evidence.jpg)
+![模拟概要与默认收起的本次 NFT 记录](docs/screenshots/40-simulation-result-overview.jpg)
+
+![保留的运行身份、全量交易日志与可滚动 NFT 证据](docs/screenshots/41-simulation-position-records.jpg)
 
 ![已执行套利的收益、ETH 费用与两池变化](docs/screenshots/27-simulation-profit.jpg)
 
