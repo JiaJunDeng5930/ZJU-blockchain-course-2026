@@ -1,4 +1,11 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  openWallet,
+  closeWallet,
+  selectLocalAccount,
+  goToWorkspace,
+  expectStatus,
+} from "./navigation";
 import { readFileSync } from "node:fs";
 import { Contract, JsonRpcProvider, Wallet } from "ethers";
 
@@ -119,10 +126,12 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
   try {
     await installNewWallet(page, address);
     await page.goto("/");
+    await openWallet(page);
     await expect(page.getByLabel("Test account")).toBeVisible();
-    await expect(
-      page.getByText("Local demo account", { exact: true }),
-    ).toBeVisible();
+    await expect(page.getByLabel("Connected account").first()).toHaveAttribute(
+      "title",
+      new RegExp(`^${(await rpc.send("eth_accounts", []))[0]}$`, "i"),
+    );
     await page
       .getByRole("button", { name: "Connect browser wallet", exact: true })
       .click();
@@ -136,10 +145,11 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
     await page
       .getByRole("button", { name: "Add / switch local network" })
       .click();
-    await expect(page.getByLabel("Connected account")).toHaveAttribute(
+    await expect(page.getByLabel("Connected account").first()).toHaveAttribute(
       "title",
       address,
     );
+    await openWallet(page);
     await expect(
       page.getByRole("button", { name: "Prepare test assets", exact: true }),
     ).toBeVisible();
@@ -147,20 +157,19 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
     await page
       .getByRole("button", { name: "Prepare test assets", exact: true })
       .click();
-    await expect(page.locator(".onboarding summary")).toContainText(
-      "Ready to trade",
-    );
+    await expectStatus(page, "confirmed");
     expect(await rpc.getBalance(address)).toBeGreaterThan(0n);
     for (const token of deployment.tokens.filter(
       (token: { kind: string }) => token.kind === "faucet",
     )) {
-      expect(
-        await new Contract(
-          token.address,
-          ["function balanceOf(address) view returns (uint256)"],
-          rpc,
-        ).balanceOf(address),
-      ).toBeGreaterThan(0n);
+      const asset = new Contract(
+        token.address,
+        ["function balanceOf(address) view returns (uint256)"],
+        rpc,
+      );
+      await expect
+        .poll(async () => await asset.balanceOf(address))
+        .toBeGreaterThan(0n);
     }
     const requests = await page.evaluate(() => window.setupWallet.requests);
     const add = requests.find(
@@ -171,18 +180,23 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
       rpcUrls: [deployment.rpcUrl],
       nativeCurrency: { symbol: "ETH", decimals: 18 },
     });
+    await closeWallet(page);
+    await page.getByLabel("Swap amount").fill("10");
     await expect(
-      page.getByRole("button", { name: "Approve & swap", exact: true }),
+      page
+        .getByRole("form", { name: "Swap tokens", exact: true })
+        .getByRole("button", { name: "Swap", exact: true }),
     ).toBeEnabled();
     await page
-      .getByRole("button", { name: "Approve & swap", exact: true })
+      .getByRole("form", { name: "Swap tokens", exact: true })
+      .getByRole("button", { name: "Swap", exact: true })
       .click();
-    await expect(page.getByRole("status")).toContainText(
-      "Swap tokens confirmed",
-    );
+    await expectStatus(page, "Swap tokens confirmed");
     await expect(page.getByRole("alert")).toHaveCount(0);
-    await expect(page.locator(".balances")).toContainText("9,990");
-    await page.locator(".onboarding summary").click();
+    await openWallet(page);
+    await expect(
+      page.getByRole("dialog", { name: "Wallet and test assets" }),
+    ).toContainText("9,990");
     await page.screenshot({
       path: "../docs/screenshots/06-first-wallet.png",
       fullPage: true,
@@ -198,6 +212,7 @@ test("a declined browser connection can be retried or replaced with a local demo
   const address = (await rpc.send("eth_accounts", []))[3] as string;
   await installNewWallet(page, address);
   await page.goto("/");
+  await openWallet(page);
   await expect(page.getByLabel("Test account")).toBeVisible();
   await page.evaluate(() => {
     window.setupWallet.rejectConnection = true;
@@ -206,11 +221,10 @@ test("a declined browser connection can be retried or replaced with a local demo
     .getByRole("button", { name: "Connect browser wallet", exact: true })
     .click();
   await expect(page.getByRole("alert")).toContainText("rejected");
-  await page.getByLabel("Test account").selectOption({ index: 2 });
-  await expect(
-    page.getByText("Local demo account", { exact: true }),
-  ).toBeVisible();
-  await expect(page.getByLabel("Connected account")).toBeVisible();
+  await selectLocalAccount(page, 1);
+  await openWallet(page);
+  await expect(page.getByLabel("Test account")).toBeVisible();
+  await expect(page.getByLabel("Connected account").first()).toBeVisible();
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page
     .getByRole("button", { name: "Connect browser wallet", exact: true })

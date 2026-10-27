@@ -1,4 +1,5 @@
 import { expect, test } from "@playwright/test";
+import { goToWorkspace } from "./navigation";
 import { readFile } from "node:fs/promises";
 
 const origin = "http://127.0.0.1:3000";
@@ -9,7 +10,7 @@ test("a presenter can run, inspect, download and safely stop the market simulati
 }) => {
   test.setTimeout(120_000);
   await page.goto("/");
-  await page.getByRole("button", { name: "Simulation", exact: true }).click();
+  await goToWorkspace(page, "Simulation");
   await expect(
     page.getByRole("heading", { name: "20-account market simulation" }),
   ).toBeVisible();
@@ -43,7 +44,7 @@ test("a presenter can run, inspect, download and safely stop the market simulati
     page.getByRole("img", { name: "Price history for the two exchanges" }),
   ).toBeVisible();
   await page.reload();
-  await page.getByRole("button", { name: "Simulation", exact: true }).click();
+  await goToWorkspace(page, "Simulation");
   await expect(
     page.getByRole("img", { name: "Price history for the two exchanges" }),
   ).toBeVisible();

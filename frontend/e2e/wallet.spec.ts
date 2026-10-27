@@ -1,4 +1,10 @@
 import { expect, test, type Page } from "@playwright/test";
+import {
+  openWallet,
+  closeWallet,
+  goToWorkspace,
+  expectStatus,
+} from "./navigation";
 import { readFileSync } from "node:fs";
 import { Contract, JsonRpcProvider, id, parseEther } from "ethers";
 
@@ -79,6 +85,10 @@ async function installWallet(page: Page, address: string) {
             return [currentAddress];
           if (method === "eth_chainId") return currentChain;
           if (method === "net_version") return String(Number(currentChain));
+          if (method === "wallet_switchEthereumChain") {
+            controls.changeChain((params[0] as { chainId: string }).chainId);
+            return null;
+          }
           let transaction: SentTransaction | undefined;
           if (method === "eth_sendTransaction") {
             const input = params[0] as { from: string; data?: string };
@@ -137,16 +147,18 @@ async function ready(page: Page, accountIndex = 17) {
   const address = await signer.getAddress();
   await installWallet(page, address);
   await page.goto("/");
+  await openWallet(page);
   await expect(
     page.getByRole("button", { name: "Connect browser wallet" }),
   ).toBeEnabled();
   await page.getByRole("button", { name: "Connect browser wallet" }).click();
   await expectAccount(page, address);
+  await closeWallet(page);
   return { signer, address };
 }
 
 async function expectAccount(page: Page, address: string) {
-  await expect(page.getByLabel("Connected account")).toHaveAttribute(
+  await expect(page.getByLabel("Connected account").first()).toHaveAttribute(
     "title",
     address,
   );
@@ -167,10 +179,9 @@ async function sent(page: Page) {
 
 async function submitSwap(page: Page, amount: string) {
   await page.getByLabel("Swap amount").fill(amount);
-  const button = page.getByRole("button", {
-    name: "Approve & swap",
-    exact: true,
-  });
+  const button = page
+    .getByRole("form", { name: "Swap tokens", exact: true })
+    .getByRole("button", { name: "Swap", exact: true });
   await expect(button).toBeEnabled();
   await button.click();
 }
@@ -181,10 +192,9 @@ test("invalid swap amounts never request a signature or send a transaction", asy
   const { address } = await ready(page);
   const before = await rpc.getTransactionCount(address, "latest");
   const amount = page.getByLabel("Swap amount");
-  const submit = page.getByRole("button", {
-    name: "Approve & swap",
-    exact: true,
-  });
+  const submit = page
+    .getByRole("form", { name: "Swap tokens", exact: true })
+    .locator('button[type="submit"]');
   await amount.fill("1");
   await expect(submit).toBeEnabled();
   for (const invalid of ["", "0", "-1", "0.0000000000000000001"]) {
@@ -212,6 +222,7 @@ test("account-change events update the visible owner and subsequent real transac
     address,
   );
   await expectAccount(page, address);
+  await openWallet(page);
   await page
     .getByRole("button", {
       name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
@@ -234,21 +245,52 @@ test("account-change events update the visible owner and subsequent real transac
 test("an unsupported wallet network blocks signing and switching back restores the session", async ({
   page,
 }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
   const { address } = await ready(page, 18);
   await page.getByLabel("Swap amount").fill("1");
   await expect(
-    page.getByRole("button", { name: "Approve & swap", exact: true }),
+    page
+      .getByRole("form", { name: "Swap tokens", exact: true })
+      .locator('button[type="submit"]'),
   ).toBeEnabled();
   await page.evaluate(() => window.testWallet.changeChain("0x1"));
+  const walletButton = page.getByRole("button", {
+    name: "Open wallet",
+    exact: true,
+  });
+  await expect(walletButton).toContainText("Wrong network");
+  await expect(walletButton).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
+  await page
+    .getByRole("form", { name: "Swap tokens", exact: true })
+    .getByRole("button", { name: "Connect wallet", exact: true })
+    .click();
+  await openWallet(page);
   await expect(page.getByRole("alert")).toContainText(/chain|network/i);
-  await expect(
-    page.getByRole("button", { name: "Approve & swap", exact: true }),
-  ).toBeDisabled();
+  const recovery = page.getByRole("button", {
+    name: "Add / switch local network",
+    exact: true,
+  });
+  await recovery.scrollIntoViewIfNeeded();
+  await expect(recovery).toBeInViewport();
+  expect(
+    await page.evaluate(
+      () => document.documentElement.scrollWidth <= innerWidth,
+    ),
+  ).toBe(true);
   expect(await sent(page)).toEqual([]);
-  await page.evaluate(() => window.testWallet.changeChain("0x7a69"));
+  await recovery.click();
   await expectAccount(page, address);
+  await closeWallet(page);
+  await page.getByLabel("Swap amount").fill("1");
   await expect(
-    page.getByRole("button", { name: "Approve & swap", exact: true }),
+    page
+      .getByRole("form", { name: "Swap tokens", exact: true })
+      .locator('button[type="submit"]'),
   ).toBeEnabled();
   const token = new Contract(
     deployment.tokens[0].address,
@@ -256,6 +298,7 @@ test("an unsupported wallet network blocks signing and switching back restores t
     rpc,
   );
   const before: bigint = await token.balanceOf(address);
+  await openWallet(page);
   await page
     .getByRole("button", {
       name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
@@ -296,11 +339,11 @@ test("a rejected swap preserves its confirmed approval and can be retried withou
   const attempts = await sent(page);
   expect(attempts.filter((tx) => tx.hash)).toHaveLength(1);
   expect(attempts.filter((tx) => tx.rejected)).toHaveLength(1);
-  await page.getByRole("button", { name: /Transactions/ }).click();
+  await goToWorkspace(page, "Transactions");
   await expect(
     page.getByRole("row").filter({ hasText: "Approve ERC20" }),
   ).toContainText(/confirm/i);
-  await page.getByRole("button", { name: "Swap", exact: true }).click();
+  await goToWorkspace(page, "Swap");
   await submitSwap(page, "7.125");
   await expect
     .poll(async () => await input.balanceOf(address))
@@ -389,6 +432,7 @@ test("a confirmed transaction stays confirmed when the following balance refresh
       json: Array.isArray(payload) ? values : values[0],
     });
   });
+  await openWallet(page);
   await page
     .getByRole("button", {
       name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
@@ -398,7 +442,7 @@ test("a confirmed transaction stays confirmed when the following balance refresh
   await expect
     .poll(async () => await token.balanceOf(address))
     .toBe(before + parseEther("10000"));
-  await page.getByRole("button", { name: /Transactions/ }).click();
+  await goToWorkspace(page, "Transactions");
   await expect(
     page
       .getByRole("row")
