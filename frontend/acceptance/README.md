@@ -365,6 +365,26 @@ are observed independently. No second gas-budget model supplies the oracle.
 Evidence and source fingerprints remain under `.local/asset-setup-public-*/`;
 the runner does not use the browser or development services.
 
+## Execution fees for liquidity actions
+
+Run `npm run test:liquidity-fees`. With the production kernel and contract
+artifacts already built, run
+`contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-fees-public.mts`.
+
+The public wallet and writer flow mints an NFT after actual ERC20 approvals,
+transfers it to another funded account, then lets the new owner redeem it.
+For each value-free execution, the runner compares `gasCostWei` with the
+sender's historical ETH balance decrease across that execution block. Approval
+transactions occur in earlier blocks and are excluded from the mint's execution
+fee. The public journal must agree with the result. Transfer recipients do not
+pay the sender's fee, while the new owner pays for its own later redemption.
+The 18- and 6-decimal token transfers and NFT ownership are checked independently
+of the ETH cost. The oracle does not reproduce the production fee multiplication.
+
+This establishes the receipt-to-result and journal bindings for these observed
+operations. It does not verify RPC honesty, React rendering, EVM semantics,
+estimated fees or cross-currency net returns.
+
 ## Realized liquidity actions
 
 ```sh

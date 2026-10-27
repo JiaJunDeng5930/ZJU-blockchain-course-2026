@@ -50,6 +50,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Routing.v` | Direct-pool comparison, manual venue selection and captured swap effects; see [swap routing](SWAP-ROUTING.md) |
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Frontend/LiquidityBalances.v` | Balance-bounded preparation for an existing pool, preserving original spending limits and requiring an explicit price for the first deposit |
+| `theories/Frontend/ReceiptFees.v` | One exact execution-fee definition shared by transaction states, arbitrage summaries and liquidity confirmations |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
 | `theories/Frontend/ArbitrageCapital.v` | Exact user-entered capital for manual route comparison, reusing the shared arbitrage candidate calculation |
@@ -123,11 +124,28 @@ from `ArbitrageExecuted` in the confirmed execute receipt. Its ETH execution
 cost is that receipt's `gasUsed * effectiveGasPrice`, following the
 [Ethereum receipt fields](https://ethereum.org/developers/docs/apis/json-rpc/#eth_gettransactionreceipt)
 and [transaction fee definition](https://glossary.ethereum.org/style-guide/gas-fee).
-Prior ERC20 approval transactions are excluded. `summarize_execution` performs
-this arithmetic in extracted Rocq; TypeScript only decodes event/receipt fields
+Prior ERC20 approval transactions are excluded. `summarize_execution` delegates
+this arithmetic to the shared extracted receipt-fee definition; TypeScript only decodes event/receipt fields
 and transports exact integers. The UI keeps ERC20 capital, returned amount and
 profit separate from ETH cost, and labels each pool's reserve order and price
 direction with its token units.
+
+Liquidity deposit, NFT transfer and redemption results expose `gasCostWei` from
+their own execution receipts through the public `executionFeeWei` adapter. The
+same definition supplies confirmed and reverted transaction-journal fees. The
+liquidity view identifies the receipt sender as payer and displays exact ETH
+separately from ERC20 transfers and liquidity shares. A deposit's earlier
+approval receipts are not included. Public acceptance isolates each value-free
+execution block and compares this amount with the sender's actual ETH decrease;
+the pure fee multiplication is not duplicated as its test oracle. See
+[ADR 015](../docs/adr/015-share-confirmed-execution-fees.md) for the decision and
+its receipt-interface assumptions.
+
+`ReceiptFees.execution_fee` is the executable definition;
+`execution_fee_nonnegative` supplies its shared nonnegativity result for valid
+nonnegative receipt fields. Existing arbitrage and transaction proofs reuse the
+same definition. Exact multiplication is established by construction, while the
+public chain scenarios check which receipt and payer supply its inputs.
 
 `Contracts/ArbitrageExtract.v` is a frontend extraction adapter; this summary
 adds no Solidity or EVM refinement. `execution_summary_settlement` reuses

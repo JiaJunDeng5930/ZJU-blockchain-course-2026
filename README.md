@@ -103,6 +103,8 @@ amountOut = floor(amountInWithFee × y / (x × 10000 + amountInWithFee))
 
 `npm run test:liquidity-balances` 通过公开业务入口和真实隔离链验收余额上限、混合精度、整数舍入、铸造与赎回，以及实际授权和剩余额度。余额准备规则有 6 个闭合 Rocq 定理，外部验收另行核对调用绑定。既有首次流动性可运行 `npm run test:initial-liquidity`。
 
+添加、转移和赎回成功后，确认结果单独展示该笔交易实际支付的 ETH 执行费，付款人是交易发送者。此费用来自对应收据，不包含此前单独提交的 ERC20 授权费用，也不从收到的代币数量中直接相减。`npm run test:liquidity-fees` 使用真实链上发送者的 ETH 扣款核对结果；共享费用计算和验证边界见 [ADR 015](docs/adr/015-share-confirmed-execution-fees.md)。
+
 首次加入产生的总原始份额为 `floor(sqrt(amount0 × amount1))`，两币数量均使用最小单位。其中 1000 份永久锁定，NFT 获得剩余份额；总份额不足以超过锁定量时拒绝投入。锁定比例取决于存入规模，不能假定总是很小：例如两个零精度代币各投入 1001，新 NFT 只有 1 份；没有其他操作时立即赎回只能取回各 1 个代币，池中各 1000 个对应永久锁定部分。后续提供者按储备比例获得份额，不再次新增这 1000 份锁定。每次添加流动性铸造一个独立 NFT，记录池 ID、份额、初始投入与时间戳；`tokenURI` 返回自包含的 Base64 JSON。
 
 ```text
