@@ -13,10 +13,16 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import type { TransactionResponse } from "ethers";
+import { getAddress, type Hex, type TransactionReceipt } from "viem";
 import { ExchangeClient, type Writer } from "./client";
 import { errorMessage, sameAddress } from "./amounts";
-import { assertWalletSession, useWallet } from "../wallet/session";
+import {
+  sessionIdentity,
+  transportErrorCode,
+  useWallet,
+  type WalletSession,
+} from "../wallet/session";
+import { accepted, renderActivity } from "../wallet/kernel";
 import type { JournalEntry, Token } from "./types";
 
 function useDexState(client: ExchangeClient) {
@@ -26,7 +32,11 @@ function useDexState(client: ExchangeClient) {
   const [customTokens, setCustomTokens] = useState<Token[]>(() =>
     JSON.parse(localStorage.getItem(registryKey) ?? "[]"),
   );
-  const [journal, setJournal] = useState<JournalEntry[]>([]);
+  const journal: JournalEntry[] = wallet.view.journal.map((entry) => {
+    if (entry.state === "confirmed")
+      return { ...entry, block: BigInt(entry.block), gas: BigInt(entry.gas) };
+    return entry;
+  });
   const tokens = useMemo(
     () => [...client.deployment.tokens, ...customTokens],
     [client, customTokens],
@@ -61,13 +71,19 @@ function useDexState(client: ExchangeClient) {
       "chain",
       client.key,
       session?.address,
+      session?.epoch,
       tokens.map((token) => token.address).join(":"),
     ],
-    queryFn: () => client.snapshot(session?.address, tokens),
+    queryFn: async () => ({
+      ...(await client.snapshot(session?.address, tokens)),
+      identity: session ? sessionIdentity(session) : null,
+    }),
     // Catalog discovery must not unmount a trade in progress. A changed wallet
     // still waits for its own balances instead of displaying the previous owner’s.
-    placeholderData: (previous, previousQuery) =>
-      previousQuery?.queryKey[2] === session?.address ? previous : undefined,
+    placeholderData: (previous) =>
+      wallet.controller.kernel.retainsSnapshot(previous?.identity ?? null)
+        ? previous
+        : undefined,
     refetchInterval: 5000,
   });
   const unknownPoolTokens = [
@@ -101,73 +117,107 @@ function useDexState(client: ExchangeClient) {
     mutationFn: async (operation: {
       label: string;
       perform: (writer: Writer) => Promise<void>;
+      session: WalletSession | undefined;
     }) => {
-      if (!session)
-        throw new Error(
-          "Connect a wallet on the correct network before submitting.",
-        );
+      const captured = operation.session;
+      const context = accepted<string>(
+        wallet.controller.dispatch({
+          kind: "begin-operation",
+          label: operation.label,
+          identity: captured ? sessionIdentity(captured) : null,
+        }),
+      );
       const send = async (
         label: string,
-        submit: () => Promise<TransactionResponse>,
-      ) => {
-        const id = crypto.randomUUID();
-        const base = { id, label, account: session.address };
-        const update = (entry: JournalEntry) =>
-          setJournal((entries) =>
-            entries.some((e) => e.id === id)
-              ? entries.map((e) => (e.id === id ? entry : e))
-              : [entry, ...entries],
-          );
-        update({ ...base, state: "awaiting-wallet" });
-        let hash: string | undefined;
+        submit: () => Promise<Hex>,
+        authority?: { kind: "dev-faucet"; sender: `0x${string}` },
+      ): Promise<TransactionReceipt> => {
+        const transaction = accepted<string>(
+          wallet.controller.dispatch({
+            kind: "request-write",
+            operation: context,
+            label,
+            authority: authority ?? null,
+          }),
+        );
         try {
-          await assertWalletSession(session, client.deployment.chainId);
-          const transaction = await submit();
-          hash = transaction.hash;
-          update({ ...base, state: "submitted", hash });
-          const receipt = await transaction.wait();
-          if (!receipt || receipt.status !== 1)
-            throw new Error("Transaction reverted on chain.");
-          update({
-            ...base,
-            state: "confirmed",
-            hash,
-            block: receipt.blockNumber,
-            gas: receipt.fee,
-          });
-          void cache.invalidateQueries({ queryKey: ["chain", client.key] });
-          return receipt;
+          const observation = await wallet.controller.read(captured!.kind);
+          accepted(
+            wallet.controller.dispatch({
+              kind: "authorize",
+              operation: context,
+              transaction,
+              ...observation,
+            }),
+          );
         } catch (error) {
-          update({
-            ...base,
-            state: "failed",
-            hash,
+          wallet.controller.dispatch({
+            kind: "preflight-failed",
+            transaction,
             message: errorMessage(error),
           });
           throw error;
         }
+        let hash: Hex;
+        try {
+          hash = await submit();
+        } catch (error) {
+          wallet.controller.dispatch({
+            kind: "signature-failed",
+            transaction,
+            code: transportErrorCode(error),
+            message: errorMessage(error),
+          });
+          throw error;
+        }
+        wallet.controller.dispatch({ kind: "broadcast", transaction, hash });
+        let receipt: TransactionReceipt;
+        try {
+          receipt = await client.rpc.waitForTransactionReceipt({ hash });
+        } catch (error) {
+          wallet.controller.dispatch({
+            kind: "receipt-unavailable",
+            transaction,
+            message: errorMessage(error),
+          });
+          throw error;
+        }
+        accepted(
+          wallet.controller.dispatch({
+            kind: "receipt",
+            transaction,
+            hash: receipt.transactionHash,
+            sender: getAddress(receipt.from),
+            status: receipt.status,
+            block: receipt.blockNumber.toString(),
+            gasUsed: receipt.gasUsed.toString(),
+            gasPrice: receipt.effectiveGasPrice.toString(),
+          }),
+        );
+        void cache.invalidateQueries({ queryKey: ["chain", client.key] });
+        return receipt;
       };
-      await operation.perform(client.writer(session, send));
+      try {
+        // Accepted begin-operation witnesses that the captured identity exists and is current.
+        await operation.perform(client.writer(captured!, send));
+        wallet.controller.dispatch({
+          kind: "finish-operation",
+          operation: context,
+          error: null,
+        });
+      } catch (error) {
+        wallet.controller.dispatch({
+          kind: "finish-operation",
+          operation: context,
+          error: errorMessage(error),
+        });
+        throw error;
+      }
     },
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["chain", client.key] });
     },
   });
-  function operationStatus() {
-    const latest = journal[0];
-    if (mutation.isPending) {
-      if (latest?.state === "awaiting-wallet")
-        return `${latest.label}: confirm in wallet`;
-      if (latest?.state === "submitted")
-        return `${latest.label}: waiting for block confirmation`;
-      return mutation.variables.label;
-    }
-    if (mutation.isError)
-      return `Operation stopped: ${errorMessage(mutation.error)}`;
-    if (latest?.state === "confirmed")
-      return `${latest.label} confirmed in block ${latest.block}`;
-    return `Connected to chain ${client.deployment.chainId}`;
-  }
   function registerToken(token: Token) {
     registerTokens([token]);
   }
@@ -179,10 +229,10 @@ function useDexState(client: ExchangeClient) {
     snapshot,
     tokens,
     journal,
-    status: operationStatus(),
-    pending: mutation.isPending,
+    status: renderActivity(wallet.view.activity, client.deployment.chainId),
+    pending: wallet.view.pending,
     run: (label: string, perform: (writer: Writer) => Promise<void>) =>
-      mutation.mutate({ label, perform }),
+      mutation.mutate({ label, perform, session }),
     registerToken,
     symbol: (address: string) =>
       tokens.find((t) => sameAddress(t.address, address))?.symbol ??

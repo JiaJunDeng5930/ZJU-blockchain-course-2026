@@ -1,21 +1,22 @@
-import { parseEther } from "ethers";
 import { useDex } from "../chain/DexProvider";
 import "./OnboardingGuide.css";
 
-const minimumGasBalance = parseEther("0.01");
-
 export function OnboardingGuide() {
   const { client, wallet, session, snapshot, pending, run } = useDex();
-  const testTokens = client.deployment.tokens.filter(
-    (token) => token.kind === "faucet",
+  const plan = wallet.controller.kernel.fundingPlan(
+    snapshot.data
+      ? {
+          identity: snapshot.data.identity,
+          ether: snapshot.data.ether.toString(),
+          tokens: client.deployment.tokens.map((token) => ({
+            address: token.address,
+            kind: token.kind,
+            balance: snapshot.data!.balances[token.address].toString(),
+          })),
+        }
+      : null,
   );
-  const hasGas =
-    snapshot.data !== undefined && snapshot.data.ether >= minimumGasBalance;
-  const missingTokens = testTokens.filter(
-    (token) => (snapshot.data?.balances[token.address] ?? 0n) === 0n,
-  );
-  const funded = hasGas && missingTokens.length === 0;
-  const ready = session !== undefined && snapshot.data !== undefined && funded;
+  const ready = plan.kind === "ready";
 
   return (
     <details className="onboarding" open={!ready}>
@@ -36,21 +37,24 @@ export function OnboardingGuide() {
         </li>
         <li>
           <strong>
-            {funded ? "Test assets available" : "Prepare test assets"}
+            {ready ? "Test assets available" : "Prepare test assets"}
           </strong>
           <p>
-            ETH pays transaction gas.{" "}
-            {testTokens.map((token) => token.symbol).join(" and ")} are the
-            tokens you trade. The local faucet can fund a new wallet without
-            importing a development private key.
+            ETH pays transaction gas. The local faucets provide test assets
+            without importing a development private key.
           </p>
-          {session && snapshot.data && !funded && (
+          {plan.kind === "need-funding" && (
             <button
               disabled={pending}
               onClick={() =>
                 run("Prepare test assets", async (writer) => {
-                  if (!hasGas) await writer.claimEther();
-                  for (const token of missingTokens) await writer.faucet(token);
+                  if (plan.native) await writer.claimEther();
+                  for (const address of plan.tokens) {
+                    const token = client.deployment.tokens.find(
+                      (token) => token.address === address,
+                    )!;
+                    await writer.faucet(token);
+                  }
                 })
               }
             >

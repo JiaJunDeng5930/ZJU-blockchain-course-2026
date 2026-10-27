@@ -1,243 +1,304 @@
+import { useEffect, useMemo, useSyncExternalStore } from "react";
 import {
-  BrowserProvider,
-  JsonRpcSigner,
-  type Eip1193Provider,
-  type Signer,
-} from "ethers";
-import { useEffect, useRef, useState } from "react";
+  createWalletClient,
+  custom,
+  getAddress,
+  http,
+  type Address,
+  type EIP1193Provider,
+  type WalletClient,
+  BaseError,
+} from "viem";
 import type { ExchangeClient } from "../chain/client";
-import { errorMessage, sameAddress } from "../chain/amounts";
+import { errorMessage } from "../chain/amounts";
+import {
+  WalletKernel,
+  type KernelReply,
+  type KernelEvent,
+  type WalletEffect,
+  type WalletIdentity,
+  type WalletSource,
+} from "./kernel";
 
-type InjectedProvider = Eip1193Provider & {
-  on(event: "accountsChanged", listener: (accounts: string[]) => void): void;
-  on(event: "chainChanged", listener: (chain: string) => void): void;
-  on(event: "disconnect", listener: () => void): void;
-  removeListener(
-    event: "accountsChanged",
-    listener: (accounts: string[]) => void,
-  ): void;
-  removeListener(
-    event: "chainChanged",
-    listener: (chain: string) => void,
-  ): void;
-  removeListener(event: "disconnect", listener: () => void): void;
-};
 declare global {
   interface Window {
-    ethereum?: InjectedProvider;
+    ethereum?: EIP1193Provider;
   }
 }
 export type WalletSession = {
-  kind: "local" | "injected";
-  address: string;
-  signer: Signer;
+  kind: WalletSource;
+  address: Address;
+  chainId: string;
+  epoch: string;
+  walletClient: WalletClient;
 };
-type WalletState =
-  | { kind: "connecting" }
-  | { kind: "ready"; session: WalletSession }
-  | {
-      kind: "unavailable";
-      message: string;
-      source: "local" | "injected";
-      reason?: "wrong-network";
-    };
-
-export function useWallet(client: ExchangeClient) {
-  const [state, setState] = useState<WalletState>({ kind: "connecting" });
-  const preferenceKey = `twopool:wallet:${client.deployment.chainId}:${client.deployment.rpcUrl}`;
-  const [source, setSource] = useState<"local" | "injected">(() =>
-    localStorage.getItem(preferenceKey) === "injected" ? "injected" : "local",
-  );
-  const [localAddress, setLocalAddress] = useState(
-    () => localStorage.getItem(`${preferenceKey}:local-address`) ?? "",
-  );
-  const requestAccess = useRef(false);
-  const [connectionAttempt, setConnectionAttempt] = useState(0);
-  useEffect(() => {
-    let current = true;
-    let revision = 0;
-    async function synchronize(requestAccess = false) {
-      const pending = ++revision;
-      setState({ kind: "connecting" });
-      try {
-        let session: WalletSession;
-        if (source === "local") {
-          const address = localAddress || (await client.localAccounts())[0];
-          if (!address)
-            throw new Error("No unlocked local test accounts are available.");
-          session = {
-            kind: "local",
-            address,
-            signer: await client.rpc.getSigner(address),
-          };
-        } else {
-          const injected = window.ethereum;
-          if (!injected)
-            throw new Error(
-              "No browser wallet found. Install an EIP-1193 wallet or use a local test account.",
-            );
-          const accounts = (await injected.request({
-            method: requestAccess ? "eth_requestAccounts" : "eth_accounts",
-          })) as string[];
-          if (accounts.length === 0)
-            throw new Error(
-              "Wallet disconnected. Connect browser wallet to continue.",
-            );
-          const chainId = Number(
-            await injected.request({ method: "eth_chainId" }),
-          );
-          if (chainId !== client.deployment.chainId) {
-            if (current && pending === revision)
-              setState({
-                kind: "unavailable",
-                source: "injected",
-                reason: "wrong-network",
-                message: `Wrong wallet network. Switch to chain ${client.deployment.chainId}.`,
-              });
-            return;
-          }
-          const provider = new BrowserProvider(injected);
-          session = {
-            kind: "injected",
-            address: accounts[0],
-            // Constructing the signer cannot request fresh account access during restoration.
-            signer: new JsonRpcSigner(provider, accounts[0]),
-          };
-        }
-        if (current && pending === revision)
-          setState({ kind: "ready", session });
-      } catch (error) {
-        if (current && pending === revision)
-          setState({
-            kind: "unavailable",
-            message: errorMessage(error),
-            source,
-          });
-      }
-    }
-    const authorize = requestAccess.current;
-    requestAccess.current = false;
-    void synchronize(authorize);
-    const onAccounts = () => {
-      void synchronize();
-    };
-    const onChain = () => {
-      void synchronize();
-    };
-    const onDisconnect = () => {
-      ++revision;
-      setState({
-        kind: "unavailable",
-        message: "Wallet disconnected. Reconnect to continue.",
-        source: "injected",
-      });
-    };
-    const injected = window.ethereum;
-    if (source === "injected" && injected) {
-      injected.on("accountsChanged", onAccounts);
-      injected.on("chainChanged", onChain);
-      injected.on("disconnect", onDisconnect);
-    }
-    return () => {
-      current = false;
-      if (source === "injected" && injected) {
-        injected.removeListener("accountsChanged", onAccounts);
-        injected.removeListener("chainChanged", onChain);
-        injected.removeListener("disconnect", onDisconnect);
-      }
-    };
-  }, [client, source, localAddress, connectionAttempt]);
-  async function switchNetwork() {
-    const injected = window.ethereum;
-    if (!injected) return;
-    const chainId = `0x${client.deployment.chainId.toString(16)}`;
-    setState({ kind: "connecting" });
-    try {
-      try {
-        await injected.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId }],
-        });
-      } catch (error) {
-        // DEFENSE: EIP-3326 wallets reject unknown networks with 4902; add this deployment before retrying.
-        if (!(
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === 4902
-        ))
-          throw error;
-        await injected.request({
-          method: "wallet_addEthereumChain",
-          params: [
-            {
-              chainId,
-              chainName: "TwoPool Local Ethereum",
-              nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
-              rpcUrls: [client.deployment.rpcUrl],
-            },
-          ],
-        });
-        await injected.request({
-          method: "wallet_switchEthereumChain",
-          params: [{ chainId }],
-        });
-      }
-      setConnectionAttempt((attempt) => attempt + 1);
-    } catch (error) {
-      setState({
-        kind: "unavailable",
-        source: "injected",
-        reason: "wrong-network",
-        message:
-          error &&
-          typeof error === "object" &&
-          "code" in error &&
-          error.code === 4001
-            ? "Network change rejected. You can retry or choose a local test account."
-            : `Network change failed: ${errorMessage(error)}`,
-      });
-    }
-  }
+export function sessionIdentity(session: WalletSession): WalletIdentity {
   return {
-    state,
-    source,
-    switchNetwork,
-    selectLocal(address: string) {
-      localStorage.setItem(preferenceKey, "local");
-      localStorage.setItem(`${preferenceKey}:local-address`, address);
-      requestAccess.current = false;
-      setSource("local");
-      setLocalAddress(address);
-    },
-    connectInjected() {
-      localStorage.setItem(preferenceKey, "injected");
-      requestAccess.current = true;
-      setSource("injected");
-      setLocalAddress("");
-      setConnectionAttempt((attempt) => attempt + 1);
-    },
+    source: session.kind,
+    address: session.address,
+    chain: session.chainId,
+    epoch: session.epoch,
   };
 }
-
-export async function assertWalletSession(
-  session: WalletSession,
-  chainId: number,
-) {
-  if (session.kind === "local") return;
-  const injected = window.ethereum;
-  if (!injected) throw new Error("Browser wallet disconnected.");
-  const [accounts, chain] = await Promise.all([
-    injected.request({ method: "eth_accounts" }) as Promise<string[]>,
-    injected.request({ method: "eth_chainId" }) as Promise<string>,
-  ]);
-  // DEFENSE: a user may change wallet account/network while an earlier approval prompt is open.
+export function transportErrorCode(error: unknown): string | null {
+  // Wallet errors may omit an EIP-1193 code; absence stays explicit at the model boundary.
+  const cause =
+    error instanceof BaseError
+      ? error.walk((entry) =>
+          Boolean(entry && typeof entry === "object" && "code" in entry),
+        )
+      : error;
   if (
-    Number(chain) !== chainId ||
-    !accounts[0] ||
-    !sameAddress(accounts[0], session.address)
+    cause &&
+    typeof cause === "object" &&
+    "code" in cause &&
+    typeof cause.code === "number"
   )
-    throw new Error(
-      "Wallet account or network changed during the operation. Review it and submit again.",
+    return cause.code.toString();
+  return null;
+}
+
+/** Executes the external operations emitted by Rocq; it does not decide connection policy. */
+class WalletController {
+  readonly kernel: WalletKernel;
+  private started = false;
+  private preferenceKey: string;
+  constructor(readonly client: ExchangeClient) {
+    this.preferenceKey = `twopool:wallet:${client.deployment.chainId}:${client.deployment.rpcUrl}`;
+    const address = localStorage.getItem(`${this.preferenceKey}:local-address`);
+    this.kernel = new WalletKernel({
+      chain: client.deployment.chainId.toString(),
+      source: localStorage.getItem(this.preferenceKey),
+      address: address ? getAddress(address) : null,
+    });
+  }
+  dispatch<T = unknown>(event: KernelEvent): KernelReply<T> {
+    const reply = this.kernel.dispatch<T>(event);
+    void this.execute(reply.effects);
+    return reply;
+  }
+  async start() {
+    const reply = this.started
+      ? this.kernel.dispatch({ kind: "invalidate" })
+      : this.kernel.start();
+    this.started = true;
+    await this.execute(reply.effects);
+  }
+  stop() {
+    this.kernel.dispatch({ kind: "disconnect" });
+  }
+  async switchNetwork() {
+    await this.execute(
+      this.kernel.dispatch({ kind: "switch-network" }).effects,
     );
+  }
+  private async execute(effects: WalletEffect[]): Promise<void> {
+    for (const effect of effects) {
+      switch (effect.kind) {
+        case "persist":
+          localStorage.setItem(this.preferenceKey, effect.preference.source);
+          if (effect.preference.address !== null)
+            localStorage.setItem(
+              `${this.preferenceKey}:local-address`,
+              effect.preference.address,
+            );
+          break;
+        case "observe": {
+          let event: KernelEvent;
+          if (effect.source === "injected" && !window.ethereum) {
+            event = {
+              kind: "observation-failed",
+              request: effect.request,
+              reason: "missing-provider",
+            };
+          } else {
+            try {
+              event = {
+                kind: "observed",
+                request: effect.request,
+                ...(await this.observe(effect.source, effect.requestAccess)),
+              };
+            } catch (error) {
+              event = {
+                kind: "observation-failed",
+                request: effect.request,
+                reason: "request-failed",
+                message: errorMessage(error),
+              };
+            }
+          }
+          await this.execute(this.kernel.dispatch(event).effects);
+          break;
+        }
+        case "switch-network": {
+          let event: KernelEvent;
+          try {
+            await window.ethereum!.request({
+              method: "wallet_switchEthereumChain",
+              params: [
+                {
+                  chainId: `0x${BigInt(this.client.deployment.chainId).toString(16)}`,
+                },
+              ],
+            });
+            event = {
+              kind: "switched",
+              request: effect.request,
+              success: true,
+              code: null,
+              message: "",
+            };
+          } catch (error) {
+            event = {
+              kind: "switched",
+              request: effect.request,
+              success: false,
+              code: transportErrorCode(error),
+              message: errorMessage(error),
+            };
+          }
+          await this.execute(this.kernel.dispatch(event).effects);
+          break;
+        }
+        case "add-network": {
+          let event: KernelEvent;
+          try {
+            await window.ethereum!.request({
+              method: "wallet_addEthereumChain",
+              params: [
+                {
+                  chainId: `0x${BigInt(this.client.deployment.chainId).toString(16)}`,
+                  chainName: this.client.chain.name,
+                  nativeCurrency: this.client.chain.nativeCurrency,
+                  rpcUrls: [this.client.deployment.rpcUrl],
+                },
+              ],
+            });
+            event = {
+              kind: "added",
+              request: effect.request,
+              success: true,
+              code: null,
+              message: "",
+            };
+          } catch (error) {
+            event = {
+              kind: "added",
+              request: effect.request,
+              success: false,
+              code: transportErrorCode(error),
+              message: errorMessage(error),
+            };
+          }
+          await this.execute(this.kernel.dispatch(event).effects);
+          break;
+        }
+      }
+    }
+  }
+  read(source: WalletSource) {
+    return this.observe(source, false);
+  }
+  private async observe(source: WalletSource, requestAccess: boolean) {
+    if (source === "local") {
+      const [accounts, chain] = await Promise.all([
+        this.client.localAccounts(),
+        this.client.rpc.request({ method: "eth_chainId" }),
+      ]);
+      return {
+        accounts: accounts.map((address) => getAddress(address)),
+        chain: BigInt(chain).toString(),
+      };
+    }
+    const provider = window.ethereum;
+    if (!provider) throw new Error("Browser wallet disconnected.");
+    const [accounts, chain] = await Promise.all([
+      provider.request({
+        method: requestAccess ? "eth_requestAccounts" : "eth_accounts",
+      }),
+      provider.request({ method: "eth_chainId" }),
+    ]);
+    return {
+      accounts: accounts.map((address) => getAddress(address)),
+      chain: BigInt(chain).toString(),
+    };
+  }
+}
+
+export function useWallet(client: ExchangeClient) {
+  const controller = useMemo(() => new WalletController(client), [client]);
+  const view = useSyncExternalStore(
+    controller.kernel.subscribe,
+    controller.kernel.getSnapshot,
+  );
+  const wallet = view.wallet;
+  const identityKey =
+    wallet.kind === "ready" ? JSON.stringify(wallet.identity) : null;
+  const session = useMemo<WalletSession | undefined>(() => {
+    if (identityKey === null) return undefined;
+    const identity: WalletIdentity = JSON.parse(identityKey);
+    return {
+      kind: identity.source,
+      address: getAddress(identity.address),
+      chainId: identity.chain,
+      epoch: identity.epoch,
+      walletClient: createWalletClient({
+        account: getAddress(identity.address),
+        chain: client.chain,
+        transport:
+          identity.source === "local"
+            ? http(client.deployment.rpcUrl)
+            : custom(window.ethereum!),
+      }),
+    };
+  }, [client, identityKey]);
+  useEffect(() => {
+    const provider = window.ethereum;
+    const invalidate = () => {
+      controller.dispatch({ kind: "provider-changed", source: "injected" });
+    };
+    const disconnected = () => {
+      controller.dispatch({
+        kind: "provider-disconnected",
+        source: "injected",
+      });
+    };
+    provider?.on("accountsChanged", invalidate);
+    provider?.on("chainChanged", invalidate);
+    provider?.on("disconnect", disconnected);
+    void controller.start();
+    return () => {
+      provider?.removeListener("accountsChanged", invalidate);
+      provider?.removeListener("chainChanged", invalidate);
+      provider?.removeListener("disconnect", disconnected);
+      controller.stop();
+    };
+  }, [controller]);
+  const state =
+    wallet.kind === "ready"
+      ? { kind: "ready" as const, session: session! }
+      : wallet.kind === "connecting"
+        ? { kind: "connecting" as const }
+        : {
+            kind: "unavailable" as const,
+            source: wallet.source,
+            reason: wallet.reason,
+            message: wallet.message,
+          };
+  return {
+    state,
+    source: wallet.source,
+    controller,
+    view,
+    selectLocal: (address: string) => {
+      controller.dispatch({
+        kind: "select-local",
+        address: getAddress(address),
+      });
+    },
+    connectInjected: () => {
+      controller.dispatch({ kind: "connect-browser" });
+    },
+    switchNetwork: () => controller.switchNetwork(),
+  };
 }
