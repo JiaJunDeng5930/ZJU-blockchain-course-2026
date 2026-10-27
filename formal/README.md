@@ -31,6 +31,7 @@ The swap translation and liquidity refinement commands are separate from fronten
 
 ```bash
 node contracts/scripts/verify-swap.rocq.mjs
+node contracts/scripts/verify-swap.proof.mjs
 node contracts/scripts/verify-liquidity.generate.cjs --check
 node contracts/scripts/verify-liquidity.rocq.cjs
 node contracts/scripts/verify-liquidity-supply.rocq.cjs
@@ -67,11 +68,16 @@ SMTChecker harnesses import production helper code rather than a second arithmet
 | `AMMMath.sol` | `verify-swap.mjs`; report `formal/build/swap-smt.json` | Successful bounded quote arithmetic and assertions; BMC is used for the loop-free helper, with unknown/unsupported results reported separately |
 | `LiquidityAccounting.sol` | `verify-liquidity.cjs`; `.local/formal/liquidity-smt.json` | 11 proved assertions about successful reserve/share updates |
 | `ArbitrageSettlement.sol` | `verify-arbitrage.cjs`; `.local/formal/arbitrage-smt.json` | Four proved settlement assertions; `settlement_smt_assertions` connects their conjunction to the shared settlement predicate |
+| Generated `calculateAmountOut` | `SwapRefinement.v`; `formal/build/swap-proof.json` | `calculate_amount_out_runs` and `frontend_swap_quote_matches_contract` connect the actual frontend request to the inherited helper’s optimized generated-Yul `Run.t` result and unchanged State |
+| Generated reserve accounting | `LiquidityRefinement.v`; `.local/formal/liquidity-rocq.json` | `reduce_reserve_runs` and `increase_reserve_runs` establish successful production reserve helper execution |
+| Generated supply accounting | `LiquiditySupplyRefinement.v`; `.local/formal/liquidity-supply-rocq.json` | `mint_total_refines_supply` and `burn_total_refines_supply` connect actual helper execution to shared `Liquidity.mint_total` / `burn_total` |
 | Generated `checkedProfit` | `ArbitrageRefinement.v`; `.local/formal/arbitrage-rocq.json` | `checked_profit_runs` and `checked_profit_refines_settlement` use the official `Run.t` execution relation |
 | `TestToken.faucet` and inherited OpenZeppelin mint | `verify-assets.cjs`; `.local/formal/assets-smt.json` | Full faucet balance/supply verification has not closed; the frontend faucet capability proof does not establish the ERC20 implementation |
 | `WrappedEther.sol` and inherited OpenZeppelin code | `verify-wrapping.cjs`; `.local/formal/wrapping-smt.json` | The attempted full-source check is unproved because the upstream checker reports unsupported features |
 
-Liquidity reserve and supply refinement sources are separate proof obligations. A completed proof source is not listed as a completed checker run until its runner produces a successful report. AMM source translation is likewise separate from a checked `Run.t` refinement.
+The AMM refinement report records `status=proved` and `coqchk passed`. Its environment must use the existing SMT harness code name, with valid uint112 reserves and positive input. It proves the inherited production helper and the frontend `RequestSwapEffect` input/output relation. It does not prove ABI decoding, MiniDEX reserve-storage integration, ERC20 effects or EVM bytecode. Translation correspondence is checked independently before this proof.
+
+The reserve refinement accepts uint256 values with `0 <= reserve <= limit`, `0 <= added <= limit - reserve`, and `limit <= uint256_max`; reduction requires `0 <= removed < reserve`. It covers successful pure reserve arithmetic, not NFT/storage composition, external token effects or optimized EVM bytecode. The separate share-supply refinement connects the mint/burn helpers to `Liquidity.mint_total` and `Liquidity.burn_total` in the successful uint256 domain, with fixed locked minimum 1000. It does not assume LP shares fit uint112. Both LP reports record `status=proved` and `kernelCheck=coqchk passed`, with source-hash checks against the final sources. Both LP refinements use the unoptimized native translation of the production library; their helper result does not certify the optimized deployed bytecode.
 
 Both reserve sides are limited to `2^112−1` raw units, following the range used by Uniswap V2. LP shares remain uint256. The cap bounds the quote's checked machine arithmetic; it does not justify assuming a 112-bit share supply. OpenZeppelin `sqrt` and full-precision `mulDiv` are reused. Their mathematical implementation refinement and composition into a global MiniDEX invariant are outside the present helper proofs.
 
@@ -79,7 +85,7 @@ The native compiler is the pinned upstream rocq-of-solidity fork. Two recorded C
 
 ## Trust and composition
 
-Ordinary frontend models use predicative Set. The upstream Solidity semantics requires `-impredicative-set`. The checked arbitrage refinement reports ten registered kernel Primitive operations, not an invented target axiom. Upstream unfinished helper theorems and the `M.run` marker are not used to discharge its `Run.t` goal. Each proof runner records its actual assumptions; the logic mode and primitives remain part of the assurance statement.
+Ordinary frontend models use predicative Set. The upstream Solidity semantics requires `-impredicative-set`. The checked swap, reserve, supply and arbitrage refinements report ten registered kernel Primitive operations, not an invented target axiom. Upstream unfinished helper theorems and the `M.run` marker are not used to discharge its `Run.t` goal. Each proof runner records its actual assumptions; the logic mode and primitives remain part of the assurance statement.
 
 The trusted boundary includes solc and its optimization/code generation, Rocq extraction, OCaml/js_of_ocaml and Zarith runtime, JSON/ABI adapters, React rendering, RPC and wallet behavior. External ERC20 contracts must implement the stated standard transfer behavior without rebasing or transfer tax. External calls may fail, and the execution environment must provide Ethereum transaction atomicity. The helper refinements do not prove those interfaces.
 

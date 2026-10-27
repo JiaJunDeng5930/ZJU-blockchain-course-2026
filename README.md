@@ -128,31 +128,23 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 
 `SIM_ROUNDS` 至少 20；`SIM_SEED` 指定随机种子；`SIM_DURATION_SECONDS` 指定最短运行时间；`SIM_INTERVAL_MS` 控制操作间隔。节点区块时间会影响部分时间戳，但同一初始状态和种子决定操作选择。复现实验时不要在前端同时提交交易，以免报价竞争；行情变化引起的拒绝属于真实失败，不算成功。
 
-以下数值与后面的截图来自形式化迁移前的真实演示版本，用于保留课程操作记录，不作为当前构建的验收结果。另一次连续运行持续 **123.072 秒**，实际执行 **231 轮**，20 个地址参与，完成 113 次交易、75 次添加、75 次撤销流动性及 16 次盈利套利。记录的 302 笔交易中有 301 笔成功、1 笔预期失败；失败交易的储备和余额回滚检查通过。
+2026-10-27，当前版本通过模拟服务的公开 HTTP 入口完成了一次真实本地链验收：**60 轮、20 个活跃地址、78.033 秒**，完成 32 次交易、24 次添加流动性、24 次撤销流动性和 6 次盈利套利。任务最终状态为 `completed`，完整 JSON 报告可下载。验收还包含一笔收据 `status=0` 的真实失败套利；比较前后储备和代币余额，回滚检查通过。这是对该次外部行为的验收，不是完整 EVM 的形式化证明。
 
-完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。
+另一次任务运行中主动停止，最终状态为 `stopped`；已添加的流动性安全赎回，停止后的报告仍可下载。记录保存在 `.local/simulation-delivery-acceptance.json`，不提交仓库。本次验收直接使用 HTTP 与链上公开入口，没有使用浏览器查错。
 
-该演示版本的一次真实本地链验收运行 60 轮，耗时约 15.6 秒：20 个活跃地址，32 次交易、24 次添加流动性、24 次撤销流动性、7 次盈利原子套利，记录 88 笔交易（含批准和一笔预期失败交易）。这是运行现场快照，运行前已有试跑交易，重新部署后具体价格和收益会不同。
-
-一个可核对的套利实例：投入 500 TKA，经 Summit → Harbor 返回约 545.49436182 TKA，利润约 **45.49436182 TKA**，未扣 gas。Harbor 的 TKB/TKA 储备价格由 0.6579700664 变为 0.7202823420，Summit 由 0.7889808589 变为 0.7234178470。交易哈希：
-
-```text
-0x3c9c406af5ffb385f29f4036b085753c5fd4bcb6b8511c4150c1a2a39ff2d12a
-```
-
-最低利润条件不满足的实际失败交易 `0x590ab3f7fcabbed35bbb54ab3351b8026203ee74a096eee76337f8d3f185c3b7` 的收据为 `status=0`。脚本比较交易前后数据，确认两池储备、调用者和套利合约的代币余额均完整回滚。上述哈希只属于本次本地链，不能通过公共区块浏览器查询。
+完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。后面的截图继续保留为迁移前的历史操作记录。
 
 ## 形式化开发与验证
 
-共享规格位于 [`formal/theories/Spec`](formal/theories/Spec)，覆盖原始代币单位、AMM、余额转移、流动性份额与 NFT 所有权、合约调用和失败回滚的抽象行为。前端钱包、异步请求、交易日志、资产目录、表单、模拟控制及交易参数由 Rocq 定义，经过 `Extraction → OCaml → js_of_ocaml` 生成执行代码。React 渲染模型输出，viem 处理钱包、ABI 与 RPC；TypeScript 适配器不再重复金额、滑点、份额或审批判断。余额展示保留精确整数，图表中的近似价格不用作交易参数。
+共享规格位于 [`formal/theories/Spec`](formal/theories/Spec)，覆盖原始代币单位、AMM、余额转移、流动性份额与 NFT 所有权、合约调用和失败回滚的抽象行为。前端钱包、异步请求、交易日志、资产目录、表单、模拟控制及交易参数由 Rocq 定义，经过 `Extraction → OCaml → js_of_ocaml` 生成执行代码。React 渲染模型输出，viem 处理钱包、ABI 与 RPC；TypeScript 适配器不再重复金额、滑点、份额或审批判断。交易金额与参数使用精确整数，显示位数不影响实际金额；图表中的近似价格不用作交易参数。
 
 钱包会话与请求都有独立标识；过期响应不能覆盖当前会话。批准与交换是两笔交易，切换账户后旧流程不能继续提交。已确认的交易不会因后续读取失败而改写成失败；发送结果未知时保留“未知”状态，不声称未提交。模拟控制停止的是指定任务，旧页面不能停止后来启动的另一任务。
 
 | 范围 | 验证连接 | 保证边界 |
 | --- | --- | --- |
 | 前端业务内核 | Rocq 定理、`coqchk`、直接提取到实际加载的 JavaScript | JSON/OCaml 桥接、React 渲染、viem、钱包和 RPC 遵守接口约定 |
-| AMM 报价 | 共享恒定乘积模型；SMTChecker 检查生产 `AMMMath` 的断言 | 成功路径的储备/输入范围、整数算术与舍入；不等于整个 DEX 的 EVM 证明 |
-| 流动性会计 | 共享份额模型；SMTChecker 检查实际 `LiquidityAccounting` helper | 储备与份额更新；OpenZeppelin `sqrt`、`mulDiv` 的实现精化与整个合约不变量组合仍独立 |
+| AMM 报价 | 共享模型、实际 `AMMMath` 的 SMT 检查，以及 `calculate_amount_out_runs` / `frontend_swap_quote_matches_contract` 的 `Run.t` 证明 | 有效 uint112 储备和正输入下，前端提交报价对应既有 harness 继承的生成纯函数，且状态不变；不覆盖 MiniDEX 储备存储、ABI 或 EVM 字节码 |
+| 流动性会计 | 共享模型、实际 `LiquidityAccounting` 的 SMT 检查，以及储备加减和份额增减 helper 的 `Run.t` 证明 | 成功路径的有界储备与份额更新；不覆盖 NFT/储备存储组合、外部代币效果、OpenZeppelin `sqrt` / `mulDiv` 实现或完整 EVM |
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
 | WETH 与测试币 faucet | 前端本金/最高 gas 预算、资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
 
