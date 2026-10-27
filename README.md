@@ -80,7 +80,11 @@ npm --prefix frontend run dev
 
 SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用 `client.importToken(result.address)` 独立取得已验证元数据。`createPool` 返回包含交易所和池编号的 `PoolCreationConfirmation`，不把创建回执当成当前储备快照；网页已集成这些步骤。
 
-运行 `npm run test:asset-setup`，可在隔离链上通过公开钱包接口验收从无资金账户领取测试资产、创建并领取新代币、在指定交易所建空池，以及真实包装和解包的连续流程。验收使用实际部署回执、代币元数据、交易和余额变化；测试 ETH 充值不伪装为链上交易，无法支付 gas 的转换会在发送前拒绝。
+运行 `npm run test:asset-setup`，可在隔离链上通过公开钱包接口验收从无资金账户领取测试资产、创建并领取新代币、在指定交易所建空池，以及真实包装和解包的连续流程。验收使用实际部署回执、代币元数据、交易和余额变化；夹具通过开发 RPC 设定起始余额时不伪造交易回执；实际领取 ETH 由本地出资账户发送交易。无法支付 gas 的转换会在发送前拒绝。
+
+包装和解包成功后，确认结果分别展示实际本金、WETH 变化、该笔交易的 ETH 变化及执行费。包装会支付 ETH 本金和 gas；解包释放的 ETH 本金仍需扣除 gas，因此微小解包的 ETH 净变化可能为负。本金来自 WETH 合约的铸造/销毁事件，费用来自同一收据；结果不依赖确认后的余额读取。
+
+创建 A/WETH 池前可先包装 ETH；从该池赎回得到的是 ERC20 WETH，再通过解包转回 ETH。运行 `npm run test:wrapping-settlement` 可验收立即连续包装/解包，以及 A/WETH 建池、NFT 注资、赎回和解包的完整路径。转换账务关系由 2 个闭合 Rocq 定理约束；实际合约、事件和余额另行验收，不据此声称完整 WETH 合约已经得到 EVM 证明。
 
 运行 `npm run test:creation-results`，可验收创建确认与后续元数据故障恢复、两交易所的池身份，以及并发重复建池导致的真实链上回滚。
 
@@ -228,7 +232,7 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 | AMM 报价 | 共享模型、实际 `AMMMath` 的 SMT 检查，以及 `calculate_amount_out_runs`、单池与路由前端的 `Run.t` 连接 | 有效 uint112 储备和正输入下，前端提交报价对应既有 harness 继承的生成纯函数，且状态不变；不覆盖 MiniDEX 储备存储、ABI 或 EVM 字节码 |
 | 流动性会计 | 共享模型、实际 `LiquidityAccounting` 的 SMT 检查，以及储备加减和份额增减 helper 的 `Run.t` 证明 | 成功路径的有界储备与份额更新；不覆盖 NFT/储备存储组合、外部代币效果、OpenZeppelin `sqrt` / `mulDiv` 实现或完整 EVM |
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
-| WETH 与测试币 faucet | 前端本金/最高 gas 预算、资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
+| WETH 与测试币 faucet | 前端本金/最高 gas 预算、转换账务与资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
 
 `atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。
 

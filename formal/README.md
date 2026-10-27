@@ -63,6 +63,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Frontend/Allowances.v` | Identity-bound allowance observations, explicit zero-approval decisions and verification after confirmation; see [allowance management](ALLOWANCES.md) |
 | `theories/Spec/Assets.v`, `Frontend/AssetsForms.v` | Verified asset catalog, pool compatibility, creation/import/faucet decisions and form effects |
 | `theories/Spec/Wrapping.v`, `Frontend/WrappingModel.v` | ETH/WETH principal and maximum gas budget decisions |
+| `theories/Frontend/WrappingSettlement.v` | Confirmed ETH/WETH principal movements and the execution fee's effect on native ETH |
 | `theories/Spec/Simulation.v`, `Frontend/SimulationModel.v` | Valid options, request identity, command exclusion, recovery and job-specific stop |
 | `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
 
@@ -230,6 +231,26 @@ length-and-hexadecimal condition. This changes the implementation of validation,
 not the accepted calldata. The public creation acceptance retains the ordinary
 cold-start deployment input that exposed the stack overflow; neither Node stack
 limits nor compiler flags are changed to accommodate it.
+
+Confirmed wrapping uses `Frontend/WrappingSettlement.v` for signed native and
+wrapped-token changes. The `wrappingSettlement` adapter reuses exact integer
+units; its gas input comes from the shared receipt-fee definition. Principal is
+decoded from this WETH contract's ERC20 mint/burn event, not a later balance
+observation. A tiny unwrap can release positive principal while its native
+change after gas is negative. The view labels these quantities separately and
+retains the reviewed dispatcher and execution account.
+
+This is transaction accounting under the known WETH contract's 1:1 behavior and
+valid receipt fields. It adds no whole-contract WETH or EVM proof. Public
+acceptance checks native/WETH balances, mint/burn events, immediate sequential
+calls and the ERC20/WETH pool/NFT/redemption/unwrap path. The existing preflight
+still checks the maximum gas budget before submission.
+
+`settlement_preserves_wrapped_principal` establishes the direction and exact
+wrapped-token principal. `settlement_accounts_for_execution_fee` establishes
+that the native and wrapped movements sum to the negative execution fee in
+their common 18-decimal unit. These are model accounting statements, not a
+proof of the deployed WETH's backing or external native transfers.
 
 ## Actual Solidity evidence
 

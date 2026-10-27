@@ -381,6 +381,26 @@ inherit the previous identity's confirmations. A later rejected token request
 does not erase earlier successful grants. The script uses public APIs rather
 than DOM interaction or fabricated internal wallet states.
 
+## Confirmed ETH/WETH conversion and pool use
+
+Run `npm run test:wrapping-settlement`, or run
+`contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-settlement-public.mts`
+after building the production kernel and contract artifacts.
+
+The public wallet flow wraps ETH, uses WETH in an ERC20/WETH liquidity pool,
+receives and redeems a position NFT, then unwraps returned WETH. Receipts and
+actual native/WETH balance changes establish the conversion's principal and
+execution fee effects. Pool redemption returns WETH rather than native ETH.
+The conversion confirmation takes its amount from this contract's ERC20 mint or
+burn event; it does not require another balance query after confirmation.
+
+Continuous wrapping/unwrapping uses actual latest state without artificial
+sleeps. A tiny unwrap distinguishes gross ETH released from a negative native
+change after gas. The test oracle uses chain balances, events and the public
+journal, not a copy of the production settlement formula. The pure accounting
+relation is a Rocq guarantee; these observations check its external bindings and
+do not prove the full WETH contract, EVM or React rendering.
+
 ## Asset preparation and pool creation
 
 After building the frontend kernel and contract artifacts:
