@@ -512,3 +512,7 @@ the external effects. Results and source fingerprints stay under
 it does not prove React rendering or browser and wallet behavior.
 
 `npm run test:arbitrage-receipt` restores actual arbitrage amounts, trader, pool reserve events and fees from saved hashes after wallet-history reconstruction. It covers mixed token precision, other trades in the same block, an unavailable transaction description, foreign event emitters, a genuine revert, and receipt RPC outage/retry on an isolated chain.
+
+## Historical swap receipts
+
+`npm run test:swap-receipt` executes real mixed-precision swaps, rebuilds saved wallet history, and checks actual execution recovery through both the swap-specific and unified transaction entry points. The isolated chain also mines preceding, target and following swaps in one block, including a distinct recipient. Real NFT, arbitrage and token-deployment receipts exercise dispatch; foreign same-ABI markets, reverted transactions and actual RPC outages exercise result boundaries. Historical execution contains no invented original quote or minimum.

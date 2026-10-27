@@ -31,7 +31,7 @@ const swapEvent = parseAbiItem(
 
 const same = (left: string, right: string) =>
   left.toLowerCase() === right.toLowerCase();
-const poolIdentity = (pool: Pool) =>
+const poolIdentity = (pool: SwapResult['pool']) =>
   `${pool.exchange.address.toLowerCase()}:${pool.id}`;
 const json = (value: unknown) =>
   JSON.stringify(
