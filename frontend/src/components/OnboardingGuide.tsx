@@ -3,15 +3,17 @@ import "./OnboardingGuide.css";
 
 export function OnboardingGuide() {
   const { client, wallet, session, snapshot, pending, run } = useDex();
+  const observed = snapshot.data;
+  // DEFENSE: Anonymous snapshots contain no token balances, including while a wallet reconnects.
   const plan = wallet.controller.kernel.fundingPlan(
-    snapshot.data
+    observed?.identity
       ? {
-          identity: snapshot.data.identity,
-          ether: snapshot.data.ether.toString(),
+          identity: observed.identity,
+          ether: observed.ether.toString(),
           tokens: client.deployment.tokens.map((token) => ({
             address: token.address,
             kind: token.kind,
-            balance: snapshot.data!.balances[token.address].toString(),
+            balance: observed.balances[token.address].toString(),
           })),
         }
       : null,
