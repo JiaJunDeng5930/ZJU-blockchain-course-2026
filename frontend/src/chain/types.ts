@@ -103,6 +103,16 @@ export type SwapResult = {
   minimum: bigint;
   receipt: TransactionReceipt;
 };
+export type WrappingConfirmation = {
+  kind: "wrap" | "unwrap";
+  token: string;
+  owner: string;
+  amount: bigint;
+  gasCostWei: bigint;
+  nativeChangeWei: bigint;
+  wrappedChange: bigint;
+  receipt: TransactionReceipt;
+};
 export type LiquidityConfirmation = {
   gasCostWei: bigint;
   pool: Pool;

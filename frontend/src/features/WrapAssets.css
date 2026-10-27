@@ -4,6 +4,14 @@
 .wrapping > p {
   max-width: 70ch;
 }
+.wrapping-confirmation {
+  border-top: 1px solid var(--line);
+  margin-top: 24px;
+  padding-top: 20px;
+}
+.wrapping-confirmation code {
+  overflow-wrap: anywhere;
+}
 .wrapping-balances,
 .wrapping-review-values {
   display: grid;

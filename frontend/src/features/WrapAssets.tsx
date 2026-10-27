@@ -10,6 +10,7 @@ import {
   type WrappingRequest,
 } from "../logic/wrapping";
 import { formatUnits } from "../logic/units";
+import type { WrappingConfirmation } from "../chain/types";
 import "./WrapAssets.css";
 
 export function WrapAssets() {
@@ -18,10 +19,12 @@ export function WrapAssets() {
   const section = useRef<HTMLElement>(null);
   const [controller] = useState(() => new WrappingController());
   const [withdraw, setWithdraw] = useState(false);
+  const [confirmation, setConfirmation] = useState<WrappingConfirmation>();
   const [, render] = useReducer((version: number) => version + 1, 0);
   const [review, setReview] = useState<{
     request: WrappingRequest;
     owner: string;
+    submit: typeof run;
   }>();
   useEffect(
     () => setReview(undefined),
@@ -45,7 +48,7 @@ export function WrapAssets() {
   const submit = () => {
     const request = controller.submit(withdraw, environment);
     render();
-    if (request && session) setReview({ request, owner: session.address });
+    if (request && session) setReview({ request, owner: session.address, submit: run });
   };
   return (
     <section className="card form wrapping" id="wrap-assets" ref={section}>
@@ -150,23 +153,53 @@ export function WrapAssets() {
           </dl>
           <p>
             This calls the WETH contract directly. No token approval is needed.
-            The wallet pays the network fee in ETH in addition to the amount
-            shown. The amount stays fixed when you confirm.
+            Gas is paid from the wallet's existing ETH. The ETH released by an
+            unwrap is shown before this fee; the wallet's net ETH change can be
+            negative for a small unwrap. The amount and account stay fixed when
+            you confirm.
           </p>
           <button
             type="button"
             disabled={pending}
             onClick={() => {
-              const { request } = review;
+              const { request, submit } = review;
               setReview(undefined);
-              run(request.withdraw ? "Unwrap WETH" : "Wrap ETH", (writer) =>
-                writer.wrap(request.amount, request.withdraw),
-              );
+              submit(request.withdraw ? "Unwrap WETH" : "Wrap ETH", async (writer) => {
+                setConfirmation(await writer.wrap(request.amount, request.withdraw));
+              });
             }}
           >
             {review.request.withdraw ? "Confirm unwrap" : "Confirm wrap"}
           </button>
         </ConfirmationDialog>
+      )}
+      {confirmation && (
+        <section className="wrapping-confirmation" aria-label="Last confirmed conversion">
+          <h3>{confirmation.kind === "wrap" ? "ETH wrapped" : "WETH unwrapped"}</h3>
+          <dl className="wrapping-review-values">
+            <dt>Conversion principal</dt>
+            <dd>{formatUnits(confirmation.amount, 18)} {confirmation.kind === "wrap" ? "ETH → WETH" : "WETH → ETH"}</dd>
+            <dt>ETH change for this transaction</dt>
+            <dd>{formatUnits(confirmation.nativeChangeWei, 18)} ETH</dd>
+            <dt>WETH change for this transaction</dt>
+            <dd>{formatUnits(confirmation.wrappedChange, 18)} WETH</dd>
+            <dt>Execution fee</dt>
+            <dd>{formatUnits(confirmation.gasCostWei, 18)} ETH</dd>
+            <dt>Owner and fee payer</dt>
+            <dd><code>{confirmation.owner}</code></dd>
+            <dt>WETH contract</dt>
+            <dd><code>{confirmation.token}</code></dd>
+            <dt>Confirmed block</dt>
+            <dd>{String(confirmation.receipt.blockNumber)}</dd>
+            <dt>Transaction</dt>
+            <dd><code>{confirmation.receipt.transactionHash}</code></dd>
+          </dl>
+          <p>
+            These changes account for this conversion and its actual ETH fee.
+            They are not a later wallet balance observation. WETH principal
+            converts 1:1; gas does not reduce the WETH minted or burned.
+          </p>
+        </section>
       )}
     </section>
   );
