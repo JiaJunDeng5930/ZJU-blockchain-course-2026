@@ -382,7 +382,7 @@ try {
         },
         reservesAfter[index],
       );
-      const snapshots: [Pool[], Pick<Pool, "reserve0" | "reserve1">][] = [
+      const snapshots: [ArbitrageResult["before"], Pick<Pool, "reserve0" | "reserve1">][] = [
         [result.before, reservesBefore[index]],
         [result.after, reservesAfter[index]],
       ];

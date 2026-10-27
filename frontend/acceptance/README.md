@@ -510,3 +510,5 @@ without waiting for an online notification. Nonces, receipts and balances check
 the external effects. Results and source fingerprints stay under
 `.local/chain-read-public-*/`. This verifies the production query/SDK boundary;
 it does not prove React rendering or browser and wallet behavior.
+
+`npm run test:arbitrage-receipt` restores actual arbitrage amounts, trader, pool reserve events and fees from saved hashes after wallet-history reconstruction. It covers mixed token precision, other trades in the same block, an unavailable transaction description, foreign event emitters, a genuine revert, and receipt RPC outage/retry on an isolated chain.

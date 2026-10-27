@@ -37,6 +37,7 @@
     "test:initial-liquidity": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/initial-liquidity-public.mts",
     "test:liquidity-balances": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-balances-public.mts",
     "test:chain-read": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/chain-read-public.mts",
-    "test:liquidity-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-receipt-public.mts"
+    "test:liquidity-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-receipt-public.mts",
+    "test:arbitrage-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/arbitrage-receipt-public.mts"
   }
 }
