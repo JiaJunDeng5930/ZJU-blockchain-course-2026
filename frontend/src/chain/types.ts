@@ -129,6 +129,11 @@ export type LiquidityConfirmation = {
   | { kind: "transfer"; from: string; to: string }
 );
 
+export type LiquidityReceiptDetails = {
+  confirmation: LiquidityConfirmation;
+  tokens: readonly [Token, Token];
+};
+
 export type JournalEntry = {
   descriptor: TransactionDescriptor | null;
   originalHash: string | null;

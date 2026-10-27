@@ -11,8 +11,10 @@ import { formatEther, type Hex } from "viem";
 import type { JournalView } from "../wallet/kernel";
 import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
+import { ConfirmedLiquidityAction } from "../components/ConfirmedLiquidityAction";
+import { liquidityReceiptAvailable } from "../logic/liquidityReceipt";
 export function TransactionsPage() {
-  const { history, wallet } = useDex();
+  const { history, wallet, client } = useDex();
   const [query, setQuery] = useState<ActivityQuery | null>(null);
   const context = { kernel: wallet.controller.kernel };
   const page = activityView(context, query);
@@ -149,6 +151,11 @@ export function TransactionsPage() {
                       entry.descriptor?.to === null && (
                         <CreatedContractReceipt entry={entry} />
                       )}
+                    {entry.state === "confirmed" &&
+                      liquidityReceiptAvailable(
+                        client.deployment.exchanges,
+                        entry.descriptor,
+                      ) && <LiquidityReceipt entry={entry} />}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
                         {replacement.kind === "repriced"
@@ -200,6 +207,57 @@ export function TransactionsPage() {
         </nav>
       )}
     </section>
+  );
+}
+
+function LiquidityReceipt({
+  entry,
+}: {
+  entry: Extract<JournalView, { state: "confirmed" }>;
+}) {
+  const { client } = useDex();
+  const result = useQuery({
+    queryKey: [
+      "liquidity-receipt",
+      client.deployment.rpcUrl,
+      client.key,
+      entry.instance,
+      entry.id,
+      entry.hash,
+    ],
+    queryFn: () => client.liquidityReceipt(entry.hash as Hex),
+    enabled: false,
+    retry: false,
+  });
+  return (
+    <div>
+      {result.data && (
+        <ConfirmedLiquidityAction
+          result={result.data.confirmation}
+          tokens={result.data.tokens}
+        />
+      )}
+      {result.data === null && (
+        <p>
+          No liquidity operation from this deployment was found in the receipt.
+        </p>
+      )}
+      {result.error && (
+        <p role="alert">
+          Liquidity receipt could not be read: {result.error.message}
+        </p>
+      )}
+      <button
+        className="text"
+        type="button"
+        disabled={result.isFetching}
+        onClick={() => void result.refetch()}
+      >
+        {result.isFetching
+          ? "Reading liquidity receipt…"
+          : "Read liquidity result"}
+      </button>
+    </div>
   );
 }
 

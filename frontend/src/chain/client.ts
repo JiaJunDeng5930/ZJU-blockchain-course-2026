@@ -32,7 +32,7 @@ import {
   createAssetPool,
   claimAsset,
 } from "./assets";
-import { addLiquidity, removeLiquidity, transferPosition } from "./liquidity";
+import { addLiquidity, removeLiquidity, transferPosition, readLiquidityReceipt } from "./liquidity";
 import { revokeAllowance, type RevokePlan } from "./allowances";
 import type { RawAllowances } from "../wallet/kernel";
 import { executeWrap } from "./wrapping";
@@ -253,6 +253,9 @@ export class ExchangeClient {
   }
   importToken(address: string): Promise<Token> {
     return importAsset(this, address);
+  }
+  liquidityReceipt(hash: Hex) {
+    return readLiquidityReceipt(this, hash);
   }
   async liquidityActivity(
     pool: Pool,

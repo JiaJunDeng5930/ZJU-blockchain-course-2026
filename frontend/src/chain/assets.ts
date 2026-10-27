@@ -33,9 +33,10 @@ export type AssetContext = {
 export async function importAsset(
   client: ExchangeClient,
   raw: string,
+  atBlock?: bigint,
 ): Promise<Token> {
   const address = getAddress(canonicalAssetAddress(raw));
-  const blockNumber = await client.rpc.getBlockNumber();
+  const blockNumber = atBlock ?? await client.rpc.getBlockNumber();
   const token = client.token(address);
   const [name, symbol, decimals, code] = await Promise.all([
     token.read.name({ blockNumber }),

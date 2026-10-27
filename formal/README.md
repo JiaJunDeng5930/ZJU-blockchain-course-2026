@@ -51,6 +51,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Frontend/LiquidityBalances.v` | Balance-bounded preparation for an existing pool, preserving original spending limits and requiring an explicit price for the first deposit |
 | `theories/Frontend/ReceiptFees.v` | One exact execution-fee definition shared by transaction states, arbitrage summaries and liquidity confirmations |
+| `theories/Frontend/LiquidityReceipt.v` | Receipt-event selection restricted to configured exchanges, mint/burn Transfer exclusion, and manual recovery when a confirmed entry lacks transaction metadata. |
 | `theories/Frontend/SwapSettlement.v` | Realized swap rate and signed output-token difference from the captured quote |
 | `theories/Frontend/FundingConfirmations.v` | Wallet-scoped confirmation blocks and balance-refresh coordination for automatic test funding |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
@@ -285,3 +286,15 @@ The trusted boundary includes solc and its optimization/code generation, Rocq ex
 `atomic_call_failed_preserves_state` proves the behavior of the shared rollback definition. It does not establish EVM rollback for the Solidity transaction. The public contract-entry acceptance scenarios exercise actual rollback separately. Nor do the SMT checks prove the entire ERC721 storage implementation, recipient callbacks, gas accounting, or all possible interleavings of the whole deployed application.
 
 Only a proved connection supports a cross-layer claim. A successful abstract theorem, generated file, translation or build is reported at its own level. Browser scenarios and historical screenshots are not used to establish these properties. The simulation HTTP/worker boundary is further described in [SIMULATION.md](SIMULATION.md).
+
+Liquidity receipt recovery reuses the event-to-confirmation decoder from the write
+path. The extracted selector proves that a selected event belongs to the supplied
+observations and a configured exchange; reverted receipts have no success result,
+and companion ERC721 mint/burn Transfer events do not count as separate actions.
+Unknown transaction metadata permits a manual read without asserting a liquidity
+operation. Transfer pool identity comes from the indexed original mint event,
+which remains available if another transaction burns the NFT in the same block.
+Pool state and token metadata are read at the receipt block. ABI decoding,
+historical RPC data and this adapter binding remain external assumptions; the
+black-box lifecycle acceptance checks that binding without duplicating the pure
+selection proofs.
