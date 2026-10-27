@@ -112,4 +112,68 @@ Proof.
   - eapply keeps_confirmed_transitive; eauto using every_step_keeps_confirmed.
 Qed.
 
+Lemma waiting_status_preserves_serial s id status :
+  T.serial (T.set_waiting_status s id status) = T.serial s.
+Proof.
+  unfold T.set_waiting_status. destruct (T.active s) as [operation|]; try reflexivity.
+  destruct (T.operation_status operation); try reflexivity.
+  destruct (Z.eqb transaction id); reflexivity.
+Qed.
+
+Theorem every_step_serial_monotone before after :
+  lifecycle_step before after -> T.serial before <= T.serial after.
+Proof.
+  intros Hstep. destruct Hstep.
+  - unfold T.begin_operation. destruct (T.active s); cbn; try lia.
+    destruct identity; cbn; try lia.
+    destruct (W.permits wallet i); cbn; lia.
+  - unfold T.request_write. destruct (T.active s) as [operation|]; cbn; try lia.
+    destruct (Z.eqb op (T.operation_id operation)); cbn; try lia.
+    destruct (T.operation_status operation); cbn; try lia.
+    destruct (W.permits wallet (T.operation_identity operation)); cbn; lia.
+  - unfold T.authorize_and_reconcile, T.authorize.
+    destruct (T.authorization_identity s op tx) as [identity|]; cbn; try lia.
+    destruct (W.preflight wallet identity accounts chain); cbn; lia.
+  - cbn. lia.
+  - unfold T.preflight_failed. rewrite waiting_status_preserves_serial. cbn. lia.
+  - unfold T.signature_failed. rewrite waiting_status_preserves_serial. cbn. lia.
+  - cbn. unfold T.receipt. destruct (T.find_entry tx
+      (T.journal (T.apply_journal s tx (T.Receipt hash sender success block used price)))) as [entry|]; cbn; try lia.
+    destruct (T.entry_phase entry); try (rewrite waiting_status_preserves_serial); cbn; lia.
+  - unfold T.observation_failed. rewrite waiting_status_preserves_serial. cbn. lia.
+  - unfold T.finish_operation. destruct (T.active s) as [operation|]; cbn; try lia.
+    destruct (Z.eqb op (T.operation_id operation)); cbn; lia.
+Qed.
+
+Theorem trace_serial_monotone first last :
+  lifecycle_trace first last -> T.serial first <= T.serial last.
+Proof.
+  intros Htrace. induction Htrace; try lia.
+  apply every_step_serial_monotone in H. lia.
+Qed.
+
+Lemma allocated_write_uses_next_serial s wallet op label authority next tx :
+  T.request_write s wallet op label authority = (next, T.Accepted tx) ->
+  tx = T.serial s + 1 /\ T.serial next = tx.
+Proof.
+  unfold T.request_write. destruct (T.active s) as [operation|]; try discriminate.
+  destruct (Z.eqb op (T.operation_id operation)); try discriminate.
+  destruct (T.operation_status operation); try discriminate.
+  destruct (W.permits wallet (T.operation_identity operation)); try discriminate.
+  intros Hresult. inversion Hresult; subst. auto.
+Qed.
+
+Theorem later_write_has_fresh_identifier first wallet op label authority first_next first_id
+    current wallet2 op2 label2 authority2 next last_id :
+  T.request_write first wallet op label authority = (first_next, T.Accepted first_id) ->
+  lifecycle_trace first_next current ->
+  T.request_write current wallet2 op2 label2 authority2 = (next, T.Accepted last_id) ->
+  first_id < last_id.
+Proof.
+  intros Hfirst Htrace Hlast.
+  apply allocated_write_uses_next_serial in Hfirst.
+  apply allocated_write_uses_next_serial in Hlast.
+  apply trace_serial_monotone in Htrace. lia.
+Qed.
+
 End TransactionProofs.
