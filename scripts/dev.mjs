@@ -28,6 +28,7 @@ const children = new Set();
 let stopping = false;
 
 function stop(code) {
+  // DEFENSE: npm can forward a terminal signal that already reached this process; keep cleanup running.
   if (stopping) return;
   stopping = true;
   for (const child of children) {
@@ -47,8 +48,8 @@ function stop(code) {
       }
     });
 }
-process.once("SIGINT", () => stop(130));
-process.once("SIGTERM", () => stop(143));
+process.on("SIGINT", () => stop(130));
+process.on("SIGTERM", () => stop(143));
 
 function start(name, entry, args, cwd, persistent = false) {
   const path = join(logDirectory, `${name}.log`);
