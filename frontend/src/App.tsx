@@ -318,7 +318,7 @@ function TransactionNotice({ onOpenActivity }: { onOpenActivity: () => void }) {
   if (!latest || dismissed === key) return null;
   return (
     <aside
-      className={`transaction-notice${latest.state === "failed" ? " transaction-error" : ""}`}
+      className={`transaction-notice${latest.state === "failed" || latest.state === "submission-unknown" ? " transaction-error" : ""}`}
     >
       <p role="status" aria-live="polite">
         {status}

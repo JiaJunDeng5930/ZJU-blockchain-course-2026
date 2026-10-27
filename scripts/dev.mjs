@@ -1,3 +1,4 @@
+import "./formal-environment.mjs";
 import { spawn } from "node:child_process";
 import { access, mkdir, readFile } from "node:fs/promises";
 import { openSync, closeSync } from "node:fs";
@@ -127,12 +128,37 @@ async function deploymentPresent() {
     throw new Error(
       "shared/deployment.json belongs to another network. Select it explicitly or move that generated file before starting the local demo.",
     );
-  const codes = await Promise.all(
-    deployment.exchanges.map((exchange) =>
-      rpc("eth_getCode", [exchange.address, "latest"]),
-    ),
+  const targets = [
+    ...deployment.exchanges.map((exchange) => ({
+      address: exchange.address,
+      contract: "MiniDEX",
+    })),
+    ...deployment.tokens.map((token) => ({
+      address: token.address,
+      contract: token.kind === "wrapped" ? "WrappedEther" : "TestToken",
+    })),
+    { address: deployment.arbitrage, contract: "AtomicArbitrage" },
+  ];
+  const identities = await Promise.all(
+    targets.map(async (target) => {
+      const artifact = JSON.parse(
+        await readFile(
+          join(
+            contracts,
+            "artifacts/contracts",
+            `${target.contract}.sol`,
+            `${target.contract}.json`,
+          ),
+          "utf8",
+        ),
+      );
+      return (
+        (await rpc("eth_getCode", [target.address, "latest"])) ===
+        artifact.deployedBytecode
+      );
+    }),
   );
-  return codes.every((code) => code !== "0x");
+  return identities.every(Boolean);
 }
 async function main() {
   try {
@@ -146,8 +172,20 @@ async function main() {
     throw error;
   }
   await mkdir(logDirectory, { recursive: true });
-  console.log("Compiling contracts and generating their frontend types…");
+  console.log("Compiling contracts and extracting verified frontend logic…");
   await start("compile", hardhat, ["build"], contracts);
+  await start(
+    "frontend-abi",
+    join(root, "scripts/generate-frontend-abi.mjs"),
+    [],
+    root,
+  );
+  await start(
+    "frontend-logic",
+    join(root, "scripts/build-formal.mjs"),
+    [],
+    root,
+  );
   if ((await rpc("eth_chainId")) === undefined) {
     console.log("Starting local Ethereum node…");
     void start(

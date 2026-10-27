@@ -9,7 +9,11 @@
   "scripts": {
     "setup": "npm --prefix contracts ci && npm --prefix frontend ci",
     "dev": "node scripts/dev.mjs",
-    "build": "npm --prefix contracts run compile && npm --prefix frontend run build",
-    "test": "npm --prefix contracts test && npm --prefix frontend test"
+    "build": "npm --prefix contracts run compile && node scripts/generate-frontend-abi.mjs && npm run formal:build && npm --prefix frontend run build",
+    "test": "npm --prefix contracts test",
+    "formal:bootstrap": "node scripts/bootstrap-formal.mjs",
+    "formal:build": "node scripts/build-formal.mjs",
+    "deploy": "npm --prefix contracts run deploy",
+    "formal:verify": "node scripts/verify-formal.mjs"
   }
 }

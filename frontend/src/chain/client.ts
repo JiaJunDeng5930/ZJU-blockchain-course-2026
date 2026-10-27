@@ -1,18 +1,37 @@
 import {
-  ContractFactory,
-  JsonRpcProvider,
+  createPublicClient,
+  createWalletClient,
+  defineChain,
   getAddress,
-  parseEther,
-  type TransactionResponse,
+  getContract,
+  http,
+  type Address,
+  type Hex,
+  type PublicClient,
   type TransactionReceipt,
-} from "ethers";
+} from "viem";
 import {
-  MiniDEX__factory,
-  TestToken__factory,
-  WrappedEther__factory,
-  AtomicArbitrage__factory,
-} from "../../../contracts/types/ethers-contracts/factories";
-import { depositAmounts, minimumReceived, sameAddress } from "./amounts";
+  miniDexAbi,
+  testTokenAbi,
+  miniDexRuntimeBytecode,
+  testTokenRuntimeBytecode,
+  wrappedEtherRuntimeBytecode,
+  arbitrageRuntimeBytecode,
+} from "../generated/abis";
+import { activeOwners } from "../logic/ledger";
+import { aggregateActivity } from "../logic/liquidity";
+import { approvalNeeded } from "../logic/units";
+import { makeSwapParameters } from "../logic/trade";
+import { runtimeCodeMatches } from "../logic/assets";
+import {
+  importAsset,
+  createAsset,
+  createAssetPool,
+  claimAsset,
+} from "./assets";
+import { addLiquidity, removeLiquidity, transferPosition } from "./liquidity";
+import { executeWrap } from "./wrapping";
+import { opportunities, executeArbitrage } from "./arbitrage";
 import type {
   ArbitrageResult,
   LiquidityActivity,
@@ -23,64 +42,116 @@ import type {
   Token,
 } from "./types";
 import type { WalletSession } from "../wallet/session";
+import { planNativeFunding } from "../wallet/kernel";
 
 export type SendTransaction = (
   label: string,
-  submit: () => Promise<TransactionResponse>,
+  submit: () => Promise<Hex>,
+  authority?: { kind: "dev-faucet"; sender: Address },
 ) => Promise<TransactionReceipt>;
+
 export class ExchangeClient {
-  readonly rpc: JsonRpcProvider;
+  readonly rpc: PublicClient;
   readonly key: string;
+  readonly chain;
   constructor(readonly deployment: Deployment) {
-    this.rpc = new JsonRpcProvider(deployment.rpcUrl, undefined, {
-      cacheTimeout: -1,
+    this.chain = defineChain({
+      id: deployment.chainId,
+      name: "DEX teaching chain",
+      nativeCurrency: { name: "Ether", symbol: "ETH", decimals: 18 },
+      rpcUrls: { default: { http: [deployment.rpcUrl] } },
     });
-    this.rpc.pollingInterval = 250;
+    this.rpc = createPublicClient({
+      chain: this.chain,
+      transport: http(deployment.rpcUrl),
+      pollingInterval: 250,
+      cacheTime: 0,
+    });
     this.key = `${deployment.chainId}:${deployment.exchanges.map((e) => e.address).join(":")}`;
   }
   async verifyDeployment() {
-    if (
-      Number((await this.rpc.getNetwork()).chainId) !== this.deployment.chainId
-    )
+    if ((await this.rpc.getChainId()) !== this.deployment.chainId)
       throw new Error(
         "RPC chain differs from the deployment file. Redeploy on the intended network.",
       );
-    const codes = await Promise.all(
-      this.deployment.exchanges.map((e) => this.rpc.getCode(e.address)),
+    const expected = [
+      ...this.deployment.exchanges.map((exchange) => ({
+        address: exchange.address,
+        code: miniDexRuntimeBytecode,
+      })),
+      ...this.deployment.tokens.map((token) => ({
+        address: token.address,
+        code:
+          token.kind === "wrapped"
+            ? wrappedEtherRuntimeBytecode
+            : testTokenRuntimeBytecode,
+      })),
+      { address: this.deployment.arbitrage, code: arbitrageRuntimeBytecode },
+    ];
+    const blockNumber = await this.rpc.getBlockNumber();
+    const matches = await Promise.all(
+      expected.map(async ({ address, code }) =>
+        runtimeCodeMatches(
+          await this.rpc.getCode({ address: getAddress(address), blockNumber }),
+          code,
+        ),
+      ),
     );
-    if (codes.some((code) => code === "0x"))
+    if (matches.includes(false))
       throw new Error(
-        "Deployed exchanges are missing from the chain. Run npm run deploy after restarting the node.",
+        "Deployed contracts differ from this verified build. Run npm run deploy against this chain.",
       );
   }
-  async localAccounts(): Promise<string[]> {
-    return this.rpc.send("eth_accounts", []);
+  async transactionTimestamp(): Promise<bigint> {
+    // The latest mined block can be old on an idle chain; estimation uses the pending block.
+    return (await this.rpc.getBlock({ blockTag: "pending" })).timestamp;
+  }
+  async localAccounts(): Promise<Address[]> {
+    return createWalletClient({
+      transport: http(this.deployment.rpcUrl),
+    }).getAddresses();
   }
   private dex(address: string) {
-    return MiniDEX__factory.connect(address, this.rpc);
+    return getContract({
+      address: getAddress(address),
+      abi: miniDexAbi,
+      client: this.rpc,
+    });
   }
   token(address: string) {
-    return TestToken__factory.connect(address, this.rpc);
+    return getContract({
+      address: getAddress(address),
+      abi: testTokenAbi,
+      client: this.rpc,
+    });
   }
   async pools(blockTag: number): Promise<Pool[]> {
+    const blockNumber = BigInt(blockTag);
     return (
       await Promise.all(
         this.deployment.exchanges.map(async (exchange) => {
           const contract = this.dex(exchange.address);
-          const count = Number(await contract.poolCount({ blockTag }));
+          const count = Number(await contract.read.poolCount({ blockNumber }));
           return Promise.all(
             Array.from({ length: count }, async (_, index) => {
               const id = BigInt(index + 1);
-              const p = await contract.pools(id, { blockTag });
+              const [
+                token0,
+                token1,
+                reserve0,
+                reserve1,
+                totalShares,
+                createdAt,
+              ] = await contract.read.pools([id], { blockNumber });
               return {
                 exchange,
                 id,
-                token0: p.token0,
-                token1: p.token1,
-                reserve0: p.reserve0,
-                reserve1: p.reserve1,
-                totalShares: p.totalShares,
-                createdAt: p.createdAt,
+                token0,
+                token1,
+                reserve0,
+                reserve1,
+                totalShares,
+                createdAt,
               };
             }),
           );
@@ -92,37 +163,40 @@ export class ExchangeClient {
     address: string | undefined,
     tokens: Token[],
   ): Promise<ChainSnapshot> {
-    const block = await this.rpc.getBlockNumber();
+    const block = Number(await this.rpc.getBlockNumber());
+    const blockNumber = BigInt(block);
     const [pools, positions, balances, ether] = await Promise.all([
       this.pools(block),
       Promise.all(
         this.deployment.exchanges.map(async (exchange) => {
           const c = this.dex(exchange.address);
-          const transfers = await c.queryFilter(c.filters.Transfer(), 0, block);
-          // ERC721 is not enumerable here; replay transfers at the same block as the reserve snapshot.
-          const owners = new Map<bigint, string>();
-          for (const log of transfers) {
-            if (
-              sameAddress(
-                log.args.to,
-                "0x0000000000000000000000000000000000000000",
-              )
-            )
-              owners.delete(log.args.tokenId);
-            else owners.set(log.args.tokenId, log.args.to);
-          }
+          const transfers = await this.rpc.getContractEvents({
+            address: getAddress(exchange.address),
+            abi: miniDexAbi,
+            eventName: "Transfer",
+            fromBlock: 0n,
+            toBlock: blockNumber,
+            strict: true,
+          });
+          const owners = activeOwners(
+            transfers.map((log) => ({
+              tokenId: log.args.tokenId,
+              to: log.args.to,
+            })),
+          );
           return Promise.all(
-            [...owners].map(async ([id, owner]) => {
-              const p = await c.positions(id, { blockTag: block });
+            owners.map(async ({ id, owner }) => {
+              const [poolId, shares, amount0, amount1, createdAt] =
+                await c.read.positions([id], { blockNumber });
               return {
                 exchange,
                 id,
                 owner,
-                poolId: p.poolId,
-                shares: p.shares,
-                amount0: p.amount0,
-                amount1: p.amount1,
-                createdAt: p.createdAt,
+                poolId,
+                shares,
+                amount0,
+                amount1,
+                createdAt,
               };
             }),
           );
@@ -134,14 +208,17 @@ export class ExchangeClient {
               async (token) =>
                 [
                   token.address,
-                  await this.token(token.address).balanceOf(address, {
-                    blockTag: block,
-                  }),
+                  await this.token(token.address).read.balanceOf(
+                    [getAddress(address)],
+                    { blockNumber },
+                  ),
                 ] as const,
             ),
           )
         : Promise.resolve([]),
-      address ? this.rpc.getBalance(address, block) : Promise.resolve(0n),
+      address
+        ? this.rpc.getBalance({ address: getAddress(address), blockNumber })
+        : Promise.resolve(0n),
     ]);
     return {
       block,
@@ -151,61 +228,59 @@ export class ExchangeClient {
       ether,
     };
   }
-  quote(pool: Pool, tokenIn: string, amountIn: bigint) {
-    return this.dex(pool.exchange.address).quote(pool.id, tokenIn, amountIn);
+  quote(pool: Pool, tokenIn: string, amountIn: bigint, block?: number) {
+    return this.dex(pool.exchange.address).read.quote(
+      [pool.id, getAddress(tokenIn), amountIn],
+      block === undefined ? undefined : { blockNumber: BigInt(block) },
+    );
   }
-  async deadline() {
-    const block = await this.rpc.getBlock("latest");
-    if (!block) throw new Error("The local chain has no latest block.");
-    return block.timestamp + 1200;
-  }
-  async importToken(address: string): Promise<Token> {
-    const contract = this.token(getAddress(address));
-    const [name, symbol, decimals] = await Promise.all([
-      contract.name(),
-      contract.symbol(),
-      contract.decimals(),
-    ]);
-    if (decimals !== 18n)
-      throw new Error(
-        "The interface supports standard ERC20 tokens with 18 decimals.",
-      );
-    return {
-      address: await contract.getAddress(),
-      name,
-      symbol,
-      kind: "external",
-    };
+  importToken(address: string): Promise<Token> {
+    return importAsset(this, address);
   }
   async liquidityActivity(
     pool: Pool,
     block: number,
   ): Promise<LiquidityActivity> {
-    const contract = this.dex(pool.exchange.address);
+    const address = getAddress(pool.exchange.address),
+      toBlock = BigInt(block);
     const [added, removed, swaps, feeBps] = await Promise.all([
-      contract.queryFilter(contract.filters.LiquidityAdded(pool.id), 0, block),
-      contract.queryFilter(
-        contract.filters.LiquidityRemoved(pool.id),
-        0,
-        block,
-      ),
-      contract.queryFilter(contract.filters.Swap(pool.id), 0, block),
-      contract.FEE_BPS({ blockTag: block }),
+      this.rpc.getContractEvents({
+        address,
+        abi: miniDexAbi,
+        eventName: "LiquidityAdded",
+        args: { poolId: pool.id },
+        fromBlock: 0n,
+        toBlock,
+        strict: true,
+      }),
+      this.rpc.getContractEvents({
+        address,
+        abi: miniDexAbi,
+        eventName: "LiquidityRemoved",
+        args: { poolId: pool.id },
+        fromBlock: 0n,
+        toBlock,
+        strict: true,
+      }),
+      this.rpc.getContractEvents({
+        address,
+        abi: miniDexAbi,
+        eventName: "Swap",
+        args: { poolId: pool.id },
+        fromBlock: 0n,
+        toBlock,
+        strict: true,
+      }),
+      this.dex(address).read.FEE_BPS({ blockNumber: toBlock }),
     ]);
-    let volume0 = 0n;
-    let volume1 = 0n;
-    let fees0 = 0n;
-    let fees1 = 0n;
-    for (const log of swaps) {
-      const fee = (log.args.amountIn * feeBps) / 10000n;
-      if (sameAddress(log.args.tokenIn, pool.token0)) {
-        volume0 += log.args.amountIn;
-        fees0 += fee;
-      } else {
-        volume1 += log.args.amountIn;
-        fees1 += fee;
-      }
-    }
+    const { volume0, volume1, fees0, fees1 } = aggregateActivity(
+      pool.token0,
+      feeBps,
+      swaps.map((log) => ({
+        tokenIn: log.args.tokenIn,
+        amountIn: log.args.amountIn,
+      })),
+    );
     const events = [
       ...added.map((log) => ({
         kind: "added" as const,
@@ -213,8 +288,8 @@ export class ExchangeClient {
         actor: log.args.provider,
         amount0: log.args.amount0,
         amount1: log.args.amount1,
-        block: log.blockNumber,
-        index: log.index,
+        block: Number(log.blockNumber),
+        index: log.logIndex,
         hash: log.transactionHash,
       })),
       ...removed.map((log) => ({
@@ -223,8 +298,8 @@ export class ExchangeClient {
         actor: log.args.owner,
         amount0: log.args.amount0,
         amount1: log.args.amount1,
-        block: log.blockNumber,
-        index: log.index,
+        block: Number(log.blockNumber),
+        index: log.logIndex,
         hash: log.transactionHash,
       })),
     ].sort((a, b) => b.block - a.block || b.index - a.index);
@@ -239,56 +314,16 @@ export class ExchangeClient {
     };
   }
   async metadata(positionId: bigint, exchange: string): Promise<unknown> {
-    const uri = await this.dex(exchange).tokenURI(positionId);
+    const uri = await this.dex(exchange).read.tokenURI([positionId]);
     return JSON.parse(atob(uri.split(",")[1]));
   }
-  async opportunities(
+  opportunities(
     pool: Pool,
     allPools: Pool[],
     tokenIn: string,
+    supportedTokens: readonly Token[],
   ): Promise<Opportunity[]> {
-    const quotedAtBlock = await this.rpc.getBlockNumber();
-    const others = allPools.filter(
-      (other) =>
-        !sameAddress(other.exchange.address, pool.exchange.address) &&
-        sameAddress(other.token0, pool.token0) &&
-        sameAddress(other.token1, pool.token1) &&
-        other.reserve0 > 0n &&
-        other.reserve1 > 0n,
-    );
-    const tokenOut = sameAddress(tokenIn, pool.token0)
-      ? pool.token1
-      : pool.token0;
-    const routes = others.flatMap(
-      (other) =>
-        [
-          [pool, other],
-          [other, pool],
-        ] as const,
-    );
-    const results = await Promise.all(
-      routes.flatMap(([buy, sell]) =>
-        [1, 5, 10, 25, 50, 100, 200, 500].map(
-          async (size): Promise<Opportunity> => {
-            const amountIn = parseEther(String(size));
-            const bridge = await this.quote(buy, tokenIn, amountIn);
-            const amountOut = await this.quote(sell, tokenOut, bridge);
-            return {
-              buy,
-              sell,
-              tokenIn,
-              amountIn,
-              amountOut,
-              profit: amountOut - amountIn,
-              quotedAtBlock,
-            };
-          },
-        ),
-      ),
-    );
-    return results
-      .filter((route) => route.profit > 0n)
-      .sort((a, b) => (a.profit > b.profit ? -1 : a.profit < b.profit ? 1 : 0));
+    return opportunities(this, pool, allPools, tokenIn, supportedTokens);
   }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);
@@ -301,29 +336,48 @@ class ExchangeWriter {
     private session: WalletSession,
     private send: SendTransaction,
   ) {}
-  private dex(pool: Pool) {
-    return MiniDEX__factory.connect(pool.exchange.address, this.session.signer);
-  }
   private async approve(token: string, spender: string, amount: bigint) {
-    const c = TestToken__factory.connect(token, this.session.signer);
-    if ((await c.allowance(this.session.address, spender)) < amount)
-      await this.send("Approve ERC20", () => c.approve(spender, amount));
+    const allowance = await this.client
+      .token(token)
+      .read.allowance([this.session.address, getAddress(spender)]);
+    if (approvalNeeded(allowance, amount))
+      await this.send("Approve ERC20", () =>
+        this.session.walletClient.writeContract({
+          account: this.session.address,
+          chain: this.client.chain,
+          address: getAddress(token),
+          abi: testTokenAbi,
+          functionName: "approve",
+          args: [getAddress(spender), amount],
+        }),
+      );
   }
-  async faucet(token: Token) {
-    await this.send(`Claim ${token.symbol}`, () =>
-      TestToken__factory.connect(token.address, this.session.signer).faucet(),
-    );
+  faucet(token: Token) {
+    return claimAsset(this.context(), token);
+  }
+  private context() {
+    return { client: this.client, session: this.session, send: this.send };
   }
   async claimEther() {
-    if (this.client.deployment.chainId !== 31337)
-      throw new Error("The ETH faucet requires the local teaching chain.");
-    const [funder] = await this.client.localAccounts();
-    const signer = await this.client.rpc.getSigner(funder);
-    await this.send("Claim local ETH", () =>
-      signer.sendTransaction({
-        to: this.session.address,
-        value: parseEther("10"),
-      }),
+    const funding = planNativeFunding(
+      String(this.client.deployment.chainId),
+      this.session.address,
+      await this.client.localAccounts(),
+    );
+    const funder = funding.sender;
+    const fundingWallet = createWalletClient({
+      chain: this.client.chain,
+      account: funder,
+      transport: http(this.client.deployment.rpcUrl),
+    });
+    await this.send(
+      "Claim local ETH",
+      () =>
+        fundingWallet.sendTransaction({
+          to: this.session.address,
+          value: funding.amountWei,
+        }),
+      { kind: "dev-faucet", sender: funder },
     );
   }
   async swap(
@@ -334,16 +388,28 @@ class ExchangeWriter {
     slippage: bigint,
   ) {
     await this.approve(tokenIn, pool.exchange.address, amount);
-    const deadline = await this.client.deadline();
+    const plan = makeSwapParameters(
+      amount,
+      quote,
+      slippage,
+      await this.client.transactionTimestamp(),
+    );
     await this.send("Swap tokens", () =>
-      this.dex(pool).swap(
-        pool.id,
-        tokenIn,
-        amount,
-        minimumReceived(quote, slippage),
-        this.session.address,
-        deadline,
-      ),
+      this.session.walletClient.writeContract({
+        account: this.session.address,
+        chain: this.client.chain,
+        address: getAddress(pool.exchange.address),
+        abi: miniDexAbi,
+        functionName: "swap",
+        args: [
+          pool.id,
+          getAddress(tokenIn),
+          plan.input,
+          plan.minimum,
+          this.session.address,
+          plan.deadline,
+        ],
+      }),
     );
   }
   async addLiquidity(
@@ -352,20 +418,7 @@ class ExchangeWriter {
     amount1: bigint,
     slippage: bigint,
   ) {
-    const [used0, used1] = depositAmounts(pool, amount0, amount1);
-    await this.approve(pool.token0, pool.exchange.address, amount0);
-    await this.approve(pool.token1, pool.exchange.address, amount1);
-    const deadline = await this.client.deadline();
-    await this.send("Add liquidity", () =>
-      this.dex(pool).addLiquidity(
-        pool.id,
-        amount0,
-        amount1,
-        minimumReceived(used0, slippage),
-        minimumReceived(used1, slippage),
-        deadline,
-      ),
-    );
+    await addLiquidity(this.context(), pool, amount0, amount1, slippage);
   }
   async removeLiquidity(
     pool: Pool,
@@ -373,98 +426,29 @@ class ExchangeWriter {
     amounts: readonly [bigint, bigint],
     slippage: bigint,
   ) {
-    const deadline = await this.client.deadline();
-    await this.send("Redeem position", () =>
-      this.dex(pool).removeLiquidity(
-        id,
-        minimumReceived(amounts[0], slippage),
-        minimumReceived(amounts[1], slippage),
-        deadline,
-      ),
-    );
+    await removeLiquidity(this.context(), pool, id, amounts, slippage);
   }
   async transferPosition(pool: Pool, positionId: bigint, recipient: string) {
-    await this.send("Transfer position", () =>
-      this.dex(pool)["safeTransferFrom(address,address,uint256)"](
-        this.session.address,
-        getAddress(recipient),
-        positionId,
-      ),
-    );
+    await transferPosition(this.context(), pool, positionId, recipient);
   }
-  async createPool(exchange: string, token0: string, token1: string) {
-    await this.send("Create pool", () =>
-      MiniDEX__factory.connect(exchange, this.session.signer).createPool(
-        token0,
-        token1,
-      ),
-    );
+  createPool(exchange: string, token0: string, token1: string) {
+    return createAssetPool(this.context(), exchange, token0, token1);
   }
-  async createToken(name: string, symbol: string): Promise<Token> {
-    const factory = new ContractFactory(
-      TestToken__factory.abi,
-      this.client.deployment.bytecodes.TestToken,
-    );
-    const request = await factory.getDeployTransaction(name, symbol);
-    const receipt = await this.send("Deploy ERC20", () =>
-      this.session.signer.sendTransaction(request),
-    );
-    return { address: receipt.contractAddress!, name, symbol, kind: "faucet" };
+  createToken(name: string, symbol: string): Promise<Token> {
+    return createAsset(this.context(), name, symbol);
   }
-
-  async wrap(amount: bigint, withdraw: boolean) {
-    const wrapped = this.client.deployment.tokens.find(
-      (token) => token.kind === "wrapped",
-    );
-    if (!wrapped)
-      throw new Error("This deployment has no wrapped ETH contract.");
-    const c = WrappedEther__factory.connect(
-      wrapped.address,
-      this.session.signer,
-    );
-    await this.send(withdraw ? "Unwrap WETH" : "Wrap ETH", () =>
-      withdraw ? c.withdraw(amount) : c.deposit({ value: amount }),
-    );
+  wrap(amount: bigint, withdraw: boolean) {
+    return executeWrap(this.context(), amount, withdraw);
   }
-  async arbitrage(
+  arbitrage(
     route: Opportunity,
-    minProfit: bigint,
+    minimumProfit: string,
   ): Promise<ArbitrageResult> {
-    await this.approve(
-      route.tokenIn,
-      this.client.deployment.arbitrage,
-      route.amountIn,
+    return executeArbitrage(
+      { client: this.client, session: this.session, send: this.send },
+      route,
+      minimumProfit,
     );
-    const before = await this.client.pools(
-      await this.client.rpc.getBlockNumber(),
-    );
-    const deadline = await this.client.deadline();
-    const c = AtomicArbitrage__factory.connect(
-      this.client.deployment.arbitrage,
-      this.session.signer,
-    );
-    const receipt = await this.send("Atomic arbitrage", () =>
-      c.execute(
-        route.buy.exchange.address,
-        route.buy.id,
-        route.sell.exchange.address,
-        route.sell.id,
-        route.tokenIn,
-        route.amountIn,
-        minProfit,
-        deadline,
-      ),
-    );
-    const event = receipt.logs
-      .filter((log) =>
-        sameAddress(log.address, this.client.deployment.arbitrage),
-      )
-      .map((log) => c.interface.parseLog(log))
-      .find((log) => log?.name === "ArbitrageExecuted");
-    if (!event)
-      throw new Error("The confirmed arbitrage receipt has no result event.");
-    const profit: bigint = event.args.profit;
-    return { tokenIn: route.tokenIn, profit, receipt, before };
   }
 }
 export type Writer = ReturnType<ExchangeClient["writer"]>;

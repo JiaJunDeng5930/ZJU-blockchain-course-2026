@@ -1,0 +1,16 @@
+*.vo
+*.vos
+*.vok
+*.glob
+.*.aux
+build/
+extracted/
+CoqMakefile*
+.CoqMakefile*
+*.cmi
+*.cmo
+*.cmx
+*.cmt
+*.cmti
+*.o
+*.bc

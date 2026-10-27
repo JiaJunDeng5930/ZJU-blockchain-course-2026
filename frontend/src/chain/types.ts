@@ -1,4 +1,4 @@
-import type { TransactionReceipt } from "ethers";
+import type { TransactionReceipt } from "viem";
 
 export type Token = {
   address: string;
@@ -48,6 +48,7 @@ export type Opportunity = {
   sell: Pool;
   tokenIn: string;
   amountIn: bigint;
+  intermediateAmount: bigint;
   amountOut: bigint;
   profit: bigint;
   quotedAtBlock: number;
@@ -57,12 +58,20 @@ export type ArbitrageResult = {
   profit: bigint;
   receipt: TransactionReceipt;
   before: Pool[];
+  after: Pool[];
 };
-export type JournalEntry = { id: string; label: string; account: string } & (
+export type JournalEntry = {
+  id: string;
+  label: string;
+  account: string;
+  beneficiary?: string;
+  authority: "wallet" | "dev-faucet";
+} & (
   | { state: "awaiting-wallet" }
   | { state: "submitted"; hash: string }
-  | { state: "confirmed"; hash: string; block: number; gas: bigint }
+  | { state: "confirmed"; hash: string; block: bigint; gas: bigint }
   | { state: "failed"; message: string; hash?: string }
+  | { state: "submission-unknown"; message: string }
 );
 
 export type LiquidityActivity = {

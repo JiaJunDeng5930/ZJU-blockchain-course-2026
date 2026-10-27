@@ -1,4 +1,5 @@
-import { formatEther } from "ethers";
+import { formatEther } from "viem";
+import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 export function TransactionsPage() {
   const { journal } = useDex();
@@ -18,6 +19,7 @@ export function TransactionsPage() {
             <thead>
               <tr>
                 <th>Operation</th>
+                <th>Account</th>
                 <th>Status</th>
                 <th>Transaction / message</th>
                 <th>Block</th>
@@ -28,10 +30,29 @@ export function TransactionsPage() {
               {journal.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.label}</td>
-                  <td>{entry.state}</td>
+                  <td>
+                    <code title={entry.account}>{shorten(entry.account)}</code>
+                    {entry.beneficiary && (
+                      <>
+                        {" "}
+                        →{" "}
+                        <code title={entry.beneficiary}>
+                          {shorten(entry.beneficiary)}
+                        </code>
+                      </>
+                    )}
+                  </td>
+                  <td>
+                    {entry.state === "submission-unknown"
+                      ? "Submission outcome unavailable"
+                      : entry.state}
+                  </td>
                   <td>
                     {"hash" in entry && entry.hash && <code>{entry.hash}</code>}
-                    {entry.state === "failed" && <p>{entry.message}</p>}
+                    {(entry.state === "failed" ||
+                      entry.state === "submission-unknown") && (
+                      <p>{entry.message}</p>
+                    )}
                   </td>
                   <td>{entry.state === "confirmed" ? entry.block : "—"}</td>
                   <td>

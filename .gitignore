@@ -6,3 +6,11 @@ shared/simulation-report.json
 frontend/test-results/
 frontend/playwright-report/
 .local/
+
+# Rebuilt from the Solidity artifacts and Rocq sources.
+frontend/src/generated/
+
+.lia.cache
+.nia.cache
+
+*.tsbuildinfo
