@@ -4,7 +4,7 @@ import {
   unsupportedPoolError,
 } from "../logic/assets";
 import { formatUnits } from "../logic/units";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { AmountField, FormError, toleranceError } from "../components/Forms";
@@ -12,7 +12,6 @@ import {
   minimumReceived,
   poolKey,
   poolLabel,
-  positiveAmount,
   sameAddress,
   shorten,
   slippageBps,
@@ -26,6 +25,7 @@ import {
   ownedPositions,
   positionView,
   transferError,
+  type DepositPlan,
 } from "../logic/liquidity";
 import { PoolActivity } from "./PoolActivity";
 import "./LiquidityPage.css";
@@ -177,29 +177,41 @@ function CreatePosition({
   pools: Pool[];
   onClose: () => void;
 }) {
-  const { snapshot, symbol, pending, session, run, amount, precision, tokens } =
+  const { snapshot, symbol, pending, session, run, precision, tokens } =
     useDex();
   const [selection, setSelection] = useState(poolKey(initialPool));
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
-  const [reviewing, setReviewing] = useState(false);
+  const [review, setReview] = useState<{
+    pool: Pool;
+    plan: DepositPlan;
+    slippage: bigint;
+    tolerance: string;
+    caller: string;
+    block: number;
+    submit: typeof run;
+  }>();
+  useEffect(() => setReview(undefined), [
+    session?.kind,
+    session?.address,
+    session?.chainId,
+    session?.epoch,
+  ]);
   if (!open) return null;
-  const pool = pools.find((candidate) => poolKey(candidate) === selection)!;
-  const decision = depositPreview(
-    pool,
-    amount0,
-    amount1,
-    slippage,
-    snapshot.data!.balances[pool.token0] ?? 0n,
-    snapshot.data!.balances[pool.token1] ?? 0n,
-    tokens,
-  );
+  const pool = review?.pool ?? pools.find((candidate) => poolKey(candidate) === selection)!;
+  const balance0 = snapshot.data?.balances[pool.token0];
+  const balance1 = snapshot.data?.balances[pool.token1];
+  // DEFENSE: anonymous/loading observations do not supply wallet balances.
+  const decision = review || balance0 === undefined || balance1 === undefined
+    ? undefined
+    : depositPreview(pool, amount0, amount1, slippage, balance0, balance1, tokens);
   const exactAmount = (value: bigint, token: string) =>
     formatUnits(value, precision(token));
-  const invalid = decision.ok ? undefined : (decision.error ?? undefined);
-  const used = decision.ok
-    ? ([decision.used0, decision.used1] as const)
+  const invalid = decision?.ok ? undefined : (decision?.error ?? undefined);
+  const plan = review?.plan ?? (decision?.ok ? decision : undefined);
+  const used = plan
+    ? ([plan.used0, plan.used1] as const)
     : undefined;
   function changeAmount(value: string, index: 0 | 1) {
     if (index === 0) setAmount0(value);
@@ -212,13 +224,13 @@ function CreatePosition({
   }
   return (
     <ConfirmationDialog
-      title={reviewing ? "Review new position" : "New liquidity position"}
+      title={review ? "Review new position" : "New liquidity position"}
       onClose={() => {
-        setReviewing(false);
+        setReview(undefined);
         onClose();
       }}
     >
-      {reviewing && used && decision.ok ? (
+      {review && used ? (
         <div className="liquidity-create-review">
           <p className="liquidity-market-name">{poolLabel(pool, symbol)}</p>
           <dl className="liquidity-review-amounts">
@@ -237,9 +249,10 @@ function CreatePosition({
           </p>
           {pool.totalShares === 0n && (
             <p>
-              Your deposit sets the starting price. A small part of the first
-              deposit stays permanently locked in the pool; the estimated shares
-              below belong to your NFT.
+              Your deposit sets the starting price. Part of it backs permanently
+              locked shares and does not belong to your NFT. This can be a
+              substantial part of a small or low-decimal deposit; compare your
+              immediate redeem quote below with the amount deposited.
             </p>
           )}
           <dl className="liquidity-detail-list">
@@ -256,22 +269,34 @@ function CreatePosition({
                 symbol(pool.token1),
               )}
             </dd>
-            <dt>Estimated position shares</dt>
-            <dd>{decision.shares.toString()}</dd>
+            <dt>NFT shares / pool shares after deposit</dt>
+            <dd>
+              {review.plan.shares.toString()} / {review.plan.totalSharesAfter.toString()}
+            </dd>
+            {pool.totalShares === 0n && (
+              <>
+                <dt>New permanently locked shares</dt>
+                <dd>{review.plan.newLockedShares.toString()}</dd>
+              </>
+            )}
+            <dt>Immediate redeem quote · {tokenLabel(pool.token0, symbol(pool.token0))}</dt>
+            <dd>{exactAmount(review.plan.redeemable0, pool.token0)}</dd>
+            <dt>Immediate redeem quote · {tokenLabel(pool.token1, symbol(pool.token1))}</dt>
+            <dd>{exactAmount(review.plan.redeemable1, pool.token1)}</dd>
             <dt title={pool.token0}>
               Unspent {tokenLabel(pool.token0, symbol(pool.token0))}
             </dt>
-            <dd>{exactAmount(decision.unused0, pool.token0)}</dd>
+            <dd>{exactAmount(review.plan.unused0, pool.token0)}</dd>
             <dt title={pool.token1}>
               Unspent {tokenLabel(pool.token1, symbol(pool.token1))}
             </dt>
-            <dd>{exactAmount(decision.unused1, pool.token1)}</dd>
+            <dd>{exactAmount(review.plan.unused1, pool.token1)}</dd>
             <dt title={pool.token0}>
               Minimum {tokenLabel(pool.token0, symbol(pool.token0))} deposited
             </dt>
             <dd>
               {exactAmount(
-                minimumReceived(used[0], slippageBps(slippage)),
+                review.plan.minimum0,
                 pool.token0,
               )}
             </dd>
@@ -280,37 +305,42 @@ function CreatePosition({
             </dt>
             <dd>
               {exactAmount(
-                minimumReceived(used[1], slippageBps(slippage)),
+                review.plan.minimum1,
                 pool.token1,
               )}
             </dd>
             <dt>Slippage tolerance</dt>
-            <dd>{slippage}%</dd>
+            <dd>{review.tolerance}%</dd>
+            <dt>Quote block</dt>
+            <dd>{review.block}</dd>
             <dt>Recipient</dt>
             <dd>
-              <code>{session?.address}</code>
+              <code>{review.caller}</code>
             </dd>
           </dl>
           <p className="liquidity-small">
             Approve each token if needed, then confirm the deposit. Unused
-            amounts stay in your wallet.
+            amounts stay in your wallet. The immediate redeem quote assumes this
+            pool state and whole-unit rounding; intervening pool changes can
+            change the NFT's resulting claim. Deposit minima do not guarantee a
+            future redemption value.
           </p>
           <div className="liquidity-dialog-actions">
-            <button className="secondary" onClick={() => setReviewing(false)}>
+            <button className="secondary" onClick={() => setReview(undefined)}>
               Back
             </button>
             <button
               className="button-primary"
-              disabled={pending || !session || !decision.ok}
+              disabled={pending}
               onClick={() => {
-                setReviewing(false);
+                setReview(undefined);
                 onClose();
-                run("Add liquidity", async (writer) => {
+                review.submit("Add liquidity", async (writer) => {
                   const result = await writer.addLiquidity(
-                    pool,
-                    positiveAmount(amount0, precision(pool.token0)),
-                    positiveAmount(amount1, precision(pool.token1)),
-                    slippageBps(slippage),
+                    review.pool,
+                    review.plan.desired0,
+                    review.plan.desired1,
+                    review.slippage,
                   );
                   onConfirmed(result);
                 });
@@ -325,7 +355,17 @@ function CreatePosition({
           className="liquidity-create-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (decision.ok) setReviewing(true);
+            if (decision?.ok && session) {
+              setReview({
+                pool,
+                plan: decision,
+                slippage: slippageBps(slippage),
+                tolerance: slippage,
+                caller: session.address,
+                block: snapshot.data!.block,
+                submit: run,
+              });
+            }
           }}
         >
           <label>
@@ -365,7 +405,7 @@ function CreatePosition({
             />
             <small>
               Balance{" "}
-              {amount(snapshot.data!.balances[pool.token0] ?? 0n, pool.token0)}{" "}
+              {balance0 === undefined ? "—" : exactAmount(balance0, pool.token0)}{" "}
               {symbol(pool.token0)}
             </small>
           </div>
@@ -378,10 +418,17 @@ function CreatePosition({
             />
             <small>
               Balance{" "}
-              {amount(snapshot.data!.balances[pool.token1] ?? 0n, pool.token1)}{" "}
+              {balance1 === undefined ? "—" : exactAmount(balance1, pool.token1)}{" "}
               {symbol(pool.token1)}
             </small>
           </div>
+          {(balance0 === undefined || balance1 === undefined) && (
+            <p role="status">
+              {session
+                ? "Wallet balances are not available yet."
+                : "Connect a wallet to prepare a deposit."}
+            </p>
+          )}
           <FormError message={amount0 || amount1 ? invalid : undefined} />
           <details className="liquidity-settings">
             <summary>Settings · {slippage}% slippage</summary>
@@ -396,7 +443,7 @@ function CreatePosition({
           <button
             className="button-primary liquidity-review-button"
             type="submit"
-            disabled={pending || !decision.ok}
+            disabled={pending || !decision?.ok || !session}
           >
             Review position
           </button>

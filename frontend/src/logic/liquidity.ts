@@ -29,6 +29,10 @@ export type DepositPlan = {
   shares: bigint;
   minimum0: bigint;
   minimum1: bigint;
+  totalSharesAfter: bigint;
+  newLockedShares: bigint;
+  redeemable0: bigint;
+  redeemable1: bigint;
 };
 export type DepositDecision =
   | { ok: false; error: string | null }
@@ -65,6 +69,10 @@ function decodePlan(wire: DepositWire): DepositPlan {
     shares: BigInt(wire.shares),
     minimum0: BigInt(wire.minimum0),
     minimum1: BigInt(wire.minimum1),
+    totalSharesAfter: BigInt(wire.totalSharesAfter),
+    newLockedShares: BigInt(wire.newLockedShares),
+    redeemable0: BigInt(wire.redeemable0),
+    redeemable1: BigInt(wire.redeemable1),
   };
 }
 export function depositPreview(

@@ -3,6 +3,47 @@ From DEXFormal.Spec Require Import Types Units AMM Liquidity.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+Record deposit_ownership_quote := DepositOwnershipQuote {
+  quote_total_shares : Z;
+  quote_new_locked_shares : Z;
+  quote_redeem0 : Z;
+  quote_redeem1 : Z
+}.
+
+(* The NFT owns its minted shares, rather than the complete first deposit.
+   This is the immediate burn quote for the same hypothetical post-mint state. *)
+Definition deposit_ownership r0 r1 total (plan : deposit_plan) :=
+  let after_total := mint_total total (minted plan) in
+  let '(a0,a1) := redeem_amounts (r0 + used0 plan) (r1 + used1 plan)
+    after_total (minted plan) in
+  DepositOwnershipQuote after_total
+    (if total =? 0 then locked_shares else 0) a0 a1.
+
+Lemma first_deposit_ownership_includes_locked r0 r1 plan :
+  quote_total_shares (deposit_ownership r0 r1 0 plan) - minted plan = locked_shares /\
+  quote_new_locked_shares (deposit_ownership r0 r1 0 plan) = locked_shares.
+Proof.
+  change (locked_shares + minted plan - minted plan = locked_shares /\
+    locked_shares = locked_shares). lia.
+Qed.
+
+Lemma deposit_ownership_keeps_pool_funded r0 r1 total plan :
+  0 < r0 + used0 plan -> 0 < r1 + used1 plan ->
+  (total = 0 \/ locked_shares <= total) -> 0 < minted plan ->
+  let quote := deposit_ownership r0 r1 total plan in
+  0 < r0 + used0 plan - quote_redeem0 quote /\
+  0 < r1 + used1 plan - quote_redeem1 quote /\
+  locked_shares <= quote_total_shares quote - minted plan.
+Proof.
+  intros Hr0 Hr1 Htotal Hmint.
+  assert (Hshares : 0 <= minted plan <= mint_total total (minted plan) - locked_shares).
+  { unfold mint_total. destruct (Z.eqb_spec total 0); subst;
+      unfold locked_shares in *; lia. }
+  exact (redeemed_locked_pool_stays_funded
+    (r0 + used0 plan) (r1 + used1 plan) (mint_total total (minted plan))
+    (minted plan) Hr0 Hr1 Hshares).
+Qed.
+
 Inductive deposit_decision :=
 | DepositEmpty
 | DepositRejected (message : string)
@@ -44,6 +85,43 @@ Proof.
   - intros H. inversion H; subst. exists d0,d1,slip. exact Hplan.
   - destruct (deposit_amounts r0 r1 total d0 d1).
     destruct ((max_reserve <? r0+z) || (max_reserve <? r1+z0)); discriminate.
+Qed.
+
+Lemma prepared_deposit_ownership_keeps_pool_funded r0 r1 total d0 d1 b0 b1 slip plan :
+  prepare_deposit r0 r1 total d0 d1 b0 b1 slip = Some plan ->
+  let quote := deposit_ownership r0 r1 total plan in
+  0 < r0 + used0 plan - quote_redeem0 quote /\
+  0 < r1 + used1 plan - quote_redeem1 quote /\
+  locked_shares <= quote_total_shares quote - minted plan.
+Proof.
+  intros Hplan.
+  pose proof (prepare_deposit_budgets _ _ _ _ _ _ _ _ _ Hplan) as Hbudget.
+  destruct Hbudget as [Hused0 [Hused1 [_ [_ [_ [_ [_ [_ Hmint]]]]]]]].
+  assert (Hpool : pool_validb r0 r1 total = true).
+  { unfold prepare_deposit in Hplan.
+    destruct (deposit_amounts r0 r1 total d0 d1) as [a0 a1] eqn:Hamounts.
+    destruct (deposit_validb r0 r1 total d0 d1 b0 b1 slip) eqn:Hvalid; [|discriminate].
+    unfold deposit_validb in Hvalid. rewrite Hamounts in Hvalid.
+    unpack_checks. assumption. }
+  unfold pool_validb in Hpool. unpack_checks.
+  assert (Htotal : total = 0 \/ locked_shares <= total).
+  { destruct (total =? 0) eqn:Hfirst.
+    - left. now apply Z.eqb_eq.
+    - right. unpack_checks. assumption. }
+  apply deposit_ownership_keeps_pool_funded; [lia|lia|exact Htotal|exact Hmint].
+Qed.
+
+Lemma analyzed_deposit_ownership_keeps_pool_funded p0 p1 r0 r1 total b0 b1 t0 t1 tolerance plan :
+  analyze_deposit p0 p1 r0 r1 total b0 b1 t0 t1 tolerance = DepositPrepared plan ->
+  let quote := deposit_ownership r0 r1 total plan in
+  0 < r0 + used0 plan - quote_redeem0 quote /\
+  0 < r1 + used1 plan - quote_redeem1 quote /\
+  locked_shares <= quote_total_shares quote - minted plan.
+Proof.
+  intros Hdecision.
+  destruct (analyzed_deposit_uses_checked_plan _ _ _ _ _ _ _ _ _ _ _ Hdecision)
+    as [d0 [d1 [slip Hplan]]].
+  exact (prepared_deposit_ownership_keeps_pool_funded _ _ _ _ _ _ _ _ _ Hplan).
 Qed.
 
 Definition position_is_ownedb owner current := String.eqb owner current.

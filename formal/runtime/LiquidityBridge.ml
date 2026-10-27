@@ -10,11 +10,15 @@ let address key value = canonical (text key value)
 let z value = `String (Big_int_Z.string_of_big_int value)
 let optional_text = function None -> `Null | Some value -> `String value
 let pool value = integer "reserve0" value, integer "reserve1" value, integer "totalShares" value
-let deposit_json (plan : K.deposit_plan) = [
+let deposit_json ~reserve0 ~reserve1 ~total (plan : K.deposit_plan) =
+  let ownership = K.deposit_ownership reserve0 reserve1 total plan in [
   "desired0", z plan.deposit0; "desired1", z plan.deposit1;
   "used0", z plan.used0; "used1", z plan.used1;
   "unused0", z plan.unused0; "unused1", z plan.unused1;
-  "shares", z plan.minted; "minimum0", z plan.minimum0; "minimum1", z plan.minimum1]
+  "shares", z plan.minted; "minimum0", z plan.minimum0; "minimum1", z plan.minimum1;
+  "totalSharesAfter", z ownership.quote_total_shares;
+  "newLockedShares", z ownership.quote_new_locked_shares;
+  "redeemable0", z ownership.quote_redeem0; "redeemable1", z ownership.quote_redeem1]
 let rejected reason = `Assoc ["ok", `Bool false; "error", `String reason]
 let analyze_deposit value =
   let r0,r1,total = pool value in
@@ -22,7 +26,7 @@ let analyze_deposit value =
     (text "amount0" value) (text "amount1" value) (text "slippage" value) with
   | K.DepositEmpty -> `Assoc ["ok", `Bool false; "error", `Null]
   | K.DepositRejected why -> rejected why
-  | K.DepositPrepared plan -> `Assoc (("ok", `Bool true)::deposit_json plan)
+  | K.DepositPrepared plan -> `Assoc (("ok", `Bool true)::deposit_json ~reserve0:r0 ~reserve1:r1 ~total plan)
 let deposit_amounts value =
   let r0,r1,total = pool value in
   let a0,a1 = K.deposit_amounts r0 r1 total (integer "desired0" value) (integer "desired1" value) in
@@ -59,7 +63,7 @@ let write_deposit value =
   | K.WriteDepositRejected why -> rejected why
   | K.WriteDepositPrepared (plan, deadline, approve0, approve1) ->
     `Assoc (("ok", `Bool true)::("deadline",z deadline)::
-      ("approve0",`Bool approve0)::("approve1",`Bool approve1)::deposit_json plan)
+      ("approve0",`Bool approve0)::("approve1",`Bool approve1)::deposit_json ~reserve0:r0 ~reserve1:r1 ~total plan)
 let write_withdraw value =
   let r0,r1,total = pool value in
   match K.prepare_position_withdraw (integer "expectedPool" value) (integer "actualPool" value)
