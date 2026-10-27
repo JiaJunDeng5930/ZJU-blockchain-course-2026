@@ -1,3 +1,4 @@
+import { ConfirmedWrappingAction } from "../components/ConfirmedWrappingAction";
 import { useEffect, useReducer, useRef, useState } from "react";
 import { useLocation } from "react-router-dom";
 import { tokenLabel } from "../chain/amounts";
@@ -174,32 +175,7 @@ export function WrapAssets() {
         </ConfirmationDialog>
       )}
       {confirmation && (
-        <section className="wrapping-confirmation" aria-label="Last confirmed conversion">
-          <h3>{confirmation.kind === "wrap" ? "ETH wrapped" : "WETH unwrapped"}</h3>
-          <dl className="wrapping-review-values">
-            <dt>Conversion principal</dt>
-            <dd>{formatUnits(confirmation.amount, 18)} {confirmation.kind === "wrap" ? "ETH → WETH" : "WETH → ETH"}</dd>
-            <dt>ETH change for this transaction</dt>
-            <dd>{formatUnits(confirmation.nativeChangeWei, 18)} ETH</dd>
-            <dt>WETH change for this transaction</dt>
-            <dd>{formatUnits(confirmation.wrappedChange, 18)} WETH</dd>
-            <dt>Execution fee</dt>
-            <dd>{formatUnits(confirmation.gasCostWei, 18)} ETH</dd>
-            <dt>Owner and fee payer</dt>
-            <dd><code>{confirmation.owner}</code></dd>
-            <dt>WETH contract</dt>
-            <dd><code>{confirmation.token}</code></dd>
-            <dt>Confirmed block</dt>
-            <dd>{String(confirmation.receipt.blockNumber)}</dd>
-            <dt>Transaction</dt>
-            <dd><code>{confirmation.receipt.transactionHash}</code></dd>
-          </dl>
-          <p>
-            These changes account for this conversion and its actual ETH fee.
-            They are not a later wallet balance observation. WETH principal
-            converts 1:1; gas does not reduce the WETH minted or burned.
-          </p>
-        </section>
+        <ConfirmedWrappingAction result={confirmation} />
       )}
     </section>
   );

@@ -35,7 +35,7 @@ import {
 import { addLiquidity, removeLiquidity, transferPosition, readLiquidityReceipt } from "./liquidity";
 import { revokeAllowance, type RevokePlan } from "./allowances";
 import type { RawAllowances } from "../wallet/kernel";
-import { executeWrap } from "./wrapping";
+import { executeWrap, readWrappingReceipt } from "./wrapping";
 import { readSwapReceipt, readTransactionResult, swapExecutionFromEvent } from "./swapReceipt";
 import { opportunities, quoteArbitrage, executeArbitrage, readArbitrageReceipt } from "./arbitrage";
 import type {
@@ -358,6 +358,7 @@ export class ExchangeClient {
     return quoteArbitrage(this, pool, tokenIn, amount, supportedTokens);
   }
   swapReceipt(hash: Hex) { return readSwapReceipt(this, hash); }
+  wrappingReceipt(hash: Hex) { return readWrappingReceipt(this, hash); }
   transactionResult(hash: Hex) { return readTransactionResult(this, hash); }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);

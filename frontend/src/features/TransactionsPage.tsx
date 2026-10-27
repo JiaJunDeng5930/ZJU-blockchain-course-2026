@@ -15,6 +15,7 @@ import { ConfirmedLiquidityAction } from "../components/ConfirmedLiquidityAction
 import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction";
 import { transactionResultAvailable } from "../logic/swapReceipt";
 import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
+import { ConfirmedWrappingAction } from "../components/ConfirmedWrappingAction";
 export function TransactionsPage() {
   const { history, wallet, client } = useDex();
   const [query, setQuery] = useState<ActivityQuery | null>(null);
@@ -258,6 +259,9 @@ function TransactionReceipt({
             metadata.
           </p>
         </>
+      )}
+      {result.data?.kind === "wrapping" && (
+        <ConfirmedWrappingAction result={result.data.details} />
       )}
       {result.data === null && (
         <p>

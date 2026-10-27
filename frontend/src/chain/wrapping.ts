@@ -1,4 +1,4 @@
-import { getAddress, parseEventLogs, zeroAddress } from "viem";
+import { getAddress, parseEventLogs, type Hex, type TransactionReceipt } from "viem";
 import { wrappedEtherAbi } from "../generated/abis";
 import { prepareWrapping, requireWrappedAddress } from "../logic/wrapping";
 import type { ExchangeClient, SendTransaction } from "./client";
@@ -6,6 +6,51 @@ import type { WalletSession } from "../wallet/session";
 import type { WrappingConfirmation } from "./types";
 import { executionFeeWei } from "../logic/receipts";
 import { wrappingSettlement } from "../logic/wrappingSettlement";
+import { selectWrappingReceipt, type ReceiptFact } from "../logic/swapReceipt";
+
+function wrappingEvents(receipt: TransactionReceipt) {
+  return parseEventLogs({ abi: wrappedEtherAbi, eventName: "Transfer", logs: receipt.logs, strict: true });
+}
+
+export function wrappingReceiptFacts(receipt: TransactionReceipt): ReceiptFact[] {
+  return wrappingEvents(receipt).map((event, index) => ({
+    index, source: event.address.toLowerCase(), kind: "wrapping",
+    from: event.args.from.toLowerCase(), to: event.args.to.toLowerCase(),
+  }));
+}
+
+export function wrappingReceiptFromReceipt(
+  client: ExchangeClient,
+  receipt: TransactionReceipt,
+): WrappingConfirmation | null {
+  // KNOWN LIMITATION: delegated-account callback transfers are outside this single conversion's effects.
+  const selection = selectWrappingReceipt(client.deployment, {
+    successful: receipt.status === "success", creation: receipt.contractAddress !== null,
+    target: receipt.to?.toLowerCase() ?? "", owner: receipt.from.toLowerCase(),
+    facts: wrappingReceiptFacts(receipt),
+  });
+  switch (selection.kind) {
+    case "none": return null;
+    case "reverted":
+      // DEFENSE: a supplied history hash can refer to an on-chain reverted withdrawal.
+      throw new Error("The transaction reverted and has no confirmed wrapping result.");
+    case "multiple":
+      // DEFENSE: a delegated account can perform another conversion while receiving withdrawal ETH.
+      throw new Error("This receipt contains multiple conversions; one result cannot represent them.");
+  }
+  const event = wrappingEvents(receipt)[selection.index]!;
+  const gasCostWei = executionFeeWei(receipt);
+  return {
+    kind: selection.withdraw ? "unwrap" : "wrap", token: getAddress(event.address),
+    owner: getAddress(selection.withdraw ? event.args.from : event.args.to),
+    amount: event.args.value, gasCostWei,
+    ...wrappingSettlement(event.args.value, selection.withdraw, gasCostWei), receipt,
+  };
+}
+
+export async function readWrappingReceipt(client: ExchangeClient, hash: Hex) {
+  return wrappingReceiptFromReceipt(client, await client.rpc.getTransactionReceipt({ hash }));
+}
 
 export async function executeWrap(
   context: { client: ExchangeClient; session: WalletSession; send: SendTransaction },
@@ -40,19 +85,8 @@ export async function executeWrap(
     maxFeePerGas: request.feePerGas,
     maxPriorityFeePerGas: fees.maxPriorityFeePerGas,
   }));
-  const event = parseEventLogs({ abi: wrappedEtherAbi, eventName: "Transfer", logs: receipt.logs })
-    .find((event) => getAddress(event.address) === address &&
-      getAddress(event.args.from) === (request.withdraw ? session.address : zeroAddress) &&
-      getAddress(event.args.to) === (request.withdraw ? zeroAddress : session.address))!;
-  const principal = event.args.value;
-  const gasCostWei = executionFeeWei(receipt);
-  return {
-    kind: request.withdraw ? "unwrap" : "wrap",
-    token: address,
-    owner: session.address,
-    amount: principal,
-    gasCostWei,
-    ...wrappingSettlement(principal, request.withdraw, gasCostWei),
-    receipt,
-  };
+  const confirmation = wrappingReceiptFromReceipt(client, receipt);
+  // DEFENSE: an incomplete RPC receipt must not turn the requested amount into evidence.
+  if (confirmation === null) throw new Error("Confirmed conversion is missing its settlement event.");
+  return confirmation;
 }

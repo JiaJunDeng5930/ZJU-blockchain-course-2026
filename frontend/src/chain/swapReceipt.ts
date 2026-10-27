@@ -16,6 +16,7 @@ import { executionFeeWei } from "../logic/receipts";
 import { importAsset } from "./assets";
 import { liquidityReceiptFromReceipt } from "./liquidity";
 import { arbitrageReceiptFromReceipt } from "./arbitrage";
+import { wrappingReceiptFacts, wrappingReceiptFromReceipt } from "./wrapping";
 import type { ExchangeClient } from "./client";
 import type {
   PoolIdentity,
@@ -77,11 +78,13 @@ function observation(receipt: TransactionReceipt) {
       from: zeroAddress,
       to: zeroAddress,
     })),
+    ...wrappingReceiptFacts(receipt),
   ];
   return {
     successful: receipt.status === "success",
     creation: receipt.contractAddress !== null,
     target: receipt.to?.toLowerCase() ?? "",
+    owner: receipt.from.toLowerCase(),
     facts,
   };
 }
@@ -189,6 +192,10 @@ export async function readTransactionResult(
     case "swap": {
       const details = await swapReceiptFromReceipt(client, receipt);
       return details === null ? null : { kind: "swap", details };
+    }
+    case "wrapping": {
+      const details = wrappingReceiptFromReceipt(client, receipt);
+      return details === null ? null : { kind: "wrapping", details };
     }
   }
 }

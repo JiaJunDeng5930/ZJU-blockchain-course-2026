@@ -126,6 +126,7 @@ export type RecoveredTransactionResult =
   | { kind: "swap"; details: SwapReceiptDetails }
   | { kind: "liquidity"; details: LiquidityReceiptDetails }
   | { kind: "arbitrage"; details: ArbitrageReceiptDetails }
+  | { kind: "wrapping"; details: WrappingConfirmation }
   | { kind: "creation"; address: string; receipt: TransactionReceipt };
 export type WrappingConfirmation = {
   kind: "wrap" | "unwrap";

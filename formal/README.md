@@ -65,8 +65,23 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Spec/Assets.v`, `Frontend/AssetsForms.v` | Verified asset catalog, pool compatibility, creation/import/faucet decisions and form effects |
 | `theories/Spec/Wrapping.v`, `Frontend/WrappingModel.v` | ETH/WETH principal and maximum gas budget decisions |
 | `theories/Frontend/WrappingSettlement.v` | Confirmed ETH/WETH principal movements and the execution fee's effect on native ETH |
+
 | `theories/Spec/Simulation.v`, `Frontend/SimulationModel.v` | Valid options, request identity, command exclusion, recovery and job-specific stop |
 | `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
+
+Wrapping receipt recovery extends `Frontend/SwapReceipt.v`: it selects one mint
+or burn from the configured WrappedEther in a direct call, with the token owner
+equal to the receipt sender. Ordinary transfers, approvals and other ERC20 mint
+events are not conversions. The seven additional closed theorems establish
+observed-event origin, configured source and target, owner/direction agreement,
+missing-asset and reverted cases, preservation of existing result kinds, and
+availability of the empty-calldata receive path. The bridge translates ABI
+facts; it does not prove the EVM or the RPC implementation.
+
+Historical and live results reuse `WrappingSettlement` and `ReceiptFees`.
+Recovery needs no balance, block-state or token-metadata request: this project's
+WrappedEther inherits the fixed 18-decimal protocol definition. The guarantee
+applies to the DApp's single direct conversion, not arbitrary nested callbacks.
 
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
 
