@@ -5,5 +5,6 @@
 
     This codec is part of the trusted boundary. Storage ownership, recovery
     policy, authorization and receipt reconciliation come from the extracted
-    model. JavaScript effects implement atomic per-key browser storage and RPC
+    model. Read-only activity queries consume those same canonical entries and
+    never publish state or effects. JavaScript effects implement atomic per-key browser storage and RPC
     observation; they do not grant signing authority from an archive. *)

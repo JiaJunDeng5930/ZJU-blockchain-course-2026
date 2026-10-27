@@ -5,6 +5,7 @@ module K = WalletKernel
 module W = K.Wallet
 module T = K.Transactions
 module H = K.TransactionHistory
+module A = K.Activity
 module Json = Yojson.Safe
 module Field = Yojson.Safe.Util
 
@@ -182,6 +183,38 @@ let id_response = function T.Accepted id -> H.AcceptedId id | T.Denied message -
 let unit_response = function T.Accepted () -> H.AcceptedUnit | T.Denied message -> H.Refused message
 let identity_response = function T.Accepted identity -> H.AcceptedIdentity identity | T.Denied message -> H.Refused message
 
+let account_selection_exn = function
+  | "all" -> A.AllAccounts | "current" -> A.CurrentAccount
+  | _ -> invalid_arg "Unknown activity account filter"
+let status_selection_exn = function
+  | "all" -> A.AllStatuses | "pending" -> A.Pending | "confirmed" -> A.Successful
+  | "failed" -> A.Failed | "unknown" -> A.Unknown
+  | _ -> invalid_arg "Unknown activity status filter"
+let activity_query_exn value : A.query = {
+  account_selection = account_selection_exn (string_exn "account" value);
+  status_selection = status_selection_exn (string_exn "status" value);
+  requested_page = number_exn "page" value;
+  observed_account = optional_string_exn "observedAccount" value;
+}
+let activity_query_json query = object_ [
+  "account", text (match query.A.account_selection with A.AllAccounts -> "all" | A.CurrentAccount -> "current");
+  "status", text (match query.A.status_selection with A.AllStatuses -> "all" | A.Pending -> "pending"
+    | A.Successful -> "confirmed" | A.Failed -> "failed" | A.Unknown -> "unknown");
+  "page", integer query.A.requested_page; "observedAccount", optional text query.A.observed_account]
+let activity_event_exn value = match string_exn "kind" value with
+  | "account" -> A.SelectAccount (account_selection_exn (string_exn "value" value))
+  | "status" -> A.SelectStatus (status_selection_exn (string_exn "value" value))
+  | "previous" -> A.Previous | "next" -> A.Next | "reset" -> A.Reset
+  | _ -> invalid_arg "Unknown activity event"
+let activity_page_json page = object_ [
+  "query", activity_query_json page.A.normalized_query;
+  "entries", `List (List.map (fun (owner, entry) -> entry_json owner entry) page.A.entries);
+  "total", integer (K.Z.of_nat page.A.total);
+  "filteredTotal", integer (K.Z.of_nat page.A.filtered_total);
+  "page", integer page.A.page_number; "pages", integer (K.Z.of_nat page.A.page_count);
+  "canPrevious", `Bool page.A.can_previous; "canNext", `Bool page.A.can_next;
+  "canCurrentAccount", `Bool page.A.can_current_account; "emptyMessage", text page.A.empty_message]
+
 end
 
 open Protocol_v1
@@ -204,6 +237,16 @@ let create_exn configuration =
     "pending", `Bool (T.pending (tx ()));
     "error", optional text (T.current_error (tx ()));
     "activity", activity_json (T.current_activity (tx ()))] in
+  let activity encoded =
+    let input = Json.from_string (Js.to_string encoded) in
+    let query = match member_exn "query" input with `Null -> A.initial | value -> activity_query_exn value in
+    let account = Option.map (fun identity -> identity.W.identity_address) (W.current_identity !wallet) in
+    let rows = H.visible_entries !history in
+    let page = match member_exn "event" input with
+      | `Null -> A.view query account rows
+      | event -> A.step query account rows (activity_event_exn event) in
+    activity_page_json page |> Json.to_string |> Js.string
+  in
   let save_effect () = if H.needs_save !history then
     [object_ ["kind", text "save-history"; "key", text (H.storage_key !history);
       "archive", text (Json.to_string (archive_json !history))]] else [] in
@@ -286,6 +329,7 @@ let create_exn configuration =
     "start", Js.Unsafe.inject (Js.wrap_callback (fun () -> let effects = !initial_effects in initial_effects := [];
       reply effects [object_ ["kind", text "load-history"]] `Null));
     "dispatch", Js.Unsafe.inject (Js.wrap_callback dispatch);
+    "activity", Js.Unsafe.inject (Js.wrap_callback activity);
     "historyKey", Js.Unsafe.inject (Js.wrap_callback (fun genesis deployment endpoint -> H.scope (Js.to_string genesis) (Js.to_string deployment) (Js.to_string endpoint) |> Js.string));
     "retainsSnapshot", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
       Json.from_string (Js.to_string encoded) |> optional_identity_exn |> W.retains_snapshot !wallet |> Js.bool));
@@ -305,6 +349,7 @@ let native_funding_exn encoded =
 let () =
   let exports = Js.Unsafe.obj [|
     "create", Js.Unsafe.inject (Js.wrap_callback create_exn);
+    "initialActivityQuery", Js.Unsafe.inject (Js.wrap_callback (fun () -> activity_query_json A.initial |> Json.to_string |> Js.string));
     "planNativeFunding", Js.Unsafe.inject (Js.wrap_callback native_funding_exn)
   |] in
   Js.Unsafe.set Js.Unsafe.global "DEXWallet" exports

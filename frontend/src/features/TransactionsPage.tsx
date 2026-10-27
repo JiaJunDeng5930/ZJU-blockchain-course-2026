@@ -1,9 +1,20 @@
+import { useEffect, useState } from "react";
+import { activityStep, activityView, type ActivityQuery, type ActivityEvent } from "../logic/activity";
 import { HistoryStatus } from "../components/HistoryStatus";
 import { formatEther } from "viem";
 import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 export function TransactionsPage() {
-  const { journal, history, wallet } = useDex();
+  const { history, wallet } = useDex();
+  const [query, setQuery] = useState<ActivityQuery | null>(null);
+  const context = { kernel: wallet.controller.kernel };
+  const page = activityView(context, query);
+  const { account, status, page: requestedPage, observedAccount } = page.query;
+  useEffect(() => {
+    setQuery({ account, status, page: requestedPage, observedAccount });
+  }, [account, status, requestedPage, observedAccount]);
+  const navigate = (event: ActivityEvent) =>
+    setQuery(activityStep(context, page.query, event).query);
   return (
     <section className="card">
       <h2>Blockchain transactions</h2>
@@ -46,8 +57,33 @@ export function TransactionsPage() {
           </button>
         )}
       </div>
-      {journal.length === 0 ? (
-        <p>No transactions yet.</p>
+      <div className="actions activity-filters">
+        <label>
+          Account
+          <select value={page.query.account} onChange={(event) => navigate({
+            kind: "account", value: event.target.value as ActivityQuery["account"],
+          })}>
+            <option value="all">All accounts</option>
+            <option value="current" disabled={!page.canCurrentAccount}>Current account</option>
+          </select>
+        </label>
+        <label>
+          Status
+          <select value={page.query.status} onChange={(event) => navigate({
+            kind: "status", value: event.target.value as ActivityQuery["status"],
+          })}>
+            <option value="all">All statuses</option>
+            <option value="pending">In progress</option>
+            <option value="confirmed">Confirmed</option>
+            <option value="failed">Failed</option>
+            <option value="unknown">Submission unknown</option>
+          </select>
+        </label>
+        <button type="button" onClick={() => navigate({ kind: "reset" })}>Show all</button>
+      </div>
+      <p role="status">{page.filteredTotal} of {page.total} transactions</p>
+      {page.entries.length === 0 ? (
+        <p>{page.emptyMessage}</p>
       ) : (
         <div className="table-scroll">
           <table>
@@ -62,7 +98,7 @@ export function TransactionsPage() {
               </tr>
             </thead>
             <tbody>
-              {journal.map((entry) => (
+              {page.entries.map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.label}</td>
                   <td>
@@ -95,7 +131,7 @@ export function TransactionsPage() {
                   </td>
                   <td>
                     {"gas" in entry && entry.gas !== undefined
-                      ? formatEther(entry.gas)
+                      ? formatEther(BigInt(entry.gas))
                       : "—"}
                   </td>
                 </tr>
@@ -104,6 +140,15 @@ export function TransactionsPage() {
           </table>
         </div>
       )}
+      {page.entries.length > 0 && <nav className="actions" aria-label="Transaction pages">
+        <button type="button" disabled={!page.canPrevious} onClick={() => navigate({ kind: "previous" })}>
+          Previous
+        </button>
+        <span>Page {page.page} of {page.pages}</span>
+        <button type="button" disabled={!page.canNext} onClick={() => navigate({ kind: "next" })}>
+          Next
+        </button>
+      </nav>}
     </section>
   );
 }

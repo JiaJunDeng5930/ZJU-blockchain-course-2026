@@ -189,10 +189,12 @@ type RawKernel = {
   retainsSnapshot(identity: string): boolean;
   fundingPlan(observation: string): string;
   historyKey(genesis: string, deployment: string, endpoint: string): string;
+  activity(input: string): string;
 };
 declare global {
   var DEXWallet: {
     create(configuration: string): RawKernel;
+    initialActivityQuery(): string;
     planNativeFunding(input: string): string;
   };
 }
@@ -229,6 +231,10 @@ export class WalletKernel {
   }
   dispatch<T = unknown>(event: KernelEvent) {
     return this.publish<T>(this.raw.dispatch(JSON.stringify(event)));
+  }
+  /** Read-only projection: no dispatch, subscriptions or external effects. */
+  projectActivity(input: string): string {
+    return this.raw.activity(input);
   }
   historyKey(genesis: string, deployment: string, endpoint: string) {
     return this.raw.historyKey(genesis, deployment, endpoint);
