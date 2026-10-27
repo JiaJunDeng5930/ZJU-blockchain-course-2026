@@ -180,3 +180,17 @@ resource bound for the recovery path, not a nonce indexing benchmark. The
 evidence under `.local/replacements-public-*/` includes raw receipts, hashes,
 public journal records, RPC reads, wallet writes and the production bundle hash.
 No browser, private model state or replacement business-logic mock is used.
+
+## Simulation control
+
+After the normal production build, run:
+
+```sh
+node --import ./contracts/node_modules/tsx/dist/loader.mjs frontend/acceptance/simulation-public.mts
+```
+
+The runner uses the public `SimulationController` and `performSimulation` interfaces against the real HTTP service, worker and an isolated Hardhat chain. It copies the unchanged service scripts into a private fixture so their deployment and report files cannot affect the main application. Its Node transport supplies the same-origin URL and POST Origin that the browser and Vite proxy provide; it does not fake service responses or blockchain observations.
+
+A normal twenty-round run exercises twenty funded addresses. A fresh controller observes the same run and progress without issuing a command. Completed reports are checked against actual receipts, reserves, token profits, gas costs and the original NFT balances after position cleanup, then remain observable through 300 successive read-only HTTP requests. This spans the previously observed 256-request decoder failure without creating another run. A subsequent run rejects the old run's stop and report identities with HTTP 409. The current run is then stopped while a real transaction awaits mining: it must remain stopping until that transaction settles and its positions are redeemed, and the final report must belong to that run. The fixture resumes continuous block production, rather than assuming that enabling automining alone advances already submitted transactions and receipt subscriptions.
+
+This checks the service and worker obligations at the Rocq model's external boundary, rather than repeating the model's pure transition proofs. It does not test React, browsers, wallet extensions or arbitrary external RPC providers. Results, source and generated-kernel fingerprints, HTTP observations, service logs and chain logs are saved in `.local/simulation-public-*/`. Both spawned process groups are stopped and the isolated node's exit is observed before a successful result is published.
