@@ -52,6 +52,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Frontend/LiquidityBalances.v` | Balance-bounded preparation for an existing pool, preserving original spending limits and requiring an explicit price for the first deposit |
 | `theories/Frontend/ReceiptFees.v` | One exact execution-fee definition shared by transaction states, arbitrage summaries and liquidity confirmations |
 | `theories/Frontend/SwapSettlement.v` | Realized swap rate and signed output-token difference from the captured quote |
+| `theories/Frontend/FundingConfirmations.v` | Wallet-scoped confirmation blocks and balance-refresh coordination for automatic test funding |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
 | `theories/Frontend/ArbitrageCapital.v` | Exact user-entered capital for manual route comparison, reusing the shared arbitrage candidate calculation |
@@ -66,6 +67,27 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | `theories/Frontend/PoolSelection.v` | Explicit pool-key membership, missing targets and default selection only without a requested key |
 
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
+
+The wallet kernel's `recordFunding` records a confirmed funding block only for
+an identity allowed by the existing wallet policy.
+`fundingPlanAfterConfirmations` waits when the supplied balance snapshot predates
+the current identity's latest confirmation, then delegates to the existing
+funding planner once the snapshot catches up. The marker belongs to that kernel
+instance and is not a persisted asset inventory. Individual confirmations remain
+visible if a later preparation step fails. Native confirmations use the captured
+transfer plan and receipt; token confirmations use the target's mint event with
+metadata verified before submission. Their shared receipt fee remains separate
+from the granted amount. Public RPC-fault and signing-rejection scenarios check
+these adapter bindings. See [ADR 016](../docs/adr/016-keep-funding-confirmation-separate-from-balance-refresh.md).
+
+`stale_confirmation_does_not_change_progress` and
+`recorded_confirmation_keeps_current_identity` connect recording to wallet
+authority. `caught_up_confirmation_is_not_waiting` and
+`stale_confirmation_is_not_waiting` characterize the synchronization guard.
+`pending_confirmation_waits_for_balance_read` and
+`caught_up_snapshot_uses_observed_plan` connect that guard to the public funding
+plan. These are conditional model guarantees; real receipts, snapshot blocks and
+captured identities remain the separately checked adapter inputs.
 
 `Frontend/LiquidityBalances.v` prepares an existing-pool deposit from observed
 raw token balances using the shared deposit planner. The original balances stay

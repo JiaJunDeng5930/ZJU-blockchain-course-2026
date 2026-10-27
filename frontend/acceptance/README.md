@@ -360,6 +360,27 @@ node and wallet controller and does not use the browser or development services.
 This accepts the public transaction-result boundary, not React rendering,
 wallet-provider honesty, compiler correctness or EVM semantics.
 
+## Confirmed test funding and balance synchronization
+
+Run `npm run test:funding-confirmation`, or run
+`contracts/node_modules/.bin/tsx frontend/acceptance/funding-confirmation-public.mts`
+after building the production kernel and contract artifacts.
+
+The public wallet flow checks native and ERC20 funding confirmations against
+actual receipts, mint events and account balance changes. The native grant's
+funder and recipient are different; the funder pays its execution fee. The token
+claimant pays for its own mint. Fees are checked against observed ETH changes,
+without copying the production fee multiplication.
+
+A real RPC proxy can fail balance and metadata reads after confirmation. The
+confirmed result must still be returned. Real snapshots captured before and
+after funding exercise the public `recordFunding` and
+`fundingPlanAfterConfirmations` bindings: stale observations wait for refresh,
+fresh observations govern the remaining plan, and another wallet does not
+inherit the previous identity's confirmations. A later rejected token request
+does not erase earlier successful grants. The script uses public APIs rather
+than DOM interaction or fabricated internal wallet states.
+
 ## Asset preparation and pool creation
 
 After building the frontend kernel and contract artifacts:
