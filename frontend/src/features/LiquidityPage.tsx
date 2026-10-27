@@ -8,6 +8,7 @@ import {
   poolKey,
   positiveAmount,
   sameAddress,
+  shorten,
   slippageBps,
 } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
@@ -500,14 +501,20 @@ function SupportedPositionCard({
           onClose={() => setReview(undefined)}
         >
           <p>
-            NFT #{String(position.id)} will be permanently burned. Both assets,
-            including your share of fees, will be sent to its current owner:
+            {position.exchange.name} ({shorten(position.exchange.address)}),
+            pool #{String(position.poolId)}: NFT #{String(position.id)} will be
+            permanently burned. Both assets, including your share of fees, will
+            be sent to its current owner:
           </p>
           <code className="liquidity-recipient">{position.owner}</code>
           <dl className="liquidity-detail-list">
-            <dt>Expected {symbol(pool.token0)}</dt>
+            <dt title={pool.token0}>
+              Expected {symbol(pool.token0)} · {shorten(pool.token0)}
+            </dt>
             <dd>{amount(amounts[0], pool.token0)}</dd>
-            <dt>Expected {symbol(pool.token1)}</dt>
+            <dt title={pool.token1}>
+              Expected {symbol(pool.token1)} · {shorten(pool.token1)}
+            </dt>
             <dd>{amount(amounts[1], pool.token1)}</dd>
           </dl>
           <AmountField

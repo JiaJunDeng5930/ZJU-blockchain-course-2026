@@ -242,6 +242,10 @@ Best quote 在同一交易对的已知直接池中比较给定输入的实际输
 
 ![Liquidity 运行截图](docs/screenshots/11-formal-liquidity.jpg)
 
+NFT 编号只在对应 DEX 合约内唯一。当前赎回确认显示 DEX、池编号和代币地址缩写，悬停代币字段可查看完整地址。
+
+![赎回前确认 DEX、池、NFT 与代币地址](docs/screenshots/18-redemption-review.jpg)
+
 ### 资产与交易池
 
 ![Pools and tokens 运行截图](docs/screenshots/12-formal-assets.jpg)
