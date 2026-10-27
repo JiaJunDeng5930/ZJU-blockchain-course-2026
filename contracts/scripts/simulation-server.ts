@@ -192,11 +192,20 @@ function start(input: SimulationOptions) {
 
 const server = createServer(async (request, response) => {
   try {
-    const pathname = new URL(request.url ?? "/", `http://127.0.0.1:${port}`)
-      .pathname;
+    const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
+    const pathname = url.pathname;
     if (request.method === "GET" && pathname === "/api/simulation")
       return respond(response, 200, job);
     if (request.method === "GET" && pathname === "/api/simulation/report") {
+      // DEFENSE: an already displayed download link must not return a newer job's report.
+      if (
+        url.searchParams.has("jobId") &&
+        url.searchParams.get("jobId") !== job.id
+      )
+        throw new RequestError(
+          409,
+          "Simulation changed. Refresh before downloading its report.",
+        );
       if (!report)
         throw new RequestError(
           404,
@@ -215,7 +224,19 @@ const server = createServer(async (request, response) => {
       return respond(response, 202, job);
     }
     if (request.method === "POST" && pathname === "/api/simulation/stop") {
-      await body(request);
+      const input = await body(request);
+      // DEFENSE: a stale page must never stop a different simulation started after its last observation.
+      if (
+        !input ||
+        typeof input !== "object" ||
+        Array.isArray(input) ||
+        !("jobId" in input) ||
+        input.jobId !== job.id
+      )
+        throw new RequestError(
+          409,
+          "Simulation changed. Refresh before stopping it.",
+        );
       if (!worker || !["starting", "running", "stopping"].includes(job.state))
         throw new RequestError(409, "There is no running simulation to stop.");
       job = { ...job, state: "stopping" };

@@ -1,13 +1,16 @@
-import { useEffect, useState } from "react";
-import { useMutation, useQuery } from "@tanstack/react-query";
-import { formatEther } from "ethers";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { formatEther } from "viem";
 import type {
   SimulationAction,
   SimulationJob,
-  SimulationOptions,
   MarketSnapshot,
   SimulationArbitrage,
 } from "../../../contracts/scripts/simulation-protocol";
+import {
+  SimulationController,
+  performSimulation,
+  type SimulationEvent,
+} from "../logic/simulation";
 import { useDex } from "../chain/DexProvider";
 import { formatAmount, shorten } from "../chain/amounts";
 
@@ -19,8 +22,6 @@ const actionLabels: Record<SimulationAction, string> = {
   approve: "Token approval",
   expectedArbitrageRevert: "Rollback verification",
 };
-const active = (job?: SimulationJob) =>
-  !!job && ["starting", "running", "stopping"].includes(job.state);
 const phaseLabels = {
   preparing: "preparing a price difference",
   trading: "random user activity",
@@ -36,87 +37,51 @@ const stateLabels: Record<SimulationJob["state"], string> = {
   stopped: "Stopped by user",
   failed: "Failed",
 };
-async function request(
-  path: string,
-  options?: SimulationOptions,
-): Promise<SimulationJob> {
-  const response = await fetch(
-    `/api/simulation${path}`,
-    options
-      ? {
-          method: "POST",
-          headers: { "content-type": "application/json" },
-          body: JSON.stringify(options),
-        }
-      : undefined,
-  );
-  if (!response.headers.get("content-type")?.includes("json"))
-    throw new Error(
-      "Simulation service unavailable. Start npm run simulation:server in contracts.",
-    );
-  const value = (await response.json()) as SimulationJob & { error?: string };
-  if (!response.ok)
-    throw new Error(value.error ?? "Simulation request failed.");
-  return value;
-}
 export function SimulationPage() {
   const { symbol, refresh } = useDex();
-  const [rounds, setRounds] = useState("60");
-  const [seed, setSeed] = useState("2026");
-  const [duration, setDuration] = useState("30");
-  const [interval, setInterval] = useState("250");
+  const [controller] = useState(() => new SimulationController());
+  const [view, setView] = useState(() => controller.view());
+  const refreshRef = useRef(refresh);
+  useEffect(() => {
+    refreshRef.current = refresh;
+  }, [refresh]);
   const [selectedArbitrage, setSelectedArbitrage] = useState<string>();
-  const job = useQuery({
-    queryKey: ["simulation-job"],
-    queryFn: () => request(""),
-    refetchInterval: 1000,
-    retry: false,
-  });
-  const control = useMutation({
-    mutationFn: ({
-      stop,
-      options,
-    }: {
-      stop: boolean;
-      options: SimulationOptions;
-    }) => request(stop ? "/stop" : "/start", options),
-    onSuccess: () => {
-      void job.refetch();
+  const dispatch = useCallback(
+    (event: SimulationEvent) => {
+      const transition = controller.dispatch(event);
+      setView(transition.view);
+      const effect = transition.effect;
+      if (effect)
+        void performSimulation(effect).then(
+          (data) => {
+            const result = controller.dispatch({
+              type: "success",
+              requestId: effect.requestId,
+              data,
+            });
+            setView(result.view);
+            if (result.refreshAssets) void refreshRef.current();
+          },
+          (error: unknown) =>
+            setView(
+              controller.dispatch({
+                type: "failure",
+                requestId: effect.requestId,
+                error: error instanceof Error ? error.message : String(error),
+              }).view,
+            ),
+        );
     },
-  });
-  const data = job.data;
+    [controller],
+  );
+  useEffect(() => {
+    dispatch({ type: "poll" });
+    const timer = window.setInterval(() => dispatch({ type: "poll" }), 1000);
+    return () => window.clearInterval(timer);
+  }, [dispatch]);
+  const { data, busy, invalidOptions, draft } = view;
+  const { rounds, seed, duration, interval } = draft;
   const progress = data?.progress;
-  useEffect(() => {
-    if (!data?.options) return;
-    setRounds(String(data.options.rounds));
-    setSeed(String(data.options.seed));
-    setDuration(String(data.options.durationSeconds));
-    setInterval(String(data.options.intervalMs));
-  }, [data?.id]);
-  useEffect(() => {
-    if (data?.state === "completed" || data?.state === "stopped")
-      void refresh();
-  }, [data?.state]);
-  const options = {
-    rounds: Number(rounds),
-    seed: Number(seed),
-    durationSeconds: Number(duration),
-    intervalMs: Number(interval),
-  };
-  const invalidOptions =
-    !Number.isInteger(options.rounds) ||
-    options.rounds < 20 ||
-    options.rounds > 1000 ||
-    !Number.isInteger(options.seed) ||
-    options.seed < 0 ||
-    options.seed > 4294967295 ||
-    !Number.isInteger(options.durationSeconds) ||
-    options.durationSeconds < 0 ||
-    options.durationSeconds > 600 ||
-    !Number.isInteger(options.intervalMs) ||
-    options.intervalMs < 0 ||
-    options.intervalMs > 5000;
-  const busy = active(data);
   const currentArbitrage =
     progress?.arbitrages.find((item) => item.hash === selectedArbitrage) ??
     progress?.arbitrages.at(-1);
@@ -134,10 +99,8 @@ export function SimulationPage() {
           className="form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!invalidOptions) {
-              setSelectedArbitrage(undefined);
-              control.mutate({ stop: false, options });
-            }
+            setSelectedArbitrage(undefined);
+            dispatch({ type: "start" });
           }}
         >
           <div className="markets">
@@ -151,7 +114,12 @@ export function SimulationPage() {
                 step="1"
                 value={rounds}
                 disabled={busy}
-                onChange={(event) => setRounds(event.target.value)}
+                onChange={(event) =>
+                  dispatch({
+                    type: "edit",
+                    draft: { ...draft, rounds: event.target.value },
+                  })
+                }
               />
             </label>
             <label>
@@ -164,7 +132,12 @@ export function SimulationPage() {
                 step="1"
                 value={duration}
                 disabled={busy}
-                onChange={(event) => setDuration(event.target.value)}
+                onChange={(event) =>
+                  dispatch({
+                    type: "edit",
+                    draft: { ...draft, duration: event.target.value },
+                  })
+                }
               />
             </label>
             <label>
@@ -177,7 +150,12 @@ export function SimulationPage() {
                 step="1"
                 value={interval}
                 disabled={busy}
-                onChange={(event) => setInterval(event.target.value)}
+                onChange={(event) =>
+                  dispatch({
+                    type: "edit",
+                    draft: { ...draft, interval: event.target.value },
+                  })
+                }
               />
             </label>
             <label>
@@ -190,7 +168,12 @@ export function SimulationPage() {
                 step="1"
                 value={seed}
                 disabled={busy}
-                onChange={(event) => setSeed(event.target.value)}
+                onChange={(event) =>
+                  dispatch({
+                    type: "edit",
+                    draft: { ...draft, seed: event.target.value },
+                  })
+                }
               />
             </label>
           </div>
@@ -206,49 +189,44 @@ export function SimulationPage() {
             </p>
           )}
           <div className="row">
-            <button
-              disabled={busy || control.isPending || invalidOptions || !data}
-            >
-              Start simulation
-            </button>
+            <button disabled={!view.canStart}>Start simulation</button>
             <button
               type="button"
               className="secondary"
-              disabled={
-                !busy || data?.state === "stopping" || control.isPending
-              }
-              onClick={() => control.mutate({ stop: true, options })}
+              disabled={!view.canStop}
+              onClick={() => dispatch({ type: "stop" })}
             >
               Stop simulation
             </button>
             {data?.reportAvailable && (
-              <a href="/api/simulation/report" download>
+              <a
+                href={`/api/simulation/report?jobId=${encodeURIComponent(data.id ?? "")}`}
+                download
+              >
                 Download complete report
               </a>
             )}
           </div>
         </form>
-        {job.error && (
-          <p role="alert">
-            Simulation service unavailable. Run{" "}
-            <code>npm run simulation:server</code> in contracts, then{" "}
-            <button
-              className="text"
-              onClick={() => {
-                void job.refetch();
-              }}
-            >
-              Retry connection
-            </button>
-            .
+        {view.error && <p role="alert">{view.error}</p>}
+        {view.uncertain && (
+          <p role="status">
+            Refresh the service state before starting or stopping a simulation.
           </p>
         )}
-        {control.error && <p role="alert">{control.error.message}</p>}
+        <button
+          type="button"
+          className="text"
+          disabled={!view.canRefresh}
+          onClick={() => dispatch({ type: "poll" })}
+        >
+          Refresh simulation status
+        </button>
         {data && (
           <p role="status" aria-label="Simulation status">
             {stateLabels[data.state]}
             {progress
-              ? ` · ${active(data) ? phaseLabels[progress.phase] + " · " : ""}${progress.completedRounds} rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
+              ? ` · ${view.active ? phaseLabels[progress.phase] + " · " : ""}${progress.completedRounds} rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
               : ""}
           </p>
         )}
