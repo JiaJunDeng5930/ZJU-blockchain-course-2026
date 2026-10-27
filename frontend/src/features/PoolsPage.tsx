@@ -325,8 +325,7 @@ function AvailableTokens({
           <tbody>
             {tokens.map((token) => {
               // DEFENSE: a newly registered token can precede its refreshed balance snapshot.
-              const balance =
-                snapshot.data?.balances[token.address.toLowerCase()];
+              const balance = snapshot.data?.balances[token.address];
               return (
                 <tr key={token.address}>
                   <td>
