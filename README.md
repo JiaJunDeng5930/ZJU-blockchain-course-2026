@@ -145,6 +145,8 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 
 钱包会话与请求都有独立标识；过期响应不能覆盖当前会话。批准与交换是两笔交易，切换账户后旧流程不能继续提交。已确认的交易不会因后续读取失败而改写成失败；发送结果未知时保留“未知”状态，不声称未提交。模拟控制停止的是指定任务，旧页面不能停止后来启动的另一任务。
 
+添加流动性、兑换和套利的 ERC20 授权与业务调用分开确认。业务调用的期限按授权完成后读取的 pending 区块时间计算，等待期间保留已确认的金额、路线、滑点和最低利润。运行 `npm run test:deadlines` 可验证长时间授权后的真实链执行。
+
 | 范围 | 验证连接 | 保证边界 |
 | --- | --- | --- |
 | 前端业务内核 | Rocq 定理、`coqchk`、直接提取到实际加载的 JavaScript | JSON/OCaml 桥接、React 渲染、viem、钱包和 RPC 遵守接口约定 |
@@ -163,7 +165,7 @@ npm run formal:verify
 npm test
 ```
 
-本次 `npm run formal:verify` 的八项统一检查全部通过，包括前端提取构建、三组生产 helper 的 SMT 检查和四组 IR 精化检查。
+`npm run formal:verify` 运行八项统一检查，包括前端提取构建、三组生产 helper 的 SMT 检查和四组 IR 精化检查。
 
 生成内核与 ABI 不提交仓库。提取构建记录输入哈希、编译器与输出哈希；完整日志和验证报告保存在 `.local/formal/`。Solidity SMT 与 IR 精化分别运行，不能把 JavaScript 构建通过当成 Solidity 证明通过。浏览器场景不作为此次错误发现或形式化结论的依据。既有公开合约入口验收覆盖领取、WETH、建池、NFT 转让和赎回、手续费/滑点/期限、20 地址操作，以及原子套利成功和失败回滚；测试通过只说明该运行覆盖的外部行为。
 
