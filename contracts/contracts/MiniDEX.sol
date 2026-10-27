@@ -7,15 +7,16 @@ import {ERC721} from "@openzeppelin/contracts/token/ERC721/ERC721.sol";
 import {ReentrancyGuard} from "@openzeppelin/contracts/utils/ReentrancyGuard.sol";
 import {Math} from "@openzeppelin/contracts/utils/math/Math.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {AMMMath} from "./AMMMath.sol";
+import {LiquidityAccounting} from "./LiquidityAccounting.sol";
 import {Base64} from "@openzeppelin/contracts/utils/Base64.sol";
 
 /// @notice Constant-product pools with ERC721 liquidity shares and 0.3% retained fees.
-contract MiniDEX is ERC721, ReentrancyGuard {
+contract MiniDEX is ERC721, ReentrancyGuard, AMMMath {
     using SafeERC20 for IERC20;
     using Strings for uint256;
 
     uint256 public constant MINIMUM_LIQUIDITY = 1000;
-    uint256 public constant FEE_BPS = 30;
     uint256 public poolCount;
     uint256 public nextPositionId = 1;
 
@@ -79,10 +80,10 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         uint256 amount1 = amount1Desired;
         uint256 shares;
         if (pool.totalShares == 0) {
+            require(amount0 <= MAX_RESERVE && amount1 <= MAX_RESERVE, "MiniDEX: reserve limit");
             uint256 initialShares = Math.sqrt(amount0 * amount1);
             require(initialShares > MINIMUM_LIQUIDITY, "MiniDEX: initial liquidity too small");
             // These shares remain permanently unowned so the pool can never reset to zero.
-            pool.totalShares = MINIMUM_LIQUIDITY;
             shares = initialShares - MINIMUM_LIQUIDITY;
         } else {
             uint256 amount1Optimal = Math.mulDiv(amount0, pool.reserve1, pool.reserve0);
@@ -98,9 +99,9 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         require(amount0 >= amount0Min && amount1 >= amount1Min, "MiniDEX: liquidity slippage");
         _receiveExact(pool.token0, amount0);
         _receiveExact(pool.token1, amount1);
-        pool.reserve0 += amount0;
-        pool.reserve1 += amount1;
-        pool.totalShares += shares;
+        pool.reserve0 = LiquidityAccounting.increaseReserve(pool.reserve0, amount0, MAX_RESERVE);
+        pool.reserve1 = LiquidityAccounting.increaseReserve(pool.reserve1, amount1, MAX_RESERVE);
+        pool.totalShares = LiquidityAccounting.mintTotal(pool.totalShares, shares, MINIMUM_LIQUIDITY);
         positionId = nextPositionId++;
         positions[positionId] = Position(poolId, shares, amount0, amount1, block.timestamp);
         _safeMint(msg.sender, positionId);
@@ -119,9 +120,9 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         require(amount0 >= amount0Min && amount1 >= amount1Min, "MiniDEX: withdrawal slippage");
         _burn(positionId);
         delete positions[positionId];
-        pool.reserve0 -= amount0;
-        pool.reserve1 -= amount1;
-        pool.totalShares -= position.shares;
+        pool.reserve0 = LiquidityAccounting.reduceReserve(pool.reserve0, amount0);
+        pool.reserve1 = LiquidityAccounting.reduceReserve(pool.reserve1, amount1);
+        pool.totalShares = LiquidityAccounting.burnTotal(pool.totalShares, position.shares, MINIMUM_LIQUIDITY);
         IERC20(pool.token0).safeTransfer(owner, amount0);
         IERC20(pool.token1).safeTransfer(owner, amount1);
         emit LiquidityRemoved(position.poolId, positionId, owner, amount0, amount1, position.shares);
@@ -133,8 +134,7 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         (uint256 reserveIn, uint256 reserveOut) = tokenIn == pool.token0
             ? (pool.reserve0, pool.reserve1) : (pool.reserve1, pool.reserve0);
         require(reserveIn > 0 && reserveOut > 0, "MiniDEX: empty pool");
-        uint256 amountInWithFee = amountIn * (10_000 - FEE_BPS);
-        amountOut = Math.mulDiv(amountInWithFee, reserveOut, reserveIn * 10_000 + amountInWithFee);
+        amountOut = calculateAmountOut(reserveIn, reserveOut, amountIn);
     }
 
     function swap(uint256 poolId, address tokenIn, uint256 amountIn, uint256 minAmountOut,
@@ -149,12 +149,12 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         _receiveExact(tokenIn, amountIn);
         address tokenOut;
         if (tokenIn == pool.token0) {
-            pool.reserve0 += amountIn;
-            pool.reserve1 -= amountOut;
+            pool.reserve0 = LiquidityAccounting.increaseReserve(pool.reserve0, amountIn, MAX_RESERVE);
+            pool.reserve1 = LiquidityAccounting.reduceReserve(pool.reserve1, amountOut);
             tokenOut = pool.token1;
         } else {
-            pool.reserve1 += amountIn;
-            pool.reserve0 -= amountOut;
+            pool.reserve1 = LiquidityAccounting.increaseReserve(pool.reserve1, amountIn, MAX_RESERVE);
+            pool.reserve0 = LiquidityAccounting.reduceReserve(pool.reserve0, amountOut);
             tokenOut = pool.token0;
         }
         IERC20(tokenOut).safeTransfer(recipient, amountOut);
@@ -165,15 +165,22 @@ contract MiniDEX is ERC721, ReentrancyGuard {
         _requireOwned(positionId);
         Position memory position = positions[positionId];
         Pool memory pool = pools[position.poolId];
-        bytes memory metadata = abi.encodePacked('{"name":"MiniDEX position #', positionId.toString(),
-            '","description":"Redeemable constant-product liquidity shares; initial amounts are historical.",',
-            '"attributes":[{"trait_type":"Pool","value":', position.poolId.toString(),
-            '},{"trait_type":"Shares (raw)","value":"', position.shares.toString(),
-            '"},{"trait_type":"Initial token0 (raw)","value":"', position.amount0.toString(),
-            '"},{"trait_type":"Initial token1 (raw)","value":"', position.amount1.toString(),
-            '"},{"trait_type":"Created timestamp","value":', position.createdAt.toString(),
-            '}],"token0":"', Strings.toHexString(pool.token0),
-            '","token1":"', Strings.toHexString(pool.token1), '"}');
+        // Keep metadata assembly within the legacy code generator's stack limit.
+        bytes memory metadata = abi.encodePacked(
+            '{"name":"MiniDEX position #', positionId.toString(), '","description":"Redeemable constant-product liquidity shares; initial amounts are historical.",'
+        );
+        metadata = abi.encodePacked(
+            metadata, '"attributes":[{"trait_type":"Pool","value":', position.poolId.toString(), '},{"trait_type":"Shares (raw)","value":"', position.shares.toString()
+        );
+        metadata = abi.encodePacked(
+            metadata, '"},{"trait_type":"Initial token0 (raw)","value":"', position.amount0.toString(), '"},{"trait_type":"Initial token1 (raw)","value":"', position.amount1.toString()
+        );
+        metadata = abi.encodePacked(
+            metadata, '"},{"trait_type":"Created timestamp","value":', position.createdAt.toString(), '}],"token0":"', Strings.toHexString(pool.token0)
+        );
+        metadata = abi.encodePacked(
+            metadata, '","token1":"', Strings.toHexString(pool.token1), '"}'
+        );
         return string.concat("data:application/json;base64,", Base64.encode(metadata));
     }
 

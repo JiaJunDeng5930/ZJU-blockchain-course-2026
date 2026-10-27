@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { formatAmount, poolKey } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
+import { poolPositions } from "../logic/liquidity";
 import type { Pool } from "../chain/types";
 
 export function PoolActivity({ pool }: { pool: Pool }) {
@@ -19,9 +20,7 @@ export function PoolActivity({ pool }: { pool: Pool }) {
     queryFn: () => client.liquidityActivity(pool, snapshot.data!.block),
     enabled: open && expanded,
   });
-  const sources = (snapshot.data?.positions ?? []).filter((position) =>
-    samePool(position.poolId, position.exchange.address, pool),
-  );
+  const sources = poolPositions(snapshot.data?.positions ?? [], pool);
   const pageSize = 12;
   const events = activity.data?.events ?? [];
   const pageCount = Math.max(1, Math.ceil(events.length / pageSize));
@@ -195,11 +194,5 @@ export function PoolActivity({ pool }: { pool: Pool }) {
         )}
       </div>
     </details>
-  );
-}
-function samePool(id: bigint, exchange: string, pool: Pool) {
-  return (
-    id === pool.id &&
-    exchange.toLowerCase() === pool.exchange.address.toLowerCase()
   );
 }

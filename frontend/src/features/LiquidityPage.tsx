@@ -1,15 +1,8 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatUnits, getAddress, ZeroAddress } from "ethers";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
+import { AmountField, FormError, toleranceError } from "../components/Forms";
 import {
-  AmountField,
-  FormError,
-  amountError,
-  toleranceError,
-} from "../components/Forms";
-import {
-  depositAmounts,
   formatAmount,
   minimumReceived,
   poolKey,
@@ -19,6 +12,13 @@ import {
 } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { Pool, Position } from "../chain/types";
+import {
+  counterpartAmount,
+  depositPreview,
+  ownedPositions,
+  positionView,
+  transferError,
+} from "../logic/liquidity";
 import { PoolActivity } from "./PoolActivity";
 import "./LiquidityPage.css";
 
@@ -28,11 +28,10 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
   const [managed, setManaged] = useState<string>();
   const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
   const pools = snapshot.data?.pools ?? [];
-  const positions = (snapshot.data?.positions ?? [])
-    .filter(
-      (position) => session && sameAddress(position.owner, session.address),
-    )
-    .sort((a, b) => Number(b.createdAt - a.createdAt) || Number(b.id - a.id));
+  const positions = ownedPositions(
+    snapshot.data?.positions ?? [],
+    session?.address ?? "",
+  );
   const inspected =
     pools.find((candidate) => poolKey(candidate) === inspectedPool) ?? pool;
 
@@ -138,29 +137,25 @@ function CreatePosition({
   const [reviewing, setReviewing] = useState(false);
   const pools = snapshot.data!.pools;
   const pool = pools.find((candidate) => poolKey(candidate) === selection)!;
-  const error0 = amountError(amount0, snapshot.data!.balances[pool.token0]);
-  const error1 = amountError(amount1, snapshot.data!.balances[pool.token1]);
-  const invalid = error0 ?? error1 ?? toleranceError(slippage);
-  const used =
-    !error0 && !error1
-      ? depositAmounts(pool, positiveAmount(amount0), positiveAmount(amount1))
-      : undefined;
+  const decision = depositPreview(
+    pool,
+    amount0,
+    amount1,
+    slippage,
+    snapshot.data!.balances[pool.token0] ?? 0n,
+    snapshot.data!.balances[pool.token1] ?? 0n,
+  );
+  const invalid = decision.ok ? undefined : (decision.error ?? undefined);
+  const used = decision.ok
+    ? ([decision.used0, decision.used1] as const)
+    : undefined;
   function changeAmount(value: string, index: 0 | 1) {
     if (index === 0) setAmount0(value);
     else setAmount1(value);
-    if (pool.totalShares === 0n) return;
-    if (value === "") {
-      if (index === 0) setAmount1("");
-      else setAmount0("");
-      return;
-    }
-    if (!amountError(value)) {
-      const converted =
-        index === 0
-          ? (positiveAmount(value) * pool.reserve1) / pool.reserve0
-          : (positiveAmount(value) * pool.reserve0) / pool.reserve1;
-      if (index === 0) setAmount1(formatUnits(converted, 18));
-      else setAmount0(formatUnits(converted, 18));
+    const other = counterpartAmount(pool, value, index);
+    if (other !== null) {
+      if (index === 0) setAmount1(other);
+      else setAmount0(other);
     }
   }
   return (
@@ -209,7 +204,7 @@ function CreatePosition({
             </button>
             <button
               className="button-primary"
-              disabled={pending || !session || !!invalid}
+              disabled={pending || !session || !decision.ok}
               onClick={() => {
                 onClose();
                 run("Add liquidity", (writer) =>
@@ -231,7 +226,7 @@ function CreatePosition({
           className="liquidity-create-form"
           onSubmit={(event) => {
             event.preventDefault();
-            if (!invalid) setReviewing(true);
+            if (decision.ok) setReviewing(true);
           }}
         >
           <label>
@@ -297,7 +292,7 @@ function CreatePosition({
           <button
             className="button-primary liquidity-review-button"
             type="submit"
-            disabled={pending || !!invalid}
+            disabled={pending || !decision.ok}
           >
             Review position
           </button>
@@ -326,17 +321,8 @@ function PositionCard({
       sameAddress(candidate.exchange.address, position.exchange.address) &&
       candidate.id === position.poolId,
   )!;
-  const amounts = [
-    (pool.reserve0 * position.shares) / pool.totalShares,
-    (pool.reserve1 * position.shares) / pool.totalShares,
-  ] as const;
-  const heldValue =
-    (position.amount0 * pool.reserve1) / pool.reserve0 + position.amount1;
-  const currentValue =
-    (amounts[0] * pool.reserve1) / pool.reserve0 + amounts[1];
-  const valueChange = currentValue - heldValue;
-  const sharePercent =
-    Number((position.shares * 1000000n) / pool.totalShares) / 10000;
+  const view = positionView(pool, position);
+  const { amounts, currentValue, valueChange, sharePercent } = view;
   const metadata = useQuery({
     queryKey: [
       "metadata",
@@ -348,14 +334,11 @@ function PositionCard({
     enabled: showMetadata,
   });
   const invalidTolerance = toleranceError(slippage);
-  let recipientError: string | undefined;
-  try {
-    const address = getAddress(recipient);
-    if (address === ZeroAddress || sameAddress(address, position.owner))
-      recipientError = "Choose a different, nonzero recipient address.";
-  } catch {
-    recipientError = "Enter a valid Ethereum recipient address.";
-  }
+  const recipientError = transferError(
+    position.owner,
+    session?.address ?? "",
+    recipient,
+  );
   return (
     <article className="liquidity-position">
       <div className="liquidity-position-summary">
@@ -395,7 +378,7 @@ function PositionCard({
           <dl className="liquidity-detail-list">
             <dt>Shares / pool ownership</dt>
             <dd>
-              {formatAmount(position.shares)} / {sharePercent.toFixed(4)}%
+              {formatAmount(position.shares)} / {sharePercent}%
             </dd>
             <dt>Initial deposit</dt>
             <dd>
@@ -413,7 +396,7 @@ function PositionCard({
             </dd>
             <dt>Compared with holding the initial deposit</dt>
             <dd>
-              {valueChange >= 0n ? "+" : ""}
+              {view.valueSign}
               {formatAmount(valueChange)} {symbol(pool.token1)}
             </dd>
             <dt>Created</dt>
@@ -537,11 +520,7 @@ function PositionCard({
             onClick={() => {
               setReview(undefined);
               run("Transfer position", (writer) =>
-                writer.transferPosition(
-                  pool,
-                  position.id,
-                  getAddress(recipient),
-                ),
+                writer.transferPosition(pool, position.id, recipient),
               );
             }}
           >
