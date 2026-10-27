@@ -4,7 +4,7 @@ import {
   useContext,
   useEffect,
   useMemo,
-  useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import {
@@ -24,41 +24,40 @@ import {
 } from "../wallet/session";
 import { accepted, renderActivity } from "../wallet/kernel";
 import type { JournalEntry, Token } from "./types";
+import { AssetCatalog, catalogView } from "../logic/assets";
 
 function useDexState(client: ExchangeClient) {
   const wallet = useWallet(client);
   const cache = useQueryClient();
   const registryKey = `twopool:v1:${client.key}:tokens`;
-  const [customTokens, setCustomTokens] = useState<Token[]>(() =>
-    JSON.parse(localStorage.getItem(registryKey) ?? "[]"),
-  );
+  const catalog = useMemo(() => {
+    try {
+      return new AssetCatalog(client.deployment.tokens, localStorage.getItem(registryKey) ?? "[]");
+    } catch (error) {
+      // DEFENSE: browser privacy settings can deny localStorage access.
+      if (!(error instanceof DOMException)) throw error;
+      const catalog = new AssetCatalog(client.deployment.tokens, "[]");
+      catalog.storageError(`Token storage is unavailable: ${errorMessage(error)}`);
+      return catalog;
+    }
+  }, [client, registryKey]);
+  const catalogState = useSyncExternalStore(catalog.subscribe, catalog.snapshot);
+  const tokens = useMemo(() => catalogView(catalogState, []).tokens, [catalogState]);
+  const registerTokens = useCallback((additions: Token[]) => {
+    catalog.register(additions);
+    try {
+      localStorage.setItem(registryKey, JSON.stringify(catalogView(catalog.snapshot(), []).storedTokens));
+    } catch (error) {
+      // DEFENSE: a full browser quota or denied storage must not relabel a confirmed deployment as failed.
+      if (!(error instanceof DOMException)) throw error;
+      catalog.storageError(`Token metadata could not be saved: ${errorMessage(error)}`);
+    }
+  }, [catalog, registryKey]);
   const journal: JournalEntry[] = wallet.view.journal.map((entry) => {
     if (entry.state === "confirmed")
       return { ...entry, block: BigInt(entry.block), gas: BigInt(entry.gas) };
     return entry;
   });
-  const tokens = useMemo(
-    () => [...client.deployment.tokens, ...customTokens],
-    [client, customTokens],
-  );
-  const registerTokens = useCallback(
-    (additions: Token[]) => {
-      setCustomTokens((current) => {
-        const known = [...client.deployment.tokens, ...current];
-        const added = additions.filter(
-          (token) =>
-            !known.some((existing) =>
-              sameAddress(existing.address, token.address),
-            ),
-        );
-        if (added.length === 0) return current;
-        const next = [...current, ...added];
-        localStorage.setItem(registryKey, JSON.stringify(next));
-        return next;
-      });
-    },
-    [client, registryKey],
-  );
   const session =
     wallet.state.kind === "ready" ? wallet.state.session : undefined;
   const accounts = useQuery({
@@ -86,18 +85,11 @@ function useDexState(client: ExchangeClient) {
         : undefined,
     refetchInterval: 5000,
   });
-  const unknownPoolTokens = [
-    ...new Set(
-      (snapshot.data?.pools ?? [])
-        .flatMap((pool) => [pool.token0, pool.token1])
-        .map((address) => address.toLowerCase()),
-    ),
-  ].filter(
-    (address) => !tokens.some((token) => sameAddress(token.address, address)),
-  );
+  const catalogDisplay = catalogView(catalogState, snapshot.data?.pools ?? []);
+  const unknownPoolTokens = catalogDisplay.discovery;
   const discoveries = useQueries({
     queries: unknownPoolTokens.map((address) => ({
-      queryKey: ["token-metadata", client.key, address],
+      queryKey: ["token-metadata", client.deployment.rpcUrl, registryKey, address],
       queryFn: () => client.importToken(address),
       staleTime: Infinity,
       // DEFENSE: permissionless pools can contain tokens without supported metadata;
@@ -228,6 +220,7 @@ function useDexState(client: ExchangeClient) {
     accounts,
     snapshot,
     tokens,
+    catalogError: catalogDisplay.error,
     journal,
     status: renderActivity(wallet.view.activity, client.deployment.chainId),
     pending: wallet.view.pending,

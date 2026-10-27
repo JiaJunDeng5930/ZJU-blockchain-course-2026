@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
-import { positiveAmount, slippageBps } from "../chain/amounts";
+import { shorten } from "../chain/amounts";
+export { amountError, toleranceError } from "../logic/units";
 import { useDex } from "../chain/DexProvider";
 
 export function AmountField({
@@ -45,8 +46,8 @@ export function TokenSelect({
       {label}
       <select value={value} onChange={(event) => onChange(event.target.value)}>
         {(addresses ?? tokens.map((token) => token.address)).map((address) => (
-          <option key={address} value={address}>
-            {symbol(address)}
+          <option key={address} value={address} title={address}>
+            {symbol(address)} · {shorten(address)}
           </option>
         ))}
       </select>
@@ -66,27 +67,6 @@ export function SubmitButton({
       {pending ? "Waiting for confirmation…" : children}
     </button>
   );
-}
-export function amountError(
-  value: string,
-  balance?: bigint,
-): string | undefined {
-  try {
-    const amount = positiveAmount(value);
-    return balance !== undefined && amount > balance
-      ? "Insufficient balance for this amount."
-      : undefined;
-  } catch (error) {
-    return (error as Error).message;
-  }
-}
-export function toleranceError(value: string): string | undefined {
-  try {
-    slippageBps(value);
-    return undefined;
-  } catch (error) {
-    return (error as Error).message;
-  }
 }
 export function FormError({ message }: { message: string | undefined }) {
   return message ? (
