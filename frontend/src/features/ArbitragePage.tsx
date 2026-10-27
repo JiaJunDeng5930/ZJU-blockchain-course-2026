@@ -9,6 +9,7 @@ import {
   SubmitButton,
   TokenSelect,
 } from "../components/Forms";
+import { poolAssetsSupported } from "../logic/assets";
 import { arbitragePreview } from "../logic/arbitrage";
 
 export function ArbitragePage({
@@ -18,16 +19,24 @@ export function ArbitragePage({
   pool: Pool;
   onOpenSimulation: () => void;
 }) {
-  const { client, snapshot, symbol, run, pending, session } = useDex();
+  const { client, snapshot, symbol, run, pending, session, tokens } = useDex();
   const [tokenIn, setTokenIn] = useState(pool.token0);
   const [minimum, setMinimum] = useState("0.001");
   const [result, setResult] = useState<ArbitrageResult>();
+  const supported = poolAssetsSupported(pool, tokens);
   const routes = useQuery({
-    queryKey: ["arbitrage", client.key, poolKey(pool), tokenIn],
-    queryFn: () => client.opportunities(pool, snapshot.data!.pools, tokenIn),
+    queryKey: [
+      "arbitrage",
+      client.key,
+      poolKey(pool),
+      tokenIn,
+      tokens.map((token) => token.address),
+    ],
+    queryFn: () =>
+      client.opportunities(pool, snapshot.data!.pools, tokenIn, tokens),
     enabled: false,
   });
-  const opportunity = routes.data?.[0];
+  const opportunity = supported ? routes.data?.[0] : undefined;
   const [hasScanned, setHasScanned] = useState(false);
   const preview = arbitragePreview(
     client.deployment.arbitrage,
@@ -35,6 +44,13 @@ export function ArbitragePage({
     minimum,
     snapshot.data?.balances[tokenIn] ?? 0n,
   );
+  if (!supported) {
+    return (
+      <section className="card">
+        <p role="status">Both pool assets must be verified before arbitrage.</p>
+      </section>
+    );
+  }
   return (
     <div className="workspace">
       <form

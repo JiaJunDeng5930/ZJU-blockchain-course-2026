@@ -268,6 +268,16 @@ Definition scan (quote : quote_function) (selected : pool)
   | Some current => best (all_candidates quote current markets input_token)
   end.
 
+Definition supported_markets (supports : pool -> bool) (markets : list pool) :=
+  filter supports markets.
+Definition scan_supported (quote : quote_function) (selected : pool)
+    (markets : list pool) (input_token : address) (supports : pool -> bool) :=
+  scan quote selected (supported_markets supports markets) input_token.
+
+Lemma supported_markets_sound supports markets market :
+  In market (supported_markets supports markets) -> supports market = true.
+Proof. unfold supported_markets. rewrite filter_In. tauto. Qed.
+
 Theorem scan_profitable quote selected markets input_token result :
   scan quote selected markets input_token = Some result -> profitable result.
 Proof.
@@ -285,6 +295,16 @@ Proof.
   intros selected_best. apply best_member in selected_best.
   unfold find_pool in found. apply find_some in found.
   eapply all_candidates_origins; [exact (proj1 found)|exact selected_best].
+Qed.
+
+Theorem scan_supported_has_supported_pools quote selected markets input_token supports result :
+  scan_supported quote selected markets input_token supports = Some result ->
+  supports (buy result) = true /\ supports (sell result) = true.
+Proof.
+  unfold scan_supported. intro found. apply scan_members in found as [buy_member sell_member].
+  split.
+  - eapply supported_markets_sound. exact buy_member.
+  - eapply supported_markets_sound. exact sell_member.
 Qed.
 
 Theorem scan_maximum quote selected markets input_token result :
@@ -375,6 +395,22 @@ Definition prepare_request (quote : quote_function) (arbitrage : address)
       end
   | _, _ => Rejected InvalidRoute
   end.
+
+Definition prepare_supported (quote : quote_function) (arbitrage : address)
+    (buy_reference sell_reference : pool) (markets : list pool)
+    (input_token : address) (input : Z) (minimum : option Z)
+    (balance allowance now : Z) (supports : pool -> bool) : decision :=
+  if supports buy_reference && supports sell_reference
+  then prepare_request quote arbitrage buy_reference sell_reference
+    (supported_markets supports markets) input_token input minimum balance allowance now
+  else Rejected InvalidRoute.
+
+Theorem prepare_supported_rejects_unsupported quote arbitrage buy_reference sell_reference
+    markets input_token input minimum balance allowance now supports :
+  supports buy_reference && supports sell_reference = false ->
+  prepare_supported quote arbitrage buy_reference sell_reference markets input_token
+    input minimum balance allowance now supports = Rejected InvalidRoute.
+Proof. intro unsupported. unfold prepare_supported. now rewrite unsupported. Qed.
 
 Theorem prepare_request_profitable quote arbitrage buy_reference sell_reference
     markets input_token input minimum balance allowance now plan :

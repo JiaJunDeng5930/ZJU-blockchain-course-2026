@@ -62,21 +62,25 @@ let decision_json = function
 let markets value =
   Field.member "pools" value |> Field.to_list |> List.map pool_of_json
 
+let supported_tokens value =
+  Field.to_list (Field.member "supportedTokens" value)
+  |> List.map (fun token -> String.lowercase_ascii (Field.to_string token))
+
 let scan value =
   let selected = pool_of_json (Field.member "selected" value) in
-  match A.scan checked_amount_out selected (markets value) (address "tokenIn" value) with
+  match scan_supported_assets checked_amount_out selected (markets value) (address "tokenIn" value) (supported_tokens value) with
   | None -> `List []
   | Some result -> `List [opportunity_json result]
 
 let minimum value = parse_units_18 (text "minimum" value)
 
 let prepare value =
-  A.prepare_request checked_amount_out (address "arbitrage" value)
+  prepare_supported_assets checked_amount_out (address "arbitrage" value)
     (pool_of_json (Field.member "buy" value))
     (pool_of_json (Field.member "sell" value))
     (markets value) (address "tokenIn" value) (integer "amountIn" value)
     (minimum value) (integer "balance" value) (integer "allowance" value)
-    (integer "now" value)
+    (integer "now" value) (supported_tokens value)
   |> decision_json
 
 let preview value =

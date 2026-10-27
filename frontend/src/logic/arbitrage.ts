@@ -1,5 +1,5 @@
 import "../generated/dex_logic.js";
-import type { Opportunity, Pool } from "../chain/types";
+import type { Opportunity, Pool, Token } from "../chain/types";
 
 type WirePool = {
   exchange: string;
@@ -82,11 +82,13 @@ export function scanArbitrage(
   pools: Pool[],
   tokenIn: string,
   quotedAtBlock: number,
+  supportedTokens: readonly Token[],
 ): Opportunity[] {
   const output = JSON.parse(
     kernel().scan(
       JSON.stringify({
         selected: poolWire(selected),
+        supportedTokens: supportedTokens.map((token) => token.address),
         pools: pools.map(poolWire),
         tokenIn,
       }),
@@ -117,6 +119,7 @@ export function prepareArbitrage(input: {
   arbitrage: string;
   route: Opportunity;
   pools: Pool[];
+  supportedTokens: readonly Token[];
   minimum: string;
   balance: bigint;
   allowance: bigint;
@@ -127,6 +130,7 @@ export function prepareArbitrage(input: {
     kernel().prepare(
       JSON.stringify({
         arbitrage: input.arbitrage,
+        supportedTokens: input.supportedTokens.map((token) => token.address),
         buy: poolWire(input.route.buy),
         sell: poolWire(input.route.sell),
         pools: input.pools.map(poolWire),

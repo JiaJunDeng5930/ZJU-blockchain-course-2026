@@ -1,19 +1,29 @@
 import { getAddress, parseEventLogs } from "viem";
 import { arbitrageAbi, testTokenAbi } from "../generated/abis";
 import { prepareArbitrage, scanArbitrage } from "../logic/arbitrage";
+import { importAsset } from "./assets";
+import { assertSupportedPool } from "../logic/assets";
 import type { WalletSession } from "../wallet/session";
 import type { ExchangeClient, SendTransaction } from "./client";
-import type { ArbitrageResult, Opportunity, Pool } from "./types";
+import type { ArbitrageResult, Opportunity, Pool, Token } from "./types";
 
 export async function opportunities(
   client: ExchangeClient,
   selected: Pool,
   _pools: Pool[],
   tokenIn: string,
+  supportedTokens: readonly Token[],
 ): Promise<Opportunity[]> {
+  assertSupportedPool(selected, supportedTokens);
   const block = await client.rpc.getBlockNumber();
   const pools = await client.pools(Number(block));
-  return scanArbitrage(selected, pools, tokenIn, Number(block));
+  return scanArbitrage(
+    selected,
+    pools,
+    tokenIn,
+    Number(block),
+    supportedTokens,
+  );
 }
 
 export async function executeArbitrage(
@@ -46,10 +56,17 @@ export async function executeArbitrage(
       blockNumber: block.number,
     }),
   ]);
+  const verifiedTokens = await Promise.all([
+    importAsset(client, route.buy.token0),
+    importAsset(client, route.buy.token1),
+  ]);
+  assertSupportedPool(route.buy, verifiedTokens);
+  assertSupportedPool(route.sell, verifiedTokens);
   const plan = prepareArbitrage({
     arbitrage,
     route,
     pools,
+    supportedTokens: verifiedTokens,
     minimum,
     balance,
     allowance,
