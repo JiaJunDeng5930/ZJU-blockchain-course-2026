@@ -1,6 +1,6 @@
 import { useReducer, useState } from "react";
-import { formatAmount, poolKey } from "../chain/amounts";
-import { formatUnits18 } from "../logic/units";
+import { poolKey } from "../chain/amounts";
+import { formatUnits } from "../logic/units";
 import { createSwapController, type SwapEvent } from "../logic/trade";
 import { useDex } from "../chain/DexProvider";
 import type { Pool } from "../chain/types";
@@ -13,7 +13,8 @@ type SwapPageProps = {
 };
 
 export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
-  const { snapshot, symbol, session, pending, run, tokens } = useDex();
+  const { snapshot, symbol, session, pending, run, amount, precision, tokens } =
+    useDex();
   const [controller] = useState(() => createSwapController(pool.token0));
   const [, render] = useReducer((value: boolean) => !value, false);
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -37,8 +38,8 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           effect.inputToken,
           effect.input,
           effect.quoted,
-          effect.slippage,
-        ),
+          effect.slippage
+        )
       );
     }
   }
@@ -117,7 +118,8 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           <div className="trade-amount-label">
             <label htmlFor="trade-amount">Sell</label>
             <span>
-              Balance: {balance === undefined ? "—" : formatAmount(balance)}
+              Balance:{" "}
+              {balance === undefined ? "—" : amount(balance, inputToken)}
               {view.showMax && (
                 <button
                   type="button"
@@ -170,7 +172,9 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             <span>Buy</span>
             <span>
               Balance:{" "}
-              {outputBalance === undefined ? "—" : formatAmount(outputBalance)}
+              {outputBalance === undefined
+                ? "—"
+                : amount(outputBalance, outputToken)}
             </span>
           </div>
           <div className="trade-amount-row">
@@ -180,14 +184,14 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               title={
                 view.output === undefined
                   ? undefined
-                  : formatUnits18(view.output)
+                  : formatUnits(view.output, precision(outputToken))
               }
             >
               {view.output === undefined
                 ? view.hasAmount
                   ? "—"
                   : "0"
-                : formatAmount(view.output, 6)}
+                : amount(view.output, outputToken, 6)}
             </output>
             <TokenSelector
               label="Receive token"
@@ -238,7 +242,9 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <dd>
                 {view.minimum === undefined
                   ? "—"
-                  : `${formatAmount(view.minimum, 6)} ${symbol(outputToken)}`}
+                  : `${amount(view.minimum, outputToken, 6)} ${symbol(
+                      outputToken
+                    )}`}
               </dd>
               <dt>Price impact, including fee</dt>
               <dd
@@ -250,7 +256,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <dd>
                 {view.fee === undefined
                   ? "—"
-                  : `${formatAmount(view.fee, 6)} ${symbol(inputToken)}`}
+                  : `${amount(view.fee, inputToken, 6)} ${symbol(inputToken)}`}
               </dd>
               <dt>Deadline</dt>
               <dd>{view.deadlineText}</dd>

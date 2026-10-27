@@ -9,7 +9,7 @@ let optional_text = function None -> `Null | Some value -> `String value
 let read_optional_integer = function `Null -> None | value -> Some (Z.of_string (to_string value))
 let json_string value = Js.string (Yojson.Safe.to_string value)
 
-let preview_fields direction balance amount connected pending view = [
+let preview_fields input_places output_places direction balance amount connected pending view = [
   "amount", optional_integer view.AMM.preview_amount;
   "output", optional_integer view.AMM.preview_output;
   "minimum", optional_integer view.AMM.preview_minimum;
@@ -20,7 +20,7 @@ let preview_fields direction balance amount connected pending view = [
   "deadlineText", `String AMM.swap_deadline_text;
   "impactText", optional_text (AMM.preview_impact_text direction.AMM.input_reserve direction.AMM.output_reserve view);
   "highImpact", `Bool (AMM.preview_high_impact direction.AMM.input_reserve direction.AMM.output_reserve view);
-  "rateText", optional_text (AMM.preview_rate_text view);
+  "rateText", optional_text (AMM.preview_rate_text input_places output_places view);
   "hasAmount", `Bool (AMM.preview_has_amount amount);
   "funded", `Bool (AMM.preview_pool_funded direction.AMM.input_reserve direction.AMM.output_reserve);
   "canSubmit", `Bool (AMM.swap_can_submit connected pending view);
@@ -29,8 +29,8 @@ let preview_fields direction balance amount connected pending view = [
   "message", optional_text (AMM.swap_error view);
   "canMax", `Bool (AMM.swap_can_max balance pending);
   "showMax", `Bool (AMM.swap_can_max balance false);
-  "maxText", optional_text (AMM.swap_max_text balance);
-  "reverseText", `String (AMM.swap_reverse_text view amount)
+  "maxText", optional_text (AMM.swap_max_text input_places balance);
+  "reverseText", `String (AMM.swap_reverse_text output_places view amount)
 ]
 
 let parameters request =
@@ -52,6 +52,8 @@ let environment json = {
   AMM.environment_reserve0 = integer json "reserve0";
   AMM.environment_reserve1 = integer json "reserve1";
   AMM.environment_balance0 = read_optional_integer (member "balance0" json);
+  AMM.environment_decimals0 = integer json "decimals0";
+  AMM.environment_decimals1 = integer json "decimals1";
   AMM.environment_balance1 = read_optional_integer (member "balance1" json);
   AMM.environment_connected = flag json "connected";
   AMM.environment_pending = flag json "pending"
@@ -80,7 +82,7 @@ let effect_json = function
 let render environment draft effect =
   let view = AMM.draft_preview environment draft in
   let direction = AMM.draft_orientation environment draft in
-  json_string (`Assoc ((preview_fields direction (AMM.draft_balance environment draft)
+  json_string (`Assoc ((preview_fields (AMM.draft_precision environment draft) (AMM.draft_output_precision environment draft) direction (AMM.draft_balance environment draft)
     draft.AMM.draft_amount environment.AMM.environment_connected environment.AMM.environment_pending view) @ [
       "amountText", `String draft.AMM.draft_amount;
       "slippageText", `String draft.AMM.draft_slippage;

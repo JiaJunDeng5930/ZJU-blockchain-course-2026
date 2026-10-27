@@ -1,6 +1,7 @@
 import "../generated/dex_logic.js";
+import { tokenDecimals } from "../chain/amounts";
 import { getAddress, type Address } from "viem";
-import type { Pool, Position } from "../chain/types";
+import type { Pool, Position, Token } from "../chain/types";
 
 type Raw = Record<string, string>;
 type DepositWire = { [K in keyof DepositPlan]: string };
@@ -16,7 +17,8 @@ type WithdrawRequest = ReturnType<typeof poolWire> & {
   now: string;
 };
 type WireDeposit =
-  { ok: false; error: string | null } | ({ ok: true } & DepositWire);
+  | { ok: false; error: string | null }
+  | ({ ok: true } & DepositWire);
 export type DepositPlan = {
   desired0: bigint;
   desired1: bigint;
@@ -29,21 +31,20 @@ export type DepositPlan = {
   minimum1: bigint;
 };
 export type DepositDecision =
-  { ok: false; error: string | null } | ({ ok: true } & DepositPlan);
+  | { ok: false; error: string | null }
+  | ({ ok: true } & DepositPlan);
 type Runtime = {
-  [
-    K in
-      | "analyzeDeposit"
-      | "depositAmounts"
-      | "counterpart"
-      | "positionView"
-      | "transferError"
-      | "aggregateActivity"
-      | "writeDeposit"
-      | "writeWithdraw"
-      | "ownedPositions"
-      | "poolPositions"
-  ]: (json: string) => string;
+  [K in
+    | "analyzeDeposit"
+    | "depositAmounts"
+    | "counterpart"
+    | "positionView"
+    | "transferError"
+    | "aggregateActivity"
+    | "writeDeposit"
+    | "writeWithdraw"
+    | "ownedPositions"
+    | "poolPositions"]: (json: string) => string;
 };
 declare global {
   var DEXLiquidity: Runtime;
@@ -73,25 +74,28 @@ export function depositPreview(
   slippage: string,
   balance0: bigint,
   balance1: bigint,
+  tokens: readonly Token[]
 ): DepositDecision {
   const wire = JSON.parse(
     globalThis.DEXLiquidity.analyzeDeposit(
       JSON.stringify({
         ...poolWire(pool),
+        decimals0: tokenDecimals(tokens, pool.token0).toString(),
+        decimals1: tokenDecimals(tokens, pool.token1).toString(),
         amount0,
         amount1,
         slippage,
         balance0: balance0.toString(),
         balance1: balance1.toString(),
-      }),
-    ),
+      })
+    )
   ) as WireDeposit;
   return wire.ok ? { ok: true, ...decodePlan(wire) } : wire;
 }
 export function depositAmounts(
   pool: Pool,
   desired0: bigint,
-  desired1: bigint,
+  desired1: bigint
 ): readonly [bigint, bigint] {
   const wire = JSON.parse(
     globalThis.DEXLiquidity.depositAmounts(
@@ -99,8 +103,8 @@ export function depositAmounts(
         ...poolWire(pool),
         desired0: desired0.toString(),
         desired1: desired1.toString(),
-      }),
-    ),
+      })
+    )
   ) as [string, string];
   return [BigInt(wire[0]), BigInt(wire[1])];
 }
@@ -108,11 +112,18 @@ export function counterpartAmount(
   pool: Pool,
   amount: string,
   index: 0 | 1,
+  tokens: readonly Token[]
 ): string | null {
   return JSON.parse(
     globalThis.DEXLiquidity.counterpart(
-      JSON.stringify({ ...poolWire(pool), amount, second: index === 1 }),
-    ),
+      JSON.stringify({
+        ...poolWire(pool),
+        amount,
+        second: index === 1,
+        decimals0: tokenDecimals(tokens, pool.token0).toString(),
+        decimals1: tokenDecimals(tokens, pool.token1).toString(),
+      })
+    )
   );
 }
 export function positionView(pool: Pool, position: Position) {
@@ -123,8 +134,8 @@ export function positionView(pool: Pool, position: Position) {
         shares: position.shares.toString(),
         original0: position.amount0.toString(),
         original1: position.amount1.toString(),
-      }),
-    ),
+      })
+    )
   ) as Raw;
   return {
     amounts: [BigInt(wire.amount0), BigInt(wire.amount1)] as const,
@@ -138,7 +149,7 @@ export function positionView(pool: Pool, position: Position) {
 export function prepareTransfer(
   owner: string,
   current: string,
-  recipient: string,
+  recipient: string
 ): { ok: false; error: string } | { ok: true; recipient: Address } {
   // The transport decoder checks EIP-55; the verified policy receives success or failure.
   let decoded: Address | null;
@@ -149,14 +160,14 @@ export function prepareTransfer(
   }
   return JSON.parse(
     globalThis.DEXLiquidity.transferError(
-      JSON.stringify({ owner, current, recipient: decoded }),
-    ),
+      JSON.stringify({ owner, current, recipient: decoded })
+    )
   );
 }
 export function transferError(
   owner: string,
   current: string,
-  recipient: string,
+  recipient: string
 ): string | undefined {
   const plan = prepareTransfer(owner, current, recipient);
   return plan.ok ? undefined : plan.error;
@@ -164,7 +175,7 @@ export function transferError(
 export function aggregateActivity(
   token0: string,
   feeBps: bigint,
-  trades: readonly { tokenIn: string; amountIn: bigint }[],
+  trades: readonly { tokenIn: string; amountIn: bigint }[]
 ) {
   const wire = JSON.parse(
     globalThis.DEXLiquidity.aggregateActivity(
@@ -175,8 +186,8 @@ export function aggregateActivity(
           tokenIn: trade.tokenIn,
           amountIn: trade.amountIn.toString(),
         })),
-      }),
-    ),
+      })
+    )
   ) as Raw;
   return {
     volume0: BigInt(wire.volume0),
@@ -194,7 +205,7 @@ export function prepareDepositWrite(
   slippageBps: bigint,
   now: bigint,
   allowance0: bigint,
-  allowance1: bigint,
+  allowance1: bigint
 ) {
   const wire = JSON.parse(
     globalThis.DEXLiquidity.writeDeposit(
@@ -208,8 +219,8 @@ export function prepareDepositWrite(
         now: now.toString(),
         allowance0: allowance0.toString(),
         allowance1: allowance1.toString(),
-      }),
-    ),
+      })
+    )
   ) as
     | { ok: false; error: string }
     | ({
@@ -234,7 +245,7 @@ export function prepareWithdrawWrite(
   slippageBps: bigint,
   now: bigint,
   actualPool: bigint,
-  expected: readonly [bigint, bigint],
+  expected: readonly [bigint, bigint]
 ) {
   const wire = JSON.parse(
     globalThis.DEXLiquidity.writeWithdraw(
@@ -249,8 +260,8 @@ export function prepareWithdrawWrite(
         current,
         slippageBps: slippageBps.toString(),
         now: now.toString(),
-      } satisfies WithdrawRequest),
-    ),
+      } satisfies WithdrawRequest)
+    )
   ) as { ok: false; error: string } | ({ ok: true } & Raw);
   if (!wire.ok) throw new Error(wire.error);
   return {
@@ -274,35 +285,35 @@ const positionsWire = (positions: readonly Position[]) =>
   }));
 function projectedPositions(
   positions: readonly Position[],
-  keys: string[],
+  keys: string[]
 ): Position[] {
   const source = new Map(
-    positions.map((position) => [positionKey(position), position]),
+    positions.map((position) => [positionKey(position), position])
   );
   return keys.map((key) => source.get(key)!);
 }
 export function ownedPositions(
   positions: readonly Position[],
-  owner: string,
+  owner: string
 ): Position[] {
   const keys = JSON.parse(
     globalThis.DEXLiquidity.ownedPositions(
-      JSON.stringify({ positions: positionsWire(positions), owner }),
-    ),
+      JSON.stringify({ positions: positionsWire(positions), owner })
+    )
   ) as string[];
   return projectedPositions(positions, keys);
 }
 export function poolPositions(
   positions: readonly Position[],
-  pool: Pool,
+  pool: Pool
 ): Position[] {
   const keys = JSON.parse(
     globalThis.DEXLiquidity.poolPositions(
       JSON.stringify({
         positions: positionsWire(positions),
         pool: `${pool.exchange.address.toLowerCase()}:${pool.id}`,
-      }),
-    ),
+      })
+    )
   ) as string[];
   return projectedPositions(positions, keys);
 }

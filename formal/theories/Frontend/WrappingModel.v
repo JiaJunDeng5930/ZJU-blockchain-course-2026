@@ -107,7 +107,7 @@ Theorem observations_preserve_wrapping_draft state environment :
 Proof. reflexivity. Qed.
 
 Definition wrapping_input_error state :=
-  if wrapping_touched state then amount_error (wrapping_draft state) None else None.
+  if wrapping_touched state then amount_error 18 (wrapping_draft state) None else None.
 
 Inductive wrapping_token_result :=
 | WrappingTokenFound (token : address)

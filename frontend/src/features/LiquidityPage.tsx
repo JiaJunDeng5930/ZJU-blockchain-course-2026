@@ -4,7 +4,6 @@ import { useQuery } from "@tanstack/react-query";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { AmountField, FormError, toleranceError } from "../components/Forms";
 import {
-  formatAmount,
   minimumReceived,
   poolKey,
   positiveAmount,
@@ -30,11 +29,11 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
   const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
   const pools = snapshot.data?.pools ?? [];
   const supportedPools = pools.filter((candidate) =>
-    poolAssetsSupported(candidate, tokens),
+    poolAssetsSupported(candidate, tokens)
   );
   const positions = ownedPositions(
     snapshot.data?.positions ?? [],
-    session?.address ?? "",
+    session?.address ?? ""
   );
   const inspected =
     pools.find((candidate) => poolKey(candidate) === inspectedPool) ?? pool;
@@ -124,7 +123,7 @@ export function LiquidityPage({ pool }: { pool: Pool }) {
           pools={supportedPools}
           initialPool={
             supportedPools.find(
-              (candidate) => poolKey(candidate) === poolKey(pool),
+              (candidate) => poolKey(candidate) === poolKey(pool)
             ) ?? supportedPools[0]
           }
           onClose={() => setCreating(false)}
@@ -143,7 +142,8 @@ function CreatePosition({
   pools: Pool[];
   onClose: () => void;
 }) {
-  const { snapshot, symbol, pending, session, run } = useDex();
+  const { snapshot, symbol, pending, session, run, amount, precision, tokens } =
+    useDex();
   const [selection, setSelection] = useState(poolKey(initialPool));
   const [amount0, setAmount0] = useState("");
   const [amount1, setAmount1] = useState("");
@@ -157,15 +157,16 @@ function CreatePosition({
     slippage,
     snapshot.data!.balances[pool.token0] ?? 0n,
     snapshot.data!.balances[pool.token1] ?? 0n,
+    tokens
   );
-  const invalid = decision.ok ? undefined : (decision.error ?? undefined);
+  const invalid = decision.ok ? undefined : decision.error ?? undefined;
   const used = decision.ok
     ? ([decision.used0, decision.used1] as const)
     : undefined;
   function changeAmount(value: string, index: 0 | 1) {
     if (index === 0) setAmount0(value);
     else setAmount1(value);
-    const other = counterpartAmount(pool, value, index);
+    const other = counterpartAmount(pool, value, index, tokens);
     if (other !== null) {
       if (index === 0) setAmount1(other);
       else setAmount0(other);
@@ -183,9 +184,9 @@ function CreatePosition({
           </p>
           <dl className="liquidity-review-amounts">
             <dt>{symbol(pool.token0)}</dt>
-            <dd>{formatAmount(used[0], 8)}</dd>
+            <dd>{amount(used[0], pool.token0, 8)}</dd>
             <dt>{symbol(pool.token1)}</dt>
-            <dd>{formatAmount(used[1], 8)}</dd>
+            <dd>{amount(used[1], pool.token1, 8)}</dd>
           </dl>
           <p>
             You receive an ERC721 position NFT. Its share of both pool assets,
@@ -194,11 +195,19 @@ function CreatePosition({
           <dl className="liquidity-detail-list">
             <dt>Minimum {symbol(pool.token0)} deposited</dt>
             <dd>
-              {formatAmount(minimumReceived(used[0], slippageBps(slippage)), 8)}
+              {amount(
+                minimumReceived(used[0], slippageBps(slippage)),
+                pool.token0,
+                8
+              )}
             </dd>
             <dt>Minimum {symbol(pool.token1)} deposited</dt>
             <dd>
-              {formatAmount(minimumReceived(used[1], slippageBps(slippage)), 8)}
+              {amount(
+                minimumReceived(used[1], slippageBps(slippage)),
+                pool.token1,
+                8
+              )}
             </dd>
             <dt>Slippage tolerance</dt>
             <dd>{slippage}%</dd>
@@ -223,10 +232,10 @@ function CreatePosition({
                 run("Add liquidity", (writer) =>
                   writer.addLiquidity(
                     pool,
-                    positiveAmount(amount0),
-                    positiveAmount(amount1),
-                    slippageBps(slippage),
-                  ),
+                    positiveAmount(amount0, precision(pool.token0)),
+                    positiveAmount(amount1, precision(pool.token1)),
+                    slippageBps(slippage)
+                  )
                 );
               }}
             >
@@ -275,7 +284,8 @@ function CreatePosition({
               onChange={(value) => changeAmount(value, 0)}
             />
             <small>
-              Balance {formatAmount(snapshot.data!.balances[pool.token0] ?? 0n)}{" "}
+              Balance{" "}
+              {amount(snapshot.data!.balances[pool.token0] ?? 0n, pool.token0)}{" "}
               {symbol(pool.token0)}
             </small>
           </div>
@@ -287,7 +297,8 @@ function CreatePosition({
               onChange={(value) => changeAmount(value, 1)}
             />
             <small>
-              Balance {formatAmount(snapshot.data!.balances[pool.token1] ?? 0n)}{" "}
+              Balance{" "}
+              {amount(snapshot.data!.balances[pool.token1] ?? 0n, pool.token1)}{" "}
               {symbol(pool.token1)}
             </small>
           </div>
@@ -331,7 +342,7 @@ function PositionCard(props: PositionCardProps) {
   const pool = snapshot.data!.pools.find(
     (candidate) =>
       sameAddress(candidate.exchange.address, position.exchange.address) &&
-      candidate.id === position.poolId,
+      candidate.id === position.poolId
   )!;
   return poolAssetsSupported(pool, tokens) ? (
     <SupportedPositionCard
@@ -358,7 +369,7 @@ function SupportedPositionCard({
   recipient,
   onRecipientChange,
 }: PositionCardProps & { pool: Pool } & TransferDraft) {
-  const { client, snapshot, symbol, pending, session, run } = useDex();
+  const { client, symbol, pending, session, run, amount } = useDex();
   const [showMetadata, setShowMetadata] = useState(false);
   const [review, setReview] = useState<"redeem" | "transfer">();
   const [slippage, setSlippage] = useState("0.5");
@@ -395,10 +406,10 @@ function SupportedPositionCard({
         </div>
         <div className="liquidity-position-assets">
           <span>
-            {formatAmount(amounts[0])} {symbol(pool.token0)}
+            {amount(amounts[0], pool.token0)} {symbol(pool.token0)}
           </span>
           <span>
-            {formatAmount(amounts[1])} {symbol(pool.token1)}
+            {amount(amounts[1], pool.token1)} {symbol(pool.token1)}
           </span>
         </div>
         <button
@@ -415,26 +426,26 @@ function SupportedPositionCard({
           <dl className="liquidity-detail-list">
             <dt>Shares / pool ownership</dt>
             <dd>
-              {formatAmount(position.shares)} / {sharePercent}%
+              {position.shares.toString()} / {sharePercent}%
             </dd>
             <dt>Initial deposit</dt>
             <dd>
-              {formatAmount(position.amount0)} {symbol(pool.token0)} /{" "}
-              {formatAmount(position.amount1)} {symbol(pool.token1)}
+              {amount(position.amount0, pool.token0)} {symbol(pool.token0)} /{" "}
+              {amount(position.amount1, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Redeem quote</dt>
             <dd>
-              {formatAmount(amounts[0])} {symbol(pool.token0)} /{" "}
-              {formatAmount(amounts[1])} {symbol(pool.token1)}
+              {amount(amounts[0], pool.token0)} {symbol(pool.token0)} /{" "}
+              {amount(amounts[1], pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Current value at pool price</dt>
             <dd>
-              {formatAmount(currentValue)} {symbol(pool.token1)}
+              {amount(currentValue, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Compared with holding the initial deposit</dt>
             <dd>
               {view.valueSign}
-              {formatAmount(valueChange)} {symbol(pool.token1)}
+              {amount(valueChange, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Created</dt>
             <dd>
@@ -495,9 +506,9 @@ function SupportedPositionCard({
           <code className="liquidity-recipient">{position.owner}</code>
           <dl className="liquidity-detail-list">
             <dt>Expected {symbol(pool.token0)}</dt>
-            <dd>{formatAmount(amounts[0])}</dd>
+            <dd>{amount(amounts[0], pool.token0)}</dd>
             <dt>Expected {symbol(pool.token1)}</dt>
-            <dd>{formatAmount(amounts[1])}</dd>
+            <dd>{amount(amounts[1], pool.token1)}</dd>
           </dl>
           <AmountField
             label="Redemption slippage (%)"
@@ -508,9 +519,15 @@ function SupportedPositionCard({
           {!invalidTolerance && (
             <p className="liquidity-small">
               Minimum received:{" "}
-              {formatAmount(minimumReceived(amounts[0], slippageBps(slippage)))}{" "}
+              {amount(
+                minimumReceived(amounts[0], slippageBps(slippage)),
+                pool.token0
+              )}{" "}
               {symbol(pool.token0)} and{" "}
-              {formatAmount(minimumReceived(amounts[1], slippageBps(slippage)))}{" "}
+              {amount(
+                minimumReceived(amounts[1], slippageBps(slippage)),
+                pool.token1
+              )}{" "}
               {symbol(pool.token1)}.
             </p>
           )}
@@ -524,8 +541,8 @@ function SupportedPositionCard({
                   pool,
                   position.id,
                   amounts,
-                  slippageBps(slippage),
-                ),
+                  slippageBps(slippage)
+                )
               );
             }}
           >
@@ -588,7 +605,7 @@ function TransferPositionDialog({
   const recipientError = transferError(
     position.owner,
     session?.address ?? "",
-    recipient,
+    recipient
   );
   return (
     <ConfirmationDialog title="Transfer liquidity position" onClose={onClose}>
@@ -611,7 +628,7 @@ function TransferPositionDialog({
         onClick={() => {
           onClose();
           run("Transfer position", (writer) =>
-            writer.transferPosition(pool, position.id, recipient),
+            writer.transferPosition(pool, position.id, recipient)
           );
         }}
       >

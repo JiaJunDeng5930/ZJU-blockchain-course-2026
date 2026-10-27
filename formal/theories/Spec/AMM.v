@@ -175,9 +175,9 @@ Record prepared_swap := {
   swap_slippage : Z
 }.
 
-Definition prepare_swap reserve_in reserve_out balance amount_text slippage_text
+Definition prepare_swap places reserve_in reserve_out balance amount_text slippage_text
     : option prepared_swap :=
-  match positive_units_18 amount_text, parse_slippage_bps slippage_text with
+  match positive_units places amount_text, parse_slippage_bps slippage_text with
   | Some input, Some slippage =>
       match checked_amount_out reserve_in reserve_out input with
       | Some output =>
@@ -191,8 +191,8 @@ Definition prepare_swap reserve_in reserve_out balance amount_text slippage_text
   | _, _ => None
   end.
 
-Theorem prepare_swap_sound reserve_in reserve_out balance amount_text slippage_text prepared :
-  prepare_swap reserve_in reserve_out balance amount_text slippage_text = Some prepared ->
+Theorem prepare_swap_sound places reserve_in reserve_out balance amount_text slippage_text prepared :
+  prepare_swap places reserve_in reserve_out balance amount_text slippage_text = Some prepared ->
   0 < swap_input prepared <= balance /\ uint256 (swap_input prepared) /\
   0 < swap_output prepared < reserve_out /\ uint256 (swap_output prepared) /\
   0 <= swap_slippage prepared <= 5000 /\
@@ -202,13 +202,13 @@ Theorem prepare_swap_sound reserve_in reserve_out balance amount_text slippage_t
     (reserve_in + swap_input prepared) * (reserve_out - swap_output prepared).
 Proof.
   unfold prepare_swap.
-  destruct (positive_units_18 amount_text) as [input|] eqn:Ha; try discriminate.
+  destruct (positive_units places amount_text) as [input|] eqn:Ha; try discriminate.
   destruct (parse_slippage_bps slippage_text) as [slippage|] eqn:Hs; try discriminate.
   destruct (checked_amount_out reserve_in reserve_out input) as [output|] eqn:Hq;
     try discriminate.
   destruct (Z.ltb 0 output && Z.leb input balance) eqn:Hchecks; try discriminate.
   intro E. inversion E; subst; simpl.
-  apply positive_units_18_sound in Ha as [Hpositive [Hinput _]].
+  apply positive_units_sound in Ha as [Hpositive [Hinput _]].
   apply parse_slippage_bps_sound in Hs.
   apply checked_amount_out_sound in Hq as [Houtput [Hbounds Hproduct]].
   apply andb_true_iff in Hchecks as [HoutPositive Hbalance].
@@ -234,13 +234,13 @@ Definition preview status input output minimum slippage :=
   {| preview_status := status; preview_amount := input; preview_output := output;
      preview_minimum := minimum; preview_slippage := slippage |}.
 
-Definition analyze_swap reserve_in reserve_out (balance : option Z) amount_text slippage_text
+Definition analyze_swap places reserve_in reserve_out (balance : option Z) amount_text slippage_text
     : swap_preview :=
   if (Z.leb reserve_in 0 || Z.leb reserve_out 0)%bool then
     preview PoolNeedsLiquidity None None None None
   else if empty_amount amount_text then
     preview EnterAmount None None None None
-  else match positive_units_18 amount_text with
+  else match positive_units places amount_text with
   | None => preview CheckAmount None None None None
   | Some input =>
       match checked_amount_out reserve_in reserve_out input with
@@ -266,16 +266,16 @@ Definition swap_can_submit connected pending (view : swap_preview) : bool :=
   connected && negb pending &&
   match preview_status view with ReadyToSwap => true | _ => false end.
 
-Theorem analyze_ready_is_prepared reserve_in reserve_out balance amount_text slippage_text :
-  preview_status (analyze_swap reserve_in reserve_out (Some balance) amount_text slippage_text)
+Theorem analyze_ready_is_prepared places reserve_in reserve_out balance amount_text slippage_text :
+  preview_status (analyze_swap places reserve_in reserve_out (Some balance) amount_text slippage_text)
     = ReadyToSwap ->
   exists prepared,
-    prepare_swap reserve_in reserve_out balance amount_text slippage_text = Some prepared.
+    prepare_swap places reserve_in reserve_out balance amount_text slippage_text = Some prepared.
 Proof.
   unfold analyze_swap.
   destruct (Z.leb reserve_in 0 || Z.leb reserve_out 0)%bool; try discriminate.
   destruct (empty_amount amount_text); try discriminate.
-  destruct (positive_units_18 amount_text) as [input|] eqn:Ha; try discriminate.
+  destruct (positive_units places amount_text) as [input|] eqn:Ha; try discriminate.
   destruct (checked_amount_out reserve_in reserve_out input) as [output|] eqn:Hq;
     try discriminate.
   destruct (Z.leb output 0) eqn:Hp; try discriminate.
@@ -312,7 +312,7 @@ Definition swap_action (connected pending : bool) (view : swap_preview) : string
 Definition swap_error view : option string :=
   match preview_status view with
   | UnsupportedPool => Some Assets.unsupported_pool_error
-  | CheckAmount => Some "Enter a positive uint256 amount with at most 18 decimal places."%string
+  | CheckAmount => Some "Enter a positive uint256 amount within the selected token decimal precision."%string
   | QuoteUnavailable => Some "This amount cannot be exchanged by the pool."%string
   | CheckSlippage => Some "Slippage must be between 0% and 50%, with at most two decimal places."%string
   | InsufficientBalance => Some "Amount exceeds the available token balance."%string
@@ -349,11 +349,11 @@ Definition swap_disabled connected pending view : bool :=
   pending || (connected && negb (swap_can_submit connected pending view)).
 Definition swap_can_max (balance : option Z) pending : bool :=
   negb pending && match balance with Some value => Z.ltb 0 value | None => false end.
-Definition swap_max_text (balance : option Z) : option string :=
-  match balance with Some value => Some (format_units_18 value) | None => None end.
-Definition swap_reverse_text view current : string :=
+Definition swap_max_text places (balance : option Z) : option string :=
+  match balance with Some value => Some (format_scaled (Z.to_nat places) value) | None => None end.
+Definition swap_reverse_text places view current : string :=
   match preview_output view with
-  | Some output => if Z.ltb 0 output then format_units_18 output else current
+  | Some output => if Z.ltb 0 output then format_scaled (Z.to_nat places) output else current
   | None => current
   end.
 
@@ -389,10 +389,10 @@ Proof.
   intros _. now apply submit_requires_current_readiness.
 Qed.
 
-Definition preview_rate_text view : option string :=
-  match preview_rate view with
-  | Some rate => Some (format_scaled 6 (rate / 10 ^ 12))
-  | None => None
+Definition preview_rate_text input_places output_places view : option string :=
+  match preview_amount view, preview_output view with
+  | Some input, Some output => price_text output output_places input input_places
+  | _, _ => None
   end.
 Definition preview_impact_text reserve_in reserve_out view : option string :=
   match preview_impact reserve_in reserve_out view with
@@ -412,6 +412,8 @@ Record swap_environment := {
   environment_reserve1 : Z;
   environment_balance0 : option Z;
   environment_balance1 : option Z;
+  environment_decimals0 : Z;
+  environment_decimals1 : Z;
   environment_connected : bool;
   environment_pending : bool
 }.
@@ -440,12 +442,18 @@ Definition draft_output_balance environment draft : option Z :=
     if String.eqb (draft_token draft) (environment_token0 environment)
     then environment_balance1 environment else environment_balance0 environment
   else None.
+Definition draft_precision environment draft : Z :=
+  if String.eqb (draft_token draft) (environment_token0 environment)
+  then environment_decimals0 environment else environment_decimals1 environment.
+Definition draft_output_precision environment draft : Z :=
+  if String.eqb (draft_token draft) (environment_token0 environment)
+  then environment_decimals1 environment else environment_decimals0 environment.
 Definition draft_preview environment draft : swap_preview :=
   if Assets.pool_assets_supported (environment_assets environment)
     (environment_token0 environment) (environment_token1 environment) then
   if draft_belongs environment draft then
     let direction := draft_orientation environment draft in
-    analyze_swap (input_reserve direction) (output_reserve direction)
+    analyze_swap (draft_precision environment draft) (input_reserve direction) (output_reserve direction)
       (draft_balance environment draft) (draft_amount draft) (draft_slippage draft)
   else preview QuoteUnavailable None None None None
   else preview UnsupportedPool None None None None.
@@ -478,11 +486,11 @@ Definition step_draft environment draft event : swap_draft :=
           (draft_amount draft) (draft_slippage draft) else draft
   | ReverseSwap =>
       rebuild (receive_token (draft_orientation environment draft))
-        (swap_reverse_text (draft_preview environment draft) (draft_amount draft))
+        (swap_reverse_text (draft_output_precision environment draft) (draft_preview environment draft) (draft_amount draft))
         (draft_slippage draft)
   | FillMax =>
       if swap_can_max (draft_balance environment draft) false then
-        match swap_max_text (draft_balance environment draft) with
+        match swap_max_text (draft_precision environment draft) (draft_balance environment draft) with
         | Some text => rebuild (draft_token draft) text (draft_slippage draft)
         | None => draft
         end
@@ -592,7 +600,7 @@ Proof.
   destruct (Z.leb (input_reserve (draft_orientation environment draft)) 0 ||
     Z.leb (output_reserve (draft_orientation environment draft)) 0)%bool; try discriminate.
   destruct (empty_amount (draft_amount draft)); try discriminate.
-  destruct (positive_units_18 (draft_amount draft)) as [amount|] eqn:Hamount; try discriminate.
+  destruct (positive_units (draft_precision environment draft) (draft_amount draft)) as [amount|] eqn:Hamount; try discriminate.
   destruct (checked_amount_out (input_reserve (draft_orientation environment draft))
     (output_reserve (draft_orientation environment draft)) amount) as [quoted|] eqn:Hquote;
     try discriminate.
@@ -601,7 +609,7 @@ Proof.
   destruct (draft_balance environment draft) as [balance|]; try discriminate.
   destruct (Z.leb amount balance); try discriminate.
   inversion Heffect; subst. split; [|exact Hquote].
-  apply positive_units_18_sound in Hamount. tauto.
+  apply positive_units_sound in Hamount. tauto.
 Qed.
 
 Record swap_parameters := {

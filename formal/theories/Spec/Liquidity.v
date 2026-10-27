@@ -92,12 +92,12 @@ Definition minted_shares reserve0 reserve1 total used0 used1 : Z :=
   else Z.min (used0 * total / reserve0) (used1 * total / reserve1).
 Definition redeem_amounts reserve0 reserve1 total shares : Z * Z :=
   (shares * reserve0 / total, shares * reserve1 / total).
-Definition counterpart reserve0 reserve1 total (index : bool) (text : string) : option string :=
+Definition counterpart p0 p1 reserve0 reserve1 total (index : bool) (text : string) : option string :=
   if total =? 0 then None
   else if String.eqb text "" then Some ""
-  else match positive_units_18 text with
+  else match positive_units (if index then p1 else p0) text with
   | None => None
-  | Some value => Some (format_units_18
+  | Some value => Some (format_scaled (Z.to_nat (if index then p0 else p1))
       (if index then value * reserve0 / reserve1 else value * reserve1 / reserve0))
   end.
 

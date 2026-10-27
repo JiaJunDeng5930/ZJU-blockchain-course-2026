@@ -1,4 +1,5 @@
 import "../generated/dex_logic.js";
+import { tokenDecimals } from "../chain/amounts";
 import type { Opportunity, Pool, Token } from "../chain/types";
 
 type WirePool = {
@@ -61,7 +62,7 @@ function key(pool: Pick<WirePool, "exchange" | "id">) {
 function decodeOpportunity(
   value: WireOpportunity,
   pools: Pool[],
-  quotedAtBlock: number,
+  quotedAtBlock: number
 ): Opportunity {
   const indexed = new Map(pools.map((pool) => [key(poolWire(pool)), pool]));
   // scan_members proves both records came from this input pool list.
@@ -82,17 +83,18 @@ export function scanArbitrage(
   pools: Pool[],
   tokenIn: string,
   quotedAtBlock: number,
-  supportedTokens: readonly Token[],
+  supportedTokens: readonly Token[]
 ): Opportunity[] {
   const output = JSON.parse(
     kernel().scan(
       JSON.stringify({
+        decimals: tokenDecimals(supportedTokens, tokenIn).toString(),
         selected: poolWire(selected),
         supportedTokens: supportedTokens.map((token) => token.address),
         pools: pools.map(poolWire),
         tokenIn,
-      }),
-    ),
+      })
+    )
   ) as WireOpportunity[];
   return output.map((route) => decodeOpportunity(route, pools, quotedAtBlock));
 }
@@ -102,22 +104,25 @@ export function arbitragePreview(
   route: Opportunity | undefined,
   minimum: string,
   balance: bigint,
+  principal: Token
 ): { canExecute: boolean; error: string | null } {
   return JSON.parse(
     kernel().preview(
       JSON.stringify({
         arbitrage,
+        decimals: principal.decimals.toString(),
         route: route ? opportunityWire(route) : null,
         minimum,
         balance: balance.toString(),
-      }),
-    ),
+      })
+    )
   );
 }
 
 export function prepareArbitrage(input: {
   arbitrage: string;
   route: Opportunity;
+  token: Token;
   pools: Pool[];
   supportedTokens: readonly Token[];
   minimum: string;
@@ -130,6 +135,7 @@ export function prepareArbitrage(input: {
     kernel().prepare(
       JSON.stringify({
         arbitrage: input.arbitrage,
+        decimals: input.token.decimals.toString(),
         supportedTokens: input.supportedTokens.map((token) => token.address),
         buy: poolWire(input.route.buy),
         sell: poolWire(input.route.sell),
@@ -140,8 +146,8 @@ export function prepareArbitrage(input: {
         balance: input.balance.toString(),
         allowance: input.allowance.toString(),
         now: input.now.toString(),
-      }),
-    ),
+      })
+    )
   ) as PreparedWire | RejectedWire;
   if (!output.ok) throw new Error(output.error);
   return {

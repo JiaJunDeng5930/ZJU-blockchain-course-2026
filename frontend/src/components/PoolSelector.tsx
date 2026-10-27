@@ -1,4 +1,4 @@
-import { formatAmount, poolKey, reservePrice } from "../chain/amounts";
+import { poolKey } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { Pool } from "../chain/types";
 export function PoolSelector({
@@ -8,7 +8,7 @@ export function PoolSelector({
   pool: Pool | undefined;
   onChange: (key: string) => void;
 }) {
-  const { snapshot, symbol } = useDex();
+  const { snapshot, symbol, amount, price } = useDex();
   return (
     <section className="pool-strip">
       <label>
@@ -33,14 +33,14 @@ export function PoolSelector({
               Reserves · {symbol(pool.token0)} / {symbol(pool.token1)}
             </small>
             <strong>
-              {formatAmount(pool.reserve0)} / {formatAmount(pool.reserve1)}
+              {amount(pool.reserve0, pool.token0)} /{" "}
+              {amount(pool.reserve1, pool.token1)}
             </strong>
           </div>
           <div>
             <small>1 {symbol(pool.token0)} =</small>
             <strong>
-              {reservePrice(pool)?.toFixed(6) ?? "Unfunded"}{" "}
-              {symbol(pool.token1)}
+              {price(pool) ?? "Unfunded"} {symbol(pool.token1)}
             </strong>
           </div>
           <div>

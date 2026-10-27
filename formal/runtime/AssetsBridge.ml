@@ -21,9 +21,10 @@ let capability_of_string_exn = function "faucet" -> K.Faucet | "wrapped" -> K.Wr
 let asset ~stored value =
   { K.asset_address = string "address" value; asset_name = string "name" value;
     asset_symbol = string "symbol" value;
+    asset_decimals = (match member "decimals" value with `Int n -> Some (Integer.of_int n) | `Null -> None | _ -> invalid_arg "asset decimals protocol");
     asset_capability = if stored then K.External else capability_of_string_exn (string "kind" value) }
 let asset_json token = object_ ["address", text token.K.asset_address; "name", text token.K.asset_name;
-  "symbol", text token.K.asset_symbol; "kind", text (capability token.K.asset_capability)]
+  "symbol", text token.K.asset_symbol; "decimals", optional (fun n -> `Int (Integer.to_int n)) token.K.asset_decimals; "kind", text (capability token.K.asset_capability)]
 let assets ~stored value = F.to_list value |> List.map (asset ~stored)
 let markets value = F.to_list value |> List.map (fun market ->
   { K.market_exchange = string "exchange" market; market_first = string "token0" market; market_second = string "token1" market })
@@ -130,7 +131,7 @@ let deployed name symbol token =
 let receipt raw =
   let address = match parse raw with `Null -> None | value -> K.canonical_address (F.to_string value) in
   object_ ["address", optional text address; "error", optional text (match address with Some _ -> None | None -> Some K.deployment_receipt_error)] |> emit
-let pool_price first second symbol0 symbol1 = Js.string (K.pool_price_text (Integer.of_string (Js.to_string first)) (Integer.of_string (Js.to_string second)) (Js.to_string symbol0) (Js.to_string symbol1))
+let pool_price first second decimals0 decimals1 symbol0 symbol1 = Js.string (K.pool_price_text (Integer.of_string (Js.to_string first)) (Integer.of_string (Js.to_string second)) (Integer.of_string (Js.to_string decimals0)) (Integer.of_string (Js.to_string decimals1)) (Js.to_string symbol0) (Js.to_string symbol1))
 let pool_supported json =
   let value = parse json in
   Js.bool (K.pool_assets_supported (strings "tokens" value) (string "first" value) (string "second" value))

@@ -1,7 +1,7 @@
 import { poolAssetsSupported, unsupportedPoolError } from "../logic/assets";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatAmount, poolKey } from "../chain/amounts";
+import { poolKey } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { poolPositions } from "../logic/liquidity";
 import type { Pool } from "../chain/types";
@@ -14,7 +14,7 @@ export function PoolActivity({ pool }: { pool: Pool }) {
 }
 
 function SupportedPoolActivity({ pool }: { pool: Pool }) {
-  const { client, snapshot, symbol } = useDex();
+  const { client, snapshot, symbol, amount } = useDex();
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(0);
@@ -48,9 +48,9 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
       <div className="liquidity-pool-content">
         <dl className="liquidity-detail-list">
           <dt>{symbol(pool.token0)} reserve</dt>
-          <dd>{formatAmount(pool.reserve0)}</dd>
+          <dd>{amount(pool.reserve0, pool.token0)}</dd>
           <dt>{symbol(pool.token1)} reserve</dt>
-          <dd>{formatAmount(pool.reserve1)}</dd>
+          <dd>{amount(pool.reserve1, pool.token1)}</dd>
           <dt>Trading fee</dt>
           <dd>0.30% retained by liquidity providers</dd>
         </dl>
@@ -74,13 +74,13 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                     <code>{position.owner}</code>
                   </td>
                   <td>
-                    {formatAmount(position.amount0)} /{" "}
-                    {formatAmount(position.amount1)}
+                    {amount(position.amount0, pool.token0)} /{" "}
+                    {amount(position.amount1, pool.token1)}
                   </td>
-                  <td>{formatAmount(position.shares)}</td>
+                  <td>{position.shares.toString()}</td>
                   <td>
                     {new Date(
-                      Number(position.createdAt) * 1000,
+                      Number(position.createdAt) * 1000
                     ).toLocaleString()}
                   </td>
                 </tr>
@@ -118,14 +118,17 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                   <dd>{activity.data.swaps}</dd>
                   <dt>Cumulative input volume</dt>
                   <dd>
-                    {formatAmount(activity.data.volume0)} {symbol(pool.token0)}{" "}
-                    / {formatAmount(activity.data.volume1)}{" "}
+                    {amount(activity.data.volume0, pool.token0)}{" "}
+                    {symbol(pool.token0)} /{" "}
+                    {amount(activity.data.volume1, pool.token1)}{" "}
                     {symbol(pool.token1)}
                   </dd>
                   <dt>Pool trading fees generated</dt>
                   <dd>
-                    {formatAmount(activity.data.fees0)} {symbol(pool.token0)} /{" "}
-                    {formatAmount(activity.data.fees1)} {symbol(pool.token1)}
+                    {amount(activity.data.fees0, pool.token0)}{" "}
+                    {symbol(pool.token0)} /{" "}
+                    {amount(activity.data.fees1, pool.token1)}{" "}
+                    {symbol(pool.token1)}
                   </dd>
                 </dl>
                 <p className="liquidity-small">
@@ -150,7 +153,7 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                       {events
                         .slice(
                           visiblePage * pageSize,
-                          (visiblePage + 1) * pageSize,
+                          (visiblePage + 1) * pageSize
                         )
                         .map((event) => (
                           <tr key={`${event.hash}:${event.index}`}>
@@ -160,8 +163,8 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                               <code>{event.actor}</code>
                             </td>
                             <td>
-                              {formatAmount(event.amount0)} /{" "}
-                              {formatAmount(event.amount1)}
+                              {amount(event.amount0, pool.token0)} /{" "}
+                              {amount(event.amount1, pool.token1)}
                             </td>
                             <td>
                               {event.block}

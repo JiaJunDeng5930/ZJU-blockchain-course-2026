@@ -140,7 +140,7 @@ export function WalletMenu({
                   <div className="wallet-asset-amount">
                     <strong>
                       {snapshot.data
-                        ? formatAmount(snapshot.data.ether, 4)
+                        ? formatAmount(snapshot.data.ether, 18, 4)
                         : "—"}
                     </strong>
                     <button
@@ -168,6 +168,7 @@ export function WalletMenu({
                         {snapshot.data
                           ? formatAmount(
                               snapshot.data.balances[token.address] ?? 0n,
+                              token.decimals
                             )
                           : "—"}
                       </strong>
@@ -177,7 +178,7 @@ export function WalletMenu({
                           disabled={pending}
                           onClick={() =>
                             run(`Claim ${token.symbol}`, (writer) =>
-                              writer.faucet(token),
+                              writer.faucet(token)
                             )
                           }
                         >

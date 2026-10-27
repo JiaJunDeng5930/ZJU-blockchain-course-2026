@@ -5,6 +5,7 @@ export type Token = {
   name: string;
   symbol: string;
   kind: "faucet" | "wrapped" | "external";
+  decimals: number;
 };
 export type Exchange = { address: string; name: string };
 export type Deployment = {

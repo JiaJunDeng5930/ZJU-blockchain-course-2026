@@ -6,8 +6,8 @@ Extraction Blacklist String List.
 Set Extraction Output Directory "formal/build/trade".
 Separate Extraction
   Types.approval_needed
-  Units.parse_units_18 Units.positive_units_18 Units.parse_slippage_bps
-  Units.format_units_18 Units.format_scaled Units.amount_error Units.slippage_error
+  Units.parse_units Units.positive_units Units.parse_units_18 Units.positive_units_18 Units.parse_slippage_bps
+  Units.compact_units Units.format_units Units.price_text Units.format_units_18 Units.format_scaled Units.amount_error Units.slippage_error
   AMM.minimum_received AMM.amount_out AMM.checked_amount_out
   AMM.analyze_swap AMM.orient_trade AMM.swap_can_submit AMM.swap_disabled
   AMM.swap_submit_action AMM.swap_action AMM.swap_error

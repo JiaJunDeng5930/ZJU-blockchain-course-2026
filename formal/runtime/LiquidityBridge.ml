@@ -18,7 +18,7 @@ let deposit_json (plan : K.deposit_plan) = [
 let rejected reason = `Assoc ["ok", `Bool false; "error", `String reason]
 let analyze_deposit value =
   let r0,r1,total = pool value in
-  match K.analyze_deposit r0 r1 total (integer "balance0" value) (integer "balance1" value)
+  match K.analyze_deposit (integer "decimals0" value) (integer "decimals1" value) r0 r1 total (integer "balance0" value) (integer "balance1" value)
     (text "amount0" value) (text "amount1" value) (text "slippage" value) with
   | K.DepositEmpty -> `Assoc ["ok", `Bool false; "error", `Null]
   | K.DepositRejected why -> rejected why
@@ -29,7 +29,7 @@ let deposit_amounts value =
   `List [z a0; z a1]
 let counterpart value =
   let r0,r1,total = pool value in
-  K.counterpart r0 r1 total (Field.member "second" value |> Field.to_bool) (text "amount" value)
+  K.counterpart (integer "decimals0" value) (integer "decimals1" value) r0 r1 total (Field.member "second" value |> Field.to_bool) (text "amount" value)
     |> optional_text
 let position_view value =
   let r0,r1,total = pool value in

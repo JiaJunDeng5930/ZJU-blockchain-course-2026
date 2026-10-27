@@ -14,7 +14,13 @@ import {
   useQueryClient,
 } from "@tanstack/react-query";
 import { ExchangeClient, type Writer } from "./client";
-import { errorMessage, sameAddress } from "./amounts";
+import {
+  errorMessage,
+  sameAddress,
+  formatAmount,
+  tokenDecimals,
+  formatPrice,
+} from "./amounts";
 import {
   sessionIdentity,
   useWallet,
@@ -30,27 +36,46 @@ function useDexState(client: ExchangeClient) {
   const registryKey = `twopool:v1:${client.key}:tokens`;
   const catalog = useMemo(() => {
     try {
-      return new AssetCatalog(client.deployment.tokens, localStorage.getItem(registryKey) ?? "[]");
+      return new AssetCatalog(
+        client.deployment.tokens,
+        localStorage.getItem(registryKey) ?? "[]"
+      );
     } catch (error) {
       // DEFENSE: browser privacy settings can deny localStorage access.
       if (!(error instanceof DOMException)) throw error;
       const catalog = new AssetCatalog(client.deployment.tokens, "[]");
-      catalog.storageError(`Token storage is unavailable: ${errorMessage(error)}`);
+      catalog.storageError(
+        `Token storage is unavailable: ${errorMessage(error)}`
+      );
       return catalog;
     }
   }, [client, registryKey]);
-  const catalogState = useSyncExternalStore(catalog.subscribe, catalog.snapshot);
-  const tokens = useMemo(() => catalogView(catalogState, []).tokens, [catalogState]);
-  const registerTokens = useCallback((additions: Token[]) => {
-    catalog.register(additions);
-    try {
-      localStorage.setItem(registryKey, JSON.stringify(catalogView(catalog.snapshot(), []).storedTokens));
-    } catch (error) {
-      // DEFENSE: a full browser quota or denied storage must not relabel a confirmed deployment as failed.
-      if (!(error instanceof DOMException)) throw error;
-      catalog.storageError(`Token metadata could not be saved: ${errorMessage(error)}`);
-    }
-  }, [catalog, registryKey]);
+  const catalogState = useSyncExternalStore(
+    catalog.subscribe,
+    catalog.snapshot
+  );
+  const tokens = useMemo(
+    () => catalogView(catalogState, []).tokens,
+    [catalogState]
+  );
+  const registerTokens = useCallback(
+    (additions: Token[]) => {
+      catalog.register(additions);
+      try {
+        localStorage.setItem(
+          registryKey,
+          JSON.stringify(catalogView(catalog.snapshot(), []).storedTokens)
+        );
+      } catch (error) {
+        // DEFENSE: a full browser quota or denied storage must not relabel a confirmed deployment as failed.
+        if (!(error instanceof DOMException)) throw error;
+        catalog.storageError(
+          `Token metadata could not be saved: ${errorMessage(error)}`
+        );
+      }
+    },
+    [catalog, registryKey]
+  );
   const journal: JournalEntry[] = wallet.view.journal.map((entry) => {
     if (entry.state === "confirmed")
       return { ...entry, block: BigInt(entry.block), gas: BigInt(entry.gas) };
@@ -93,7 +118,12 @@ function useDexState(client: ExchangeClient) {
   const unknownPoolTokens = catalogDisplay.discovery;
   const discoveries = useQueries({
     queries: unknownPoolTokens.map((address) => ({
-      queryKey: ["token-metadata", client.deployment.rpcUrl, registryKey, address],
+      queryKey: [
+        "token-metadata",
+        client.deployment.rpcUrl,
+        registryKey,
+        address,
+      ],
       queryFn: () => client.importToken(address),
       staleTime: Infinity,
       // DEFENSE: permissionless pools can contain tokens without supported metadata;
@@ -105,7 +135,7 @@ function useDexState(client: ExchangeClient) {
   });
   useEffect(() => {
     const found = discoveries.flatMap((query) =>
-      query.data ? [query.data] : [],
+      query.data ? [query.data] : []
     );
     if (found.length) registerTokens(found);
   }, [discoveries, registerTokens]);
@@ -141,6 +171,25 @@ function useDexState(client: ExchangeClient) {
     run: (label: string, perform: (writer: Writer) => Promise<void>) =>
       mutation.mutate({ label, perform, session }),
     registerToken,
+    precision: (address: string) => tokenDecimals(tokens, address),
+    amount: (value: bigint, address: string, digits = 5) => {
+      const token = tokens.find((t) => sameAddress(t.address, address));
+      return token
+        ? formatAmount(value, token.decimals, digits)
+        : "Metadata unavailable";
+    },
+    price: (pool: import("./types").Pool) => {
+      const first = tokens.find((t) => sameAddress(t.address, pool.token0));
+      const second = tokens.find((t) => sameAddress(t.address, pool.token1));
+      return first && second
+        ? formatPrice(
+            pool.reserve1,
+            second.decimals,
+            pool.reserve0,
+            first.decimals
+          )
+        : undefined;
+    },
     symbol: (address: string) =>
       tokens.find((t) => sameAddress(t.address, address))?.symbol ??
       `${address.slice(0, 6)}…${address.slice(-4)}`,

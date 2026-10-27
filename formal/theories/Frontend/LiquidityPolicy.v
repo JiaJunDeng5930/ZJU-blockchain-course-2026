@@ -7,14 +7,14 @@ Inductive deposit_decision :=
 | DepositEmpty
 | DepositRejected (message : string)
 | DepositPrepared (plan : deposit_plan).
-Definition analyze_deposit r0 r1 total b0 b1 text0 text1 tolerance :=
+Definition analyze_deposit p0 p1 r0 r1 total b0 b1 text0 text1 tolerance :=
   if String.eqb text0 "" && String.eqb text1 "" then DepositEmpty else
-  match amount_error text0 (Some b0), amount_error text1 (Some b1), slippage_error tolerance with
+  match amount_error p0 text0 (Some b0), amount_error p1 text1 (Some b1), slippage_error tolerance with
   | Some why, _, _ => DepositRejected why
   | _, Some why, _ => DepositRejected why
   | _, _, Some why => DepositRejected why
   | None, None, None =>
-    match positive_units_18 text0, positive_units_18 text1, parse_slippage_bps tolerance with
+    match positive_units p0 text0, positive_units p1 text1, parse_slippage_bps tolerance with
     | Some d0, Some d1, Some slip =>
       match prepare_deposit r0 r1 total d0 d1 b0 b1 slip with
       | Some plan => DepositPrepared plan
@@ -28,17 +28,17 @@ Definition analyze_deposit r0 r1 total b0 b1 text0 text1 tolerance :=
     end
   end.
 
-Lemma analyzed_deposit_uses_checked_plan r0 r1 total b0 b1 t0 t1 tolerance plan :
-  analyze_deposit r0 r1 total b0 b1 t0 t1 tolerance = DepositPrepared plan ->
+Lemma analyzed_deposit_uses_checked_plan p0 p1 r0 r1 total b0 b1 t0 t1 tolerance plan :
+  analyze_deposit p0 p1 r0 r1 total b0 b1 t0 t1 tolerance = DepositPrepared plan ->
   exists d0 d1 slip, prepare_deposit r0 r1 total d0 d1 b0 b1 slip = Some plan.
 Proof.
   unfold analyze_deposit.
   destruct (String.eqb t0 "" && String.eqb t1 ""); [discriminate|].
-  destruct (amount_error t0 (Some b0)); [discriminate|].
-  destruct (amount_error t1 (Some b1)); [discriminate|].
+  destruct (amount_error p0 t0 (Some b0)); [discriminate|].
+  destruct (amount_error p1 t1 (Some b1)); [discriminate|].
   destruct (slippage_error tolerance); [discriminate|].
-  destruct (positive_units_18 t0) as [d0|]; [|discriminate].
-  destruct (positive_units_18 t1) as [d1|]; [|discriminate].
+  destruct (positive_units p0 t0) as [d0|]; [|discriminate].
+  destruct (positive_units p1 t1) as [d1|]; [|discriminate].
   destruct (parse_slippage_bps tolerance) as [slip|]; [|discriminate].
   destruct (prepare_deposit r0 r1 total d0 d1 b0 b1 slip) as [prepared|] eqn:Hplan.
   - intros H. inversion H; subst. exists d0,d1,slip. exact Hplan.

@@ -1,4 +1,5 @@
 import "../generated/dex_logic.js";
+import { getAddress } from "viem";
 import type { Pool, Token } from "../chain/types";
 
 type RawController = {
@@ -83,13 +84,31 @@ const contextJSON = ({
   pending,
 }: SwapContext) =>
   JSON.stringify({
-    assets: tokens.map((token) => token.address),
-    token0: pool.token0,
-    token1: pool.token1,
+    assets: tokens.map((token) => getAddress(token.address)),
+    token0: getAddress(pool.token0),
+    token1: getAddress(pool.token1),
+    decimals0: (
+      tokens.find((t) => t.address.toLowerCase() === pool.token0.toLowerCase())
+        ?.decimals ?? -1
+    ).toString(),
+    decimals1: (
+      tokens.find((t) => t.address.toLowerCase() === pool.token1.toLowerCase())
+        ?.decimals ?? -1
+    ).toString(),
     reserve0: pool.reserve0.toString(),
     reserve1: pool.reserve1.toString(),
-    balance0: balances?.[pool.token0]?.toString() ?? null,
-    balance1: balances?.[pool.token1]?.toString() ?? null,
+    balance0:
+      Object.entries(balances ?? {})
+        .find(
+          ([address]) => getAddress(address) === getAddress(pool.token0)
+        )?.[1]
+        .toString() ?? null,
+    balance1:
+      Object.entries(balances ?? {})
+        .find(
+          ([address]) => getAddress(address) === getAddress(pool.token1)
+        )?.[1]
+        .toString() ?? null,
     connected,
     pending,
   });
@@ -118,19 +137,28 @@ function decode(serialized: string) {
   };
 }
 export function createSwapController(token0: string) {
-  const controller = globalThis.DEXTrade.create(token0);
+  const controller = globalThis.DEXTrade.create(getAddress(token0));
   return {
     view: (context: SwapContext) =>
       decode(controller.view(contextJSON(context))),
     dispatch: (event: SwapEvent, context: SwapContext) =>
-      decode(controller.dispatch(JSON.stringify(event), contextJSON(context))),
+      decode(
+        controller.dispatch(
+          JSON.stringify(
+            event.kind === "pay" || event.kind === "receive"
+              ? { ...event, value: getAddress(event.value) }
+              : event
+          ),
+          contextJSON(context)
+        )
+      ),
   };
 }
 export function makeSwapParameters(
   input: bigint,
   quoted: bigint,
   slippage: bigint,
-  now: bigint,
+  now: bigint
 ) {
   const result = JSON.parse(
     globalThis.DEXTrade.makeParameters(
@@ -139,8 +167,8 @@ export function makeSwapParameters(
         quoted: quoted.toString(),
         slippage: slippage.toString(),
         now: now.toString(),
-      }),
-    ),
+      })
+    )
   ) as { input: string; minimum: string; deadline: string } | null;
   if (result === null) throw new Error(globalThis.DEXTrade.parameterError);
   return {

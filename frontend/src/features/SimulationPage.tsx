@@ -68,11 +68,11 @@ export function SimulationPage() {
                 type: "failure",
                 requestId: effect.requestId,
                 error: error instanceof Error ? error.message : String(error),
-              }).view,
-            ),
+              }).view
+            )
         );
     },
-    [controller],
+    [controller]
   );
   useEffect(() => {
     dispatch({ type: "poll" });
@@ -200,7 +200,9 @@ export function SimulationPage() {
             </button>
             {data?.reportAvailable && (
               <a
-                href={`/api/simulation/report?jobId=${encodeURIComponent(data.id ?? "")}`}
+                href={`/api/simulation/report?jobId=${encodeURIComponent(
+                  data.id ?? ""
+                )}`}
                 download
               >
                 Download complete report
@@ -226,7 +228,9 @@ export function SimulationPage() {
           <p role="status" aria-label="Simulation status">
             {stateLabels[data.state]}
             {progress
-              ? ` · ${view.active ? phaseLabels[progress.phase] + " · " : ""}${progress.completedRounds} rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
+              ? ` · ${view.active ? phaseLabels[progress.phase] + " · " : ""}${
+                  progress.completedRounds
+                } rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
               : ""}
           </p>
         )}
@@ -297,8 +301,8 @@ export function SimulationPage() {
                     <tr key={market.address}>
                       <td>{market.exchange}</td>
                       <td>
-                        {formatAmount(BigInt(market.reserve0))} /{" "}
-                        {formatAmount(BigInt(market.reserve1))}
+                        {formatAmount(BigInt(market.reserve0), 18)} /{" "}
+                        {formatAmount(BigInt(market.reserve1), 18)}
                       </td>
                       <td>{market.priceToken1PerToken0.toFixed(6)}</td>
                     </tr>
@@ -317,7 +321,7 @@ export function SimulationPage() {
                 {progress.profits.map((profit) => (
                   <div key={profit.token}>
                     <dt>{profit.symbol}</dt>
-                    <dd>{formatAmount(BigInt(profit.amount), 8)}</dd>
+                    <dd>{formatAmount(BigInt(profit.amount), 18, 8)}</dd>
                   </div>
                 ))}
               </dl>
@@ -337,7 +341,7 @@ export function SimulationPage() {
                       {[...progress.arbitrages].reverse().map((item) => (
                         <option key={item.hash} value={item.hash}>
                           {item.buyExchange} → {item.sellExchange} · +
-                          {formatAmount(BigInt(item.profit))}{" "}
+                          {formatAmount(BigInt(item.profit), 18)}{" "}
                           {symbol(item.capitalToken)}
                         </option>
                       ))}
@@ -438,11 +442,11 @@ function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
       <dl className="details">
         <dt>Capital</dt>
         <dd>
-          {formatAmount(BigInt(item.amountIn))} {symbol(item.capitalToken)}
+          {formatAmount(BigInt(item.amountIn), 18)} {symbol(item.capitalToken)}
         </dd>
         <dt>Realized token profit</dt>
         <dd>
-          {formatAmount(BigInt(item.profit), 8)} {symbol(item.capitalToken)}
+          {formatAmount(BigInt(item.profit), 18, 8)} {symbol(item.capitalToken)}
         </dd>
         <dt>ETH gas cost</dt>
         <dd>{formatEther(BigInt(item.gasCostWei))}</dd>
@@ -459,7 +463,7 @@ function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
         <tbody>
           {item.before.map((before) => {
             const after = item.after.find(
-              (market) => market.address === before.address,
+              (market) => market.address === before.address
             )!;
             return (
               <tr key={before.address}>
@@ -470,11 +474,11 @@ function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
                   {after.priceToken1PerToken0.toFixed(6)}
                 </td>
                 <td>
-                  {formatAmount(BigInt(before.reserve0))} /{" "}
-                  {formatAmount(BigInt(before.reserve1))}
+                  {formatAmount(BigInt(before.reserve0), 18)} /{" "}
+                  {formatAmount(BigInt(before.reserve1), 18)}
                   <br />
-                  {formatAmount(BigInt(after.reserve0))} /{" "}
-                  {formatAmount(BigInt(after.reserve1))}
+                  {formatAmount(BigInt(after.reserve0), 18)} /{" "}
+                  {formatAmount(BigInt(after.reserve1), 18)}
                 </td>
               </tr>
             );
@@ -488,7 +492,7 @@ function PriceHistory({ snapshots }: { snapshots: MarketSnapshot[][] }) {
   if (snapshots.length < 2)
     return <p>Waiting for a second market update to draw the price history…</p>;
   const values = snapshots.flatMap((markets) =>
-    markets.map((market) => market.priceToken1PerToken0),
+    markets.map((market) => market.priceToken1PerToken0)
   );
   const minimum = Math.min(...values);
   const maximum = Math.max(...values);
@@ -518,7 +522,11 @@ function PriceHistory({ snapshots }: { snapshots: MarketSnapshot[][] }) {
             points={snapshots
               .map(
                 (markets, step) =>
-                  `${35 + (step * 455) / (snapshots.length - 1)},${145 - ((markets[index].priceToken1PerToken0 - minimum) / range) * 125}`,
+                  `${35 + (step * 455) / (snapshots.length - 1)},${
+                    145 -
+                    ((markets[index].priceToken1PerToken0 - minimum) / range) *
+                      125
+                  }`
               )
               .join(" ")}
           />

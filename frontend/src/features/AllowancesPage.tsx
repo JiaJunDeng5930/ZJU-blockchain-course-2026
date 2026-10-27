@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useSyncExternalStore } from "react";
-import { formatUnits } from "viem";
+import { formatUnits } from "../logic/units";
 import { AllowanceController } from "../chain/allowances";
 import { useDex } from "../chain/DexProvider";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -87,7 +87,14 @@ export function AllowancesPage() {
                       <span title={row.allowance}>
                         {row.unlimited
                           ? "Unlimited"
-                          : formatUnits(BigInt(row.allowance), 18)}
+                          : formatUnits(
+                              BigInt(row.allowance),
+                              tokens.find(
+                                (token) =>
+                                  token.address.toLowerCase() ===
+                                  row.token.toLowerCase()
+                              )!.decimals
+                            )}
                       </span>
                     )}
                     {row.error && <p role="alert">{row.error}</p>}
@@ -131,7 +138,14 @@ export function AllowancesPage() {
             <dd title={view.review.allowance}>
               {view.review.unlimited
                 ? "Unlimited"
-                : formatUnits(BigInt(view.review.allowance), 18)}
+                : formatUnits(
+                    BigInt(view.review.allowance),
+                    tokens.find(
+                      (token) =>
+                        token.address.toLowerCase() ===
+                        view.review!.token.toLowerCase()
+                    )!.decimals
+                  )}
             </dd>
             <dt>New allowance</dt>
             <dd>0</dd>

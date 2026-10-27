@@ -65,8 +65,8 @@ Fixpoint within_length (fuel : nat) (text : string) : bool :=
 
 Definition parse_decimal (places : nat) (text : string) : option Z :=
   (* DEFENSE: These are user-entered strings; bound recursive decimal work before parsing.
-     KNOWN LIMITATION: Redundant leading-zero padding beyond 100 characters is rejected. *)
-  if negb (within_length 100 text) then None else
+     KNOWN LIMITATION: Text longer than 100 plus its precision is rejected, including redundant padding. *)
+  if negb (within_length (100 + places) text) then None else
   let '(whole, fraction) := split_decimal text in
   if String.eqb whole EmptyString then None
   else match parse_digits whole with
@@ -104,7 +104,7 @@ Theorem parse_decimal_sound places text value :
   decimal_represents places text value /\ uint256 value.
 Proof.
   unfold parse_decimal.
-  destruct (negb (within_length 100 text)); try discriminate.
+  destruct (negb (within_length (100 + places) text)); try discriminate.
   destruct (split_decimal text) as [whole fraction] eqn:Hsplit.
   destruct (String.eqb whole EmptyString) eqn:Hempty; try discriminate.
   destruct (parse_digits whole) as [integer|] eqn:Hwhole; try discriminate.
@@ -145,9 +145,30 @@ Fixpoint reverse_into (text reversed : string) : string :=
 Definition trim (text : string) : string :=
   reverse_into (trim_left (reverse_into (trim_left text) EmptyString)) EmptyString.
 
-Definition parse_units_18 (text : string) : option Z :=
-  (* DEFENSE: Bound external text before whitespace trimming also traverses it. *)
-  if within_length 100 text then parse_decimal 18 (trim text) else None.
+Open Scope Z_scope.
+
+Definition valid_precision (places : Z) := (0 <=? places) && (places <=? 255).
+Definition parse_units (places : Z) (text : string) : option Z :=
+  (* DEFENSE: decimals is a uint8 metadata observation; bound external text before trimming. *)
+  if valid_precision places && within_length (100 + Z.to_nat places) text
+  then parse_decimal (Z.to_nat places) (trim text) else None.
+Definition positive_units places text : option Z :=
+  match parse_units places text with
+  | Some value => if Z.ltb 0 value then Some value else None
+  | None => None
+  end.
+Theorem positive_units_sound places text value :
+  positive_units places text = Some value ->
+  0 < value /\ uint256 value /\ decimal_represents (Z.to_nat places) (trim text) value.
+Proof.
+  unfold positive_units, parse_units.
+  destruct (valid_precision places && within_length (100 + Z.to_nat places) text); try discriminate.
+  destruct (parse_decimal (Z.to_nat places) (trim text)) as [parsed|] eqn:H; try discriminate.
+  destruct (Z.ltb 0 parsed) eqn:Hpositive; try discriminate.
+  intro E. inversion E; subst. apply parse_decimal_sound in H as [Hmeaning Hbound].
+  apply Z.ltb_lt in Hpositive. auto.
+Qed.
+Definition parse_units_18 := parse_units 18.
 Definition empty_amount (text : string) : bool :=
   if within_length 100 text then String.eqb (trim text) EmptyString else false.
 Definition positive_units_18 (text : string) : option Z :=
@@ -164,14 +185,7 @@ Definition parse_slippage_bps (text : string) : option Z :=
 Theorem positive_units_18_sound text value :
   positive_units_18 text = Some value ->
   0 < value /\ uint256 value /\ decimal_represents 18 (trim text) value.
-Proof.
-  unfold positive_units_18, parse_units_18.
-  destruct (within_length 100 text); try discriminate.
-  destruct (parse_decimal 18 (trim text)) as [parsed|] eqn:H; try discriminate.
-  destruct (Z.ltb 0 parsed) eqn:Hpositive; try discriminate.
-  intro E. inversion E; subst. apply parse_decimal_sound in H as [Hmeaning Hbound].
-  apply Z.ltb_lt in Hpositive. auto.
-Qed.
+Proof. apply positive_units_sound. Qed.
 
 Theorem parse_slippage_bps_sound text value :
   parse_slippage_bps text = Some value -> 0 <= value <= 5000.
@@ -213,9 +227,9 @@ Definition format_scaled places value : string :=
   else format_scaled_unsigned places value.
 Definition format_units_18 := format_scaled 18.
 
-Definition amount_error text (balance : option Z) : option string :=
-  match positive_units_18 text with
-  | None => Some "Enter a positive uint256 amount with at most 18 decimal places."
+Definition amount_error places text (balance : option Z) : option string :=
+  match positive_units places text with
+  | None => Some "Enter a positive uint256 amount within the token decimal precision."
   | Some amount => match balance with
       | None => None
       | Some available => if Z.leb amount available then None
@@ -228,3 +242,39 @@ Definition slippage_error text : option string :=
   | Some _ => None
   | None => Some "Slippage must be between 0% and 50%, with at most two decimal places."
   end.
+
+Definition format_units (places : Z) (value : Z) : option string :=
+  if valid_precision places then Some (format_scaled (Z.to_nat places) value) else None.
+Definition scaled_price numerator numerator_places denominator denominator_places :=
+  numerator * 10 ^ denominator_places * 10 ^ 8 / (denominator * 10 ^ numerator_places).
+Definition price_text numerator numerator_places denominator denominator_places : option string :=
+  if valid_precision numerator_places && valid_precision denominator_places &&
+      (0 <? numerator) && (0 <? denominator) then
+    let value := scaled_price numerator numerator_places denominator denominator_places in
+    Some (if value =? 0 then "<0.00000001" else format_scaled 8 value)
+  else None.
+Theorem accepted_precision_is_uint8 places text value :
+  parse_units places text = Some value -> 0 <= places <= 255.
+Proof.
+  unfold parse_units,valid_precision. destruct ((0 <=? places) && (places <=? 255) && _)%bool eqn:E; try discriminate.
+  apply andb_true_iff in E as [E _]. apply andb_true_iff in E as [A B].
+  apply Z.leb_le in A. apply Z.leb_le in B. lia.
+Qed.
+Theorem equal_human_units_have_unit_price places :
+  0 <= places -> scaled_price (10 ^ places) places (10 ^ 18) 18 = 10 ^ 8.
+Proof.
+  intros H. unfold scaled_price. assert (0 < 10 ^ places) by (apply Z.pow_pos_nonneg;lia).
+  assert (10 ^ 18 * 10 ^ places <> 0) by nia.
+  replace (10 ^ places * 10 ^ 18 * 10 ^ 8) with ((10 ^ 8) * (10 ^ 18 * 10 ^ places)) by ring.
+  apply Z.div_mul. assumption.
+Qed.
+
+Definition compact_units (places digits value : Z) : option string :=
+  if valid_precision places && valid_precision digits then
+    let visible := Z.min places digits in
+    let scale := 10 ^ (places - visible) in
+    let magnitude := Z.abs value in
+    let text := if (0 <? magnitude) && (magnitude <? scale)
+      then (if value <? 0 then ">-" else "<") ++ format_scaled (Z.to_nat places) scale
+      else format_scaled (Z.to_nat visible) (value / scale) in Some text
+  else None.

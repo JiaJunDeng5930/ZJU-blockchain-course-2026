@@ -12,7 +12,7 @@ export async function opportunities(
   selected: Pool,
   _pools: Pool[],
   tokenIn: string,
-  supportedTokens: readonly Token[],
+  supportedTokens: readonly Token[]
 ): Promise<Opportunity[]> {
   assertSupportedPool(selected, supportedTokens);
   const block = await client.rpc.getBlockNumber();
@@ -22,7 +22,7 @@ export async function opportunities(
     pools,
     tokenIn,
     Number(block),
-    supportedTokens,
+    supportedTokens
   );
 }
 
@@ -33,7 +33,7 @@ export async function executeArbitrage(
     send: SendTransaction;
   },
   route: Opportunity,
-  minimum: string,
+  minimum: string
 ): Promise<ArbitrageResult> {
   const { client, session, send } = context;
   const capital = getAddress(route.tokenIn);
@@ -71,6 +71,9 @@ export async function executeArbitrage(
     route,
     pools,
     supportedTokens: verifiedTokens,
+    token: verifiedTokens.find(
+      (token) => getAddress(token.address) === capital
+    )!,
     minimum,
     balance,
     allowance,
@@ -86,7 +89,7 @@ export async function executeArbitrage(
         abi: testTokenAbi,
         functionName: "approve",
         args: [arbitrage, plan.route.amountIn],
-      }),
+      })
     );
   }
   const receipt = await send("Execute atomic arbitrage", () =>
@@ -106,7 +109,7 @@ export async function executeArbitrage(
         plan.minimumProfit,
         plan.deadline,
       ],
-    }),
+    })
   );
   const event = parseEventLogs({
     abi: arbitrageAbi,
@@ -122,7 +125,7 @@ export async function executeArbitrage(
     const snapshot = snapshots.find(
       (log) =>
         getAddress(log.args.exchange) === getAddress(pool.exchange.address) &&
-        log.args.poolId === pool.id,
+        log.args.poolId === pool.id
     )!;
     return {
       before: {

@@ -150,26 +150,26 @@ Proof.
   intros same. inversion same. auto.
 Qed.
 
-Definition capital_sizes : list Z :=
-  map (fun size => size * 10 ^ 18) [1; 5; 10; 25; 50; 100; 200; 500].
+Definition capital_sizes places : list Z :=
+  map (fun size => size * 10 ^ places) [1; 5; 10; 25; 50; 100; 200; 500].
 
-Definition pair_candidates (quote : quote_function) (buy_market sell_market : pool)
+Definition pair_candidates (places : Z) (quote : quote_function) (buy_market sell_market : pool)
     (input_token : address) : list opportunity :=
   flat_map (fun input =>
     match candidate quote buy_market sell_market input_token input with
-    | Some result => [result] | None => [] end) capital_sizes.
+    | Some result => [result] | None => [] end) (capital_sizes places).
 
-Definition all_candidates (quote : quote_function) (selected : pool)
+Definition all_candidates (places : Z) (quote : quote_function) (selected : pool)
     (markets : list pool) (input_token : address) : list opportunity :=
   flat_map (fun other =>
-    pair_candidates quote selected other input_token ++
-    pair_candidates quote other selected input_token) markets.
+    pair_candidates places quote selected other input_token ++
+    pair_candidates places quote other selected input_token) markets.
 
 Definition profitable (result : opportunity) : Prop :=
   0 < profit result /\ returned result = capital result + profit result.
 
-Lemma pair_candidates_profitable quote buy_market sell_market input_token result :
-  In result (pair_candidates quote buy_market sell_market input_token) -> profitable result.
+Lemma pair_candidates_profitable places quote buy_market sell_market input_token result :
+  In result (pair_candidates places quote buy_market sell_market input_token) -> profitable result.
 Proof.
   unfold pair_candidates. rewrite in_flat_map.
   intros [input [size member]].
@@ -179,16 +179,16 @@ Proof.
   apply candidate_profitable in candidate_result. unfold profitable. tauto.
 Qed.
 
-Lemma all_candidates_profitable quote selected markets input_token result :
-  In result (all_candidates quote selected markets input_token) -> profitable result.
+Lemma all_candidates_profitable places quote selected markets input_token result :
+  In result (all_candidates places quote selected markets input_token) -> profitable result.
 Proof.
   unfold all_candidates. rewrite in_flat_map.
   intros [other [market member]]. apply in_app_iff in member.
   destruct member; eapply pair_candidates_profitable; eassumption.
 Qed.
 
-Lemma pair_candidates_origins quote buy_market sell_market input_token result :
-  In result (pair_candidates quote buy_market sell_market input_token) ->
+Lemma pair_candidates_origins places quote buy_market sell_market input_token result :
+  In result (pair_candidates places quote buy_market sell_market input_token) ->
   buy result = buy_market /\ sell result = sell_market.
 Proof.
   unfold pair_candidates. rewrite in_flat_map.
@@ -199,9 +199,9 @@ Proof.
   apply candidate_origins in candidate_result. exact candidate_result.
 Qed.
 
-Lemma all_candidates_origins quote selected markets input_token result :
+Lemma all_candidates_origins places quote selected markets input_token result :
   In selected markets ->
-  In result (all_candidates quote selected markets input_token) ->
+  In result (all_candidates places quote selected markets input_token) ->
   In (buy result) markets /\ In (sell result) markets.
 Proof.
   intros selected_member. unfold all_candidates. rewrite in_flat_map.
@@ -261,33 +261,33 @@ Qed.
 Definition find_pool (reference : pool) (markets : list pool) :=
   find (pool_eqb reference) markets.
 
-Definition scan (quote : quote_function) (selected : pool)
+Definition scan (places : Z) (quote : quote_function) (selected : pool)
     (markets : list pool) (input_token : address) :=
   match find_pool selected markets with
   | None => None
-  | Some current => best (all_candidates quote current markets input_token)
+  | Some current => best (all_candidates places quote current markets input_token)
   end.
 
 Definition supported_markets (supports : pool -> bool) (markets : list pool) :=
   filter supports markets.
-Definition scan_supported (quote : quote_function) (selected : pool)
+Definition scan_supported (places : Z) (quote : quote_function) (selected : pool)
     (markets : list pool) (input_token : address) (supports : pool -> bool) :=
-  scan quote selected (supported_markets supports markets) input_token.
+  scan places quote selected (supported_markets supports markets) input_token.
 
 Lemma supported_markets_sound supports markets market :
   In market (supported_markets supports markets) -> supports market = true.
 Proof. unfold supported_markets. rewrite filter_In. tauto. Qed.
 
-Theorem scan_profitable quote selected markets input_token result :
-  scan quote selected markets input_token = Some result -> profitable result.
+Theorem scan_profitable places quote selected markets input_token result :
+  scan places quote selected markets input_token = Some result -> profitable result.
 Proof.
   unfold scan. destruct (find_pool selected markets); [|discriminate].
   intros selected_best. apply best_member in selected_best.
   eapply all_candidates_profitable. exact selected_best.
 Qed.
 
-Theorem scan_members quote selected markets input_token result :
-  scan quote selected markets input_token = Some result ->
+Theorem scan_members places quote selected markets input_token result :
+  scan places quote selected markets input_token = Some result ->
   In (buy result) markets /\ In (sell result) markets.
 Proof.
   unfold scan. destruct (find_pool selected markets) as [current|] eqn:found;
@@ -297,8 +297,8 @@ Proof.
   eapply all_candidates_origins; [exact (proj1 found)|exact selected_best].
 Qed.
 
-Theorem scan_supported_has_supported_pools quote selected markets input_token supports result :
-  scan_supported quote selected markets input_token supports = Some result ->
+Theorem scan_supported_has_supported_pools places quote selected markets input_token supports result :
+  scan_supported places quote selected markets input_token supports = Some result ->
   supports (buy result) = true /\ supports (sell result) = true.
 Proof.
   unfold scan_supported. intro found. apply scan_members in found as [buy_member sell_member].
@@ -307,10 +307,10 @@ Proof.
   - eapply supported_markets_sound. exact sell_member.
 Qed.
 
-Theorem scan_maximum quote selected markets input_token result :
-  scan quote selected markets input_token = Some result ->
+Theorem scan_maximum places quote selected markets input_token result :
+  scan places quote selected markets input_token = Some result ->
   exists current, find_pool selected markets = Some current /\
-    forall choice, In choice (all_candidates quote current markets input_token) ->
+    forall choice, In choice (all_candidates places quote current markets input_token) ->
       profit choice <= profit result.
 Proof.
   unfold scan. destruct (find_pool selected markets) as [current|] eqn:found;

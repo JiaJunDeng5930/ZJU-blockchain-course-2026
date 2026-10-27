@@ -3,8 +3,8 @@
 The Token approvals page reads allowances for the connected account's known
 ERC20 assets and the contracts in the current deployment: its exchanges and
 atomic arbitrage contract. Native ETH is not an ERC20 authorization. WETH uses
-its ordinary ERC20 allowance. Imported assets retain the existing catalog's
-18-decimal standard-token contract.
+its ordinary ERC20 allowance. Imported assets use their verified uint8 decimal precision; displayed allowances
+use the same metadata as trading.
 
 The feature only revokes an existing authorization. It neither grants a new
 amount nor automatically sends revocations after trades. A confirmed approval

@@ -6,7 +6,7 @@ Open Scope Z_scope.
 
 Inductive capability := Faucet | Wrapped | External.
 Record asset := Asset { asset_address : string; asset_name : string;
-  asset_symbol : string; asset_capability : capability }.
+  asset_symbol : string; asset_decimals : option Z; asset_capability : capability }.
 Definition lowercase (c : ascii) : ascii :=
   let n := nat_of_ascii c in
   if (Nat.leb 65 n && Nat.leb n 90)%bool then ascii_of_nat (n + 32) else c.
@@ -39,7 +39,7 @@ Proof.
 Qed.
 Definition pool_assets_supported (tokens : list string) (first second : string) :=
   address_member first tokens && address_member second tokens.
-Definition unsupported_pool_error := "Both tokens must be verified ERC20 contracts with 18 decimals before using this pool.".
+Definition unsupported_pool_error := "Both tokens must be verified ERC20 contracts with readable uint8 decimal metadata before using this pool.".
 Lemma supported_pool_has_both_assets tokens first second : pool_assets_supported tokens first second = true ->
   address_member first tokens = true /\ address_member second tokens = true.
 Proof. unfold pool_assets_supported. now rewrite andb_true_iff. Qed.
@@ -47,8 +47,8 @@ Definition supported_asset (a name symbol : string) (decimals : Z) (code expecte
   match canonical_address a with
   | None => None
   | Some address =>
-      if Z.eqb decimals 18 && has_runtime code
-      then Some (Asset address name symbol
+      if valid_precision decimals && has_runtime code
+      then Some (Asset address name symbol (Some decimals)
         (if String.eqb code expected then Faucet else External)) else None
   end.
 Definition deployment_name_error := "Enter a name and symbol of at most 100 bytes each.".
@@ -83,19 +83,22 @@ Definition faucet_call (token : asset) : option contract_call :=
   | Faucet => Some (ClaimToken (asset_address token)) | _ => None
   end.
 
-Lemma supported_asset_has_18_decimals a name symbol decimals code expected token :
-  supported_asset a name symbol decimals code expected = Some token -> decimals = 18.
+Lemma supported_asset_has_valid_decimals a name symbol decimals code expected token :
+  supported_asset a name symbol decimals code expected = Some token ->
+  asset_decimals token = Some decimals /\ 0 <= decimals <= 255.
 Proof.
   unfold supported_asset. destruct (canonical_address a); try discriminate.
-  destruct (Z.eqb decimals 18 && has_runtime code) eqn:H; try discriminate.
-  apply andb_true_iff in H as [H _]. now apply Z.eqb_eq in H.
+  destruct (valid_precision decimals && has_runtime code) eqn:H; try discriminate.
+  intro E. inversion E; subst. split; [reflexivity|].
+  apply andb_true_iff in H as [H _]. unfold valid_precision in H.
+  apply andb_true_iff in H as [A B]. apply Z.leb_le in A. apply Z.leb_le in B. lia.
 Qed.
 Lemma faucet_capability_requires_code a name symbol decimals code expected token :
   supported_asset a name symbol decimals code expected = Some token ->
   asset_capability token = Faucet -> code = expected.
 Proof.
   unfold supported_asset. destruct (canonical_address a); try discriminate.
-  destruct (Z.eqb decimals 18 && has_runtime code); try discriminate.
+  destruct (valid_precision decimals && has_runtime code); try discriminate.
   destruct (String.eqb code expected) eqn:H; intros E F; inversion E; subst; simpl in F; try discriminate.
   now apply String.eqb_eq in H.
 Qed.
@@ -134,7 +137,7 @@ Fixpoint restore_assets (tokens : list asset) : list asset :=
   | [] => []
   | token :: rest => match canonical_address (asset_address token) with
     | None => restore_assets rest
-    | Some address => Asset address (asset_name token) (asset_symbol token) External :: restore_assets rest
+    | Some address => Asset address (asset_name token) (asset_symbol token) None External :: restore_assets rest
     end
   end.
 Lemma restored_assets_have_no_capabilities tokens :
@@ -183,7 +186,7 @@ Proof.
 Qed.
 
 Definition address_error := "Enter a nonzero ERC20 contract address.".
-Definition metadata_error := "Token must be a deployed ERC20 contract with 18 decimals.".
+Definition metadata_error := "Token must be a deployed ERC20 contract with readable uint8 decimal metadata.".
 Definition faucet_error := "This token does not expose the verified test-token faucet.".
 Definition deployment_receipt_error := "Confirmed deployment did not return a contract address.".
 Definition deployment_verification_error := "Deployed code or token metadata does not match the requested test token.".
@@ -204,9 +207,9 @@ Definition active_assets (state : catalog) : list asset :=
 Lemma active_assets_are_verified state token : In token (active_assets state) ->
   address_member (asset_address token) (catalog_verified state) = true.
 Proof. unfold active_assets. rewrite filter_In. tauto. Qed.
-Definition pool_price_text (reserve0 reserve1 : Z) (symbol0 symbol1 : string) : string :=
+Definition pool_price_text (reserve0 reserve1 decimals0 decimals1 : Z) (symbol0 symbol1 : string) : string :=
   if (0 <? reserve0) && (0 <? reserve1)
-  then "1 " ++ symbol0 ++ " = " ++ format_scaled 6 ((reserve1 * 10 ^ 6) / reserve0) ++ " " ++ symbol1
+  then "1 " ++ symbol0 ++ " = " ++ match price_text reserve1 decimals1 reserve0 decimals0 with Some price => price | None => "Unavailable" end ++ " " ++ symbol1
   else "Unfunded".
 
 Lemma pool_call_uses_known_exchange exchanges tokens markets exchange a b call :
@@ -232,7 +235,7 @@ Lemma imported_asset_has_checked_address a name symbol decimals code expected to
   canonical_address a = Some (asset_address token).
 Proof.
   unfold supported_asset. destruct (canonical_address a) as [address|] eqn:H; try discriminate.
-  destruct (Z.eqb decimals 18 && has_runtime code); try discriminate.
+  destruct (valid_precision decimals && has_runtime code); try discriminate.
   intro E. inversion E; subst. reflexivity.
 Qed.
 Lemma canonical_address_is_nonzero raw address :

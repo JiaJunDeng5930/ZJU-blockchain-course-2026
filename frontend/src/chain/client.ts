@@ -49,7 +49,7 @@ import { planNativeFunding } from "../wallet/kernel";
 export type SendTransaction = (
   label: string,
   submit: () => Promise<Hex>,
-  authority?: { kind: "dev-faucet"; sender: Address },
+  authority?: { kind: "dev-faucet"; sender: Address }
 ) => Promise<TransactionReceipt>;
 
 export class ExchangeClient {
@@ -69,12 +69,14 @@ export class ExchangeClient {
       pollingInterval: 250,
       cacheTime: 0,
     });
-    this.key = `${deployment.chainId}:${deployment.exchanges.map((e) => e.address).join(":")}`;
+    this.key = `${deployment.chainId}:${deployment.exchanges
+      .map((e) => e.address)
+      .join(":")}`;
   }
   async verifyDeployment() {
     if ((await this.rpc.getChainId()) !== this.deployment.chainId)
       throw new Error(
-        "RPC chain differs from the deployment file. Redeploy on the intended network.",
+        "RPC chain differs from the deployment file. Redeploy on the intended network."
       );
     const expected = [
       ...this.deployment.exchanges.map((exchange) => ({
@@ -95,14 +97,23 @@ export class ExchangeClient {
       expected.map(async ({ address, code }) =>
         runtimeCodeMatches(
           await this.rpc.getCode({ address: getAddress(address), blockNumber }),
-          code,
-        ),
-      ),
+          code
+        )
+      )
     );
     if (matches.includes(false))
       throw new Error(
-        "Deployed contracts differ from this verified build. Run npm run deploy against this chain.",
+        "Deployed contracts differ from this verified build. Run npm run deploy against this chain."
       );
+    // Deployment metadata is observed after verifying this build's deployed runtime.
+    this.deployment.tokens = await Promise.all(
+      this.deployment.tokens.map(async (token) => ({
+        ...token,
+        decimals: await this.token(token.address).read.decimals({
+          blockNumber,
+        }),
+      }))
+    );
   }
   async transactionTimestamp(): Promise<bigint> {
     // The latest mined block can be old on an idle chain; estimation uses the pending block.
@@ -155,15 +166,15 @@ export class ExchangeClient {
                 totalShares,
                 createdAt,
               };
-            }),
+            })
           );
-        }),
+        })
       )
     ).flat();
   }
   async snapshot(
     address: string | undefined,
-    tokens: Token[],
+    tokens: Token[]
   ): Promise<ChainSnapshot> {
     const block = Number(await this.rpc.getBlockNumber());
     const blockNumber = BigInt(block);
@@ -184,7 +195,7 @@ export class ExchangeClient {
             transfers.map((log) => ({
               tokenId: log.args.tokenId,
               to: log.args.to,
-            })),
+            }))
           );
           return Promise.all(
             owners.map(async ({ id, owner }) => {
@@ -200,9 +211,9 @@ export class ExchangeClient {
                 amount1,
                 createdAt,
               };
-            }),
+            })
           );
-        }),
+        })
       ),
       address
         ? Promise.all(
@@ -212,10 +223,10 @@ export class ExchangeClient {
                   token.address,
                   await this.token(token.address).read.balanceOf(
                     [getAddress(address)],
-                    { blockNumber },
+                    { blockNumber }
                   ),
-                ] as const,
-            ),
+                ] as const
+            )
           )
         : Promise.resolve([]),
       address
@@ -233,7 +244,7 @@ export class ExchangeClient {
   quote(pool: Pool, tokenIn: string, amountIn: bigint, block?: number) {
     return this.dex(pool.exchange.address).read.quote(
       [pool.id, getAddress(tokenIn), amountIn],
-      block === undefined ? undefined : { blockNumber: BigInt(block) },
+      block === undefined ? undefined : { blockNumber: BigInt(block) }
     );
   }
   importToken(address: string): Promise<Token> {
@@ -241,7 +252,7 @@ export class ExchangeClient {
   }
   async liquidityActivity(
     pool: Pool,
-    block: number,
+    block: number
   ): Promise<LiquidityActivity> {
     const address = getAddress(pool.exchange.address),
       toBlock = BigInt(block);
@@ -281,7 +292,7 @@ export class ExchangeClient {
       swaps.map((log) => ({
         tokenIn: log.args.tokenIn,
         amountIn: log.args.amountIn,
-      })),
+      }))
     );
     const events = [
       ...added.map((log) => ({
@@ -323,7 +334,7 @@ export class ExchangeClient {
     pool: Pool,
     allPools: Pool[],
     tokenIn: string,
-    supportedTokens: readonly Token[],
+    supportedTokens: readonly Token[]
   ): Promise<Opportunity[]> {
     return opportunities(this, pool, allPools, tokenIn, supportedTokens);
   }
@@ -336,7 +347,7 @@ class ExchangeWriter {
   constructor(
     private client: ExchangeClient,
     private session: WalletSession,
-    private send: SendTransaction,
+    private send: SendTransaction
   ) {}
   private async approve(token: string, spender: string, amount: bigint) {
     const allowance = await this.client
@@ -351,7 +362,7 @@ class ExchangeWriter {
           abi: testTokenAbi,
           functionName: "approve",
           args: [getAddress(spender), amount],
-        }),
+        })
       );
   }
   revokeAllowance(plan: RevokePlan, runtime: RawAllowances) {
@@ -367,7 +378,7 @@ class ExchangeWriter {
     const funding = planNativeFunding(
       String(this.client.deployment.chainId),
       this.session.address,
-      await this.client.localAccounts(),
+      await this.client.localAccounts()
     );
     const funder = funding.sender;
     const fundingWallet = createWalletClient({
@@ -382,7 +393,7 @@ class ExchangeWriter {
           to: this.session.address,
           value: funding.amountWei,
         }),
-      { kind: "dev-faucet", sender: funder },
+      { kind: "dev-faucet", sender: funder }
     );
   }
   async swap(
@@ -390,14 +401,14 @@ class ExchangeWriter {
     tokenIn: string,
     amount: bigint,
     quote: bigint,
-    slippage: bigint,
+    slippage: bigint
   ) {
     await this.approve(tokenIn, pool.exchange.address, amount);
     const plan = makeSwapParameters(
       amount,
       quote,
       slippage,
-      await this.client.transactionTimestamp(),
+      await this.client.transactionTimestamp()
     );
     await this.send("Swap tokens", () =>
       this.session.walletClient.writeContract({
@@ -414,14 +425,14 @@ class ExchangeWriter {
           this.session.address,
           plan.deadline,
         ],
-      }),
+      })
     );
   }
   async addLiquidity(
     pool: Pool,
     amount0: bigint,
     amount1: bigint,
-    slippage: bigint,
+    slippage: bigint
   ) {
     await addLiquidity(this.context(), pool, amount0, amount1, slippage);
   }
@@ -429,7 +440,7 @@ class ExchangeWriter {
     pool: Pool,
     id: bigint,
     amounts: readonly [bigint, bigint],
-    slippage: bigint,
+    slippage: bigint
   ) {
     await removeLiquidity(this.context(), pool, id, amounts, slippage);
   }
@@ -447,12 +458,12 @@ class ExchangeWriter {
   }
   arbitrage(
     route: Opportunity,
-    minimumProfit: string,
+    minimumProfit: string
   ): Promise<ArbitrageResult> {
     return executeArbitrage(
       { client: this.client, session: this.session, send: this.send },
       route,
-      minimumProfit,
+      minimumProfit
     );
   }
 }

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { formatAmount, poolKey, reservePrice } from "../chain/amounts";
+import { poolKey } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import type { ArbitrageResult, Pool } from "../chain/types";
 import {
@@ -19,7 +19,7 @@ export function ArbitragePage({
   pool: Pool;
   onOpenSimulation: () => void;
 }) {
-  const { client, snapshot, symbol, run, pending, session, tokens } = useDex();
+  const { client, snapshot, symbol, run, pending, tokens, amount } = useDex();
   const [tokenIn, setTokenIn] = useState(pool.token0);
   const [minimum, setMinimum] = useState("0.001");
   const [result, setResult] = useState<ArbitrageResult>();
@@ -43,6 +43,9 @@ export function ArbitragePage({
     opportunity,
     minimum,
     snapshot.data?.balances[tokenIn] ?? 0n,
+    tokens.find(
+      (token) => token.address.toLowerCase() === tokenIn.toLowerCase()
+    )!
   );
   if (!supported) {
     return (
@@ -100,12 +103,12 @@ export function ArbitragePage({
               {opportunity.buy.exchange.name} → {opportunity.sell.exchange.name}
             </p>
             <strong>
-              +{formatAmount(opportunity.profit)} {symbol(tokenIn)}
+              +{amount(opportunity.profit, tokenIn)} {symbol(tokenIn)}
             </strong>
             <p>
-              Capital: {formatAmount(opportunity.amountIn)} {symbol(tokenIn)}
+              Capital: {amount(opportunity.amountIn, tokenIn)} {symbol(tokenIn)}
               <br />
-              Expected return: {formatAmount(opportunity.amountOut)}
+              Expected return: {amount(opportunity.amountOut, tokenIn)}
               <br />
               Quoted at block {opportunity.quotedAtBlock}
             </p>
@@ -144,11 +147,11 @@ export function ArbitragePage({
   );
 }
 function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
-  const { symbol } = useDex();
+  const { symbol, amount, price } = useDex();
   return (
     <div data-testid="arbitrage-result">
       <h3>
-        Realized token profit: {formatAmount(result.profit)}{" "}
+        Realized token profit: {amount(result.profit, result.tokenIn)}{" "}
         {symbol(result.tokenIn)}
       </h3>
       <p>
@@ -167,21 +170,22 @@ function ExecutionEvidence({ result }: { result: ArbitrageResult }) {
         <tbody>
           {result.before.map((before) => {
             const next = result.after.find(
-              (p) => poolKey(p) === poolKey(before),
+              (p) => poolKey(p) === poolKey(before)
             )!;
             return (
               <tr key={poolKey(before)}>
                 <td>{before.exchange.name}</td>
                 <td>
-                  {formatAmount(before.reserve0)} /{" "}
-                  {formatAmount(before.reserve1)}
+                  {amount(before.reserve0, before.token0)} /{" "}
+                  {amount(before.reserve1, before.token1)}
                   <br />
-                  {formatAmount(next.reserve0)} / {formatAmount(next.reserve1)}
+                  {amount(next.reserve0, next.token0)} /{" "}
+                  {amount(next.reserve1, next.token1)}
                 </td>
                 <td>
-                  {reservePrice(before)?.toFixed(6)}
+                  {price(before)}
                   <br />
-                  {reservePrice(next)?.toFixed(6)}
+                  {price(next)}
                 </td>
               </tr>
             );

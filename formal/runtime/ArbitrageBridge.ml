@@ -43,7 +43,7 @@ let opportunity_json (value : A.opportunity) = `Assoc [
 ]
 
 let error = function
-  | A.InvalidMinimum -> "Enter a nonnegative minimum profit with at most 18 decimals."
+  | A.InvalidMinimum -> "Enter a nonnegative minimum profit within the principal token precision."
   | A.InvalidRoute -> "This route is no longer a profitable route between matching pools."
   | A.InsufficientCapital -> "Insufficient capital for this route."
   | A.ProfitBelowMinimum -> "The current quote does not meet your minimum profit."
@@ -68,11 +68,11 @@ let supported_tokens value =
 
 let scan value =
   let selected = pool_of_json (Field.member "selected" value) in
-  match scan_supported_assets checked_amount_out selected (markets value) (address "tokenIn" value) (supported_tokens value) with
+  match scan_supported_assets (integer "decimals" value) checked_amount_out selected (markets value) (address "tokenIn" value) (supported_tokens value) with
   | None -> `List []
   | Some result -> `List [opportunity_json result]
 
-let minimum value = parse_units_18 (text "minimum" value)
+let minimum value = parse_units (integer "decimals" value) (text "minimum" value)
 
 let prepare value =
   prepare_supported_assets checked_amount_out (address "arbitrage" value)
@@ -87,7 +87,7 @@ let preview value =
   let route = match Field.member "route" value with
     | `Null -> None | current -> Some (opportunity_of_json current) in
   let decision = A.preview (address "arbitrage" value) route
-    (parse_units_18 (text "minimum" value)) (integer "balance" value) in
+    (parse_units (integer "decimals" value) (text "minimum" value)) (integer "balance" value) in
   match decision with
   | None -> `Assoc ["canExecute", `Bool false; "error", `Null]
   | Some (A.Rejected why) ->
