@@ -47,6 +47,7 @@ A translation command checks generation, not the semantic refinement theorem. Re
 | --- | --- |
 | `theories/Spec/Types.v` | Raw-unit bounds, shared calls, approval policy, deadlines and abstract atomic outcomes |
 | `theories/Spec/AMM.v`, `Units.v` | Fee-adjusted integer quote, product/bounds arguments, token-specific exact amount/slippage parsing and swap parameters; see [token precision](TOKEN-PRECISION.md) |
+| `theories/Spec/Routing.v` | Direct-pool comparison, manual venue selection and captured swap effects; see [swap routing](SWAP-ROUTING.md) |
 | `theories/Spec/Liquidity.v`, `Frontend/LiquidityPolicy.v` | Token transfer model, shares, reserve limits, deposit/redemption/transfer decisions and position values |
 | `theories/Spec/Ledger.v` | ERC721 owner replay, burn removal and current-owner projection |
 | `theories/Spec/Arbitrage.v` | Finite route search, candidate profit, minimum profit and settlement |
@@ -75,7 +76,7 @@ SMTChecker harnesses import production helper code rather than a second arithmet
 | `AMMMath.sol` | `verify-swap.mjs`; report `formal/build/swap-smt.json` | Successful bounded quote arithmetic and assertions; BMC is used for the loop-free helper, with unknown/unsupported results reported separately |
 | `LiquidityAccounting.sol` | `verify-liquidity.cjs`; `.local/formal/liquidity-smt.json` | 11 proved assertions about successful reserve/share updates |
 | `ArbitrageSettlement.sol` | `verify-arbitrage.cjs`; `.local/formal/arbitrage-smt.json` | Four proved settlement assertions; `settlement_smt_assertions` connects their conjunction to the shared settlement predicate |
-| Generated `calculateAmountOut` | `SwapRefinement.v`; `formal/build/swap-proof.json` | `calculate_amount_out_runs` and `frontend_swap_quote_matches_contract` connect the actual frontend request to the inherited helper’s optimized generated-Yul `Run.t` result and unchanged State |
+| Generated `calculateAmountOut` | `SwapRefinement.v`; `formal/build/swap-proof.json` | `calculate_amount_out_runs`, `frontend_swap_quote_matches_contract` and `routed_swap_quote_matches_contract` connect single-pool and captured routed requests to the inherited helper’s optimized generated-Yul `Run.t` result and unchanged State |
 | Generated reserve accounting | `LiquidityRefinement.v`; `.local/formal/liquidity-rocq.json` | `reduce_reserve_runs` and `increase_reserve_runs` establish successful production reserve helper execution |
 | Generated supply accounting | `LiquiditySupplyRefinement.v`; `.local/formal/liquidity-supply-rocq.json` | `mint_total_refines_supply` and `burn_total_refines_supply` connect actual helper execution to shared `Liquidity.mint_total` / `burn_total` |
 | Generated `checkedProfit` | `ArbitrageRefinement.v`; `.local/formal/arbitrage-rocq.json` | `checked_profit_runs` and `checked_profit_refines_settlement` use the official `Run.t` execution relation |

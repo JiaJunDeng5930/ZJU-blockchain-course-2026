@@ -53,7 +53,7 @@ npm --prefix frontend run dev
 
 ## 操作流程
 
-- **Swap**：首页直接显示兑换卡。选择市场、输入卖出数量，查看买入报价；可反转方向、用 Max 填入余额，在 Settings 中调整滑点。点击 **Swap**，按需完成批准与交换。
+- **Swap**：首页直接显示兑换卡。选择交易对、输入卖出数量，默认用 Best quote 比较本部署的直接池，选择实际收到数量最多的池子；也可手动指定成交池。可反转方向、用 Max 填入余额，在 Settings 中调整滑点。点击 **Swap**，按需完成批准与交换。
 - **Liquidity**：先查看自己的头寸，点击 **New position** 选择池和投入量，再 Review 后确认铸造 NFT。已有池按当前比例投入，未使用部分留在钱包；新池由首次提供者设定初始比例。
 - **持仓管理**：Liquidity 按交易对列出头寸。Manage 中可查看所有权比例、当前双币资产、估值、相对原始存币的价值变化和元数据；价值变化包含费用与无常损失，不是独立的手续费余额。可转让 NFT，或在确认预计/最低收到数量后烧毁赎回；取消不会发交易，转让后由新持有者赎回。
 - **Pool information**：按需查看当前提供者、历史添加/撤销、累计交易量和池费用，退出头寸的历史仍保留。
@@ -148,7 +148,7 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 | 范围 | 验证连接 | 保证边界 |
 | --- | --- | --- |
 | 前端业务内核 | Rocq 定理、`coqchk`、直接提取到实际加载的 JavaScript | JSON/OCaml 桥接、React 渲染、viem、钱包和 RPC 遵守接口约定 |
-| AMM 报价 | 共享模型、实际 `AMMMath` 的 SMT 检查，以及 `calculate_amount_out_runs` / `frontend_swap_quote_matches_contract` 的 `Run.t` 证明 | 有效 uint112 储备和正输入下，前端提交报价对应既有 harness 继承的生成纯函数，且状态不变；不覆盖 MiniDEX 储备存储、ABI 或 EVM 字节码 |
+| AMM 报价 | 共享模型、实际 `AMMMath` 的 SMT 检查，以及 `calculate_amount_out_runs`、单池与路由前端的 `Run.t` 连接 | 有效 uint112 储备和正输入下，前端提交报价对应既有 harness 继承的生成纯函数，且状态不变；不覆盖 MiniDEX 储备存储、ABI 或 EVM 字节码 |
 | 流动性会计 | 共享模型、实际 `LiquidityAccounting` 的 SMT 检查，以及储备加减和份额增减 helper 的 `Run.t` 证明 | 成功路径的有界储备与份额更新；不覆盖 NFT/储备存储组合、外部代币效果、OpenZeppelin `sqrt` / `mulDiv` 实现或完整 EVM |
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
 | WETH 与测试币 faucet | 前端本金/最高 gas 预算、资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
@@ -211,29 +211,41 @@ npm run test:precision
 
 相关共享规格的 104 条证明通过假设审计，当前前端请求与实际 AMM 函数的精化连接以及流动性、套利 helper 精化检查通过。独立公开验收的 9 个真实链场景覆盖 0/6/8/255 位资产、混合精度价格与兑换、NFT 流动性赎回、授权额度和套利；其中一次 6 位本金原子套利实际盈利 `7.691062`。这些结果不扩大前述 EVM、元数据和外部接口的验证边界。
 
+### 多池兑换报价
+
+```bash
+npm run test:routing
+```
+
+Best quote 在同一交易对的已知直接池中比较给定输入的实际输出，包含池手续费和价格影响，不按储备中间价排序。输入量变化可能改变最佳池。它不搜索多跳路径、不拆单，也不把 gas 折算成输出币种。相同报价按快照中的确定池顺序选择。
+
+手动指定的池不可用时会明确拒绝，不静默改到其他交易所。点击提交后，池、金额、报价及最低收到数量作为同一请求固定；批准期间行情改变不会暗换支出合约。设计原因见 [ADR 009](docs/adr/009-select-swaps-by-executable-quotes.md)，模型、接口和验证边界见[兑换路由说明](formal/SWAP-ROUTING.md)。
+
+新增路由模型的 26 条证明通过假设审计，`routed_swap_quote_matches_contract` 将所选报价连接到实际 AMM helper。独立公开验收的 9 个真实链场景通过，覆盖金额改变最佳池、手动选择、匿名报价、精确 Max、候选过滤、同价规则，以及授权期间固定路由和换钱包后的停止执行。
+
 ## 项目运行截图
 
-以下五张图记录当前版本的真实页面，仅用于展示交付界面，不作为形式化证明或浏览器错误发现的依据。
+以下截图来自项目实际运行。兑换图更新为本轮的 Best quote 界面，其余图片保留核心流程的既有运行记录；截图仅展示界面，不作为形式化证明或浏览器错误发现的依据。
 
 ### 兑换
 
-![当前 Swap 页面](docs/screenshots/10-formal-swap.jpg)
+![Best quote 兑换界面](docs/screenshots/15-best-quote.png)
 
 ### 流动性与 NFT
 
-![当前 Liquidity 页面](docs/screenshots/11-formal-liquidity.jpg)
+![Liquidity 运行截图](docs/screenshots/11-formal-liquidity.jpg)
 
 ### 资产与交易池
 
-![当前 Pools and tokens 页面](docs/screenshots/12-formal-assets.jpg)
+![Pools and tokens 运行截图](docs/screenshots/12-formal-assets.jpg)
 
 ### 原子套利
 
-![当前 Arbitrage 页面](docs/screenshots/13-formal-arbitrage.jpg)
+![Arbitrage 运行截图](docs/screenshots/13-formal-arbitrage.jpg)
 
 ### 多用户模拟
 
-![当前 Simulation 页面](docs/screenshots/14-formal-simulation.jpg)
+![Simulation 运行截图](docs/screenshots/14-formal-simulation.jpg)
 
 ### 历史 MetaMask 确认
 
