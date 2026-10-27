@@ -1,12 +1,15 @@
-import { useReducer, useState } from "react";
+import { useEffect, useReducer, useState } from "react";
 import { tokenLabel } from "../chain/amounts";
 import { formatUnits } from "../logic/units";
 import {
   createRoutedSwapController,
   type RoutedSwapEvent,
+  type RoutedSwapPlan,
+  type RoutedSwapView
 } from "../logic/routing";
 import { useDex } from "../chain/DexProvider";
-import type { Pool } from "../chain/types";
+import type { Pool, SwapResult } from "../chain/types";
+import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import "./SwapPage.css";
 
 type SwapPageProps = {
@@ -25,11 +28,17 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
     run,
     amount,
     precision,
-    tokens,
+    tokens
   } = useDex();
   const [controller] = useState(() => createRoutedSwapController(pool.token0));
   const [, render] = useReducer((value: boolean) => !value, false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [review, setReview] = useState<{
+    plan: RoutedSwapPlan;
+    view: RoutedSwapView;
+  }>();
+  const [settlement, setSettlement] = useState<SwapResult>();
+  useEffect(() => setReview(undefined), [session?.address]);
   const context = {
     tokens,
     pool,
@@ -38,7 +47,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
     block: snapshot.data?.block,
     balances: snapshot.data?.balances,
     connected: !!session,
-    pending,
+    pending
   };
   const view = controller.view(context);
   const { inputToken, outputToken, balance, outputBalance } = view;
@@ -47,9 +56,9 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
     render();
     if (effect?.kind === "wallet") onOpenWallet();
     if (effect?.kind === "swap") {
-      run(`Swap on ${effect.pool.exchange.name} #${effect.pool.id}`, (writer) =>
-        writer.routedSwap(effect)
-      );
+      // The extracted effect is the reviewed intent. Live quotes may continue to
+      // change, but confirmation submits this same route, input and minimum.
+      setReview({ plan: effect, view });
     }
   }
 
@@ -98,7 +107,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           </select>
           <select
             aria-label="Exchange"
-            value={view.mode === "auto" ? "auto" : view.manualKey ?? ""}
+            value={view.mode === "auto" ? "auto" : (view.manualKey ?? "")}
             disabled={pending}
             onChange={(event) =>
               dispatch({ kind: "route", value: event.target.value })
@@ -257,7 +266,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
         )}
 
         <button className="trade-submit" type="submit" disabled={view.disabled}>
-          {view.actionLabel}
+          {view.canSubmit ? "Review swap" : view.actionLabel}
         </button>
 
         {view.amount !== undefined && (
@@ -320,6 +329,137 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           </details>
         )}
       </form>
+      {review && (
+        <ConfirmationDialog
+          title="Review swap"
+          onClose={() => setReview(undefined)}
+        >
+          <dl className="trade-review-values">
+            <dt>Pay</dt>
+            <dd>
+              {formatUnits(
+                review.plan.input,
+                precision(review.plan.inputToken)
+              )}{" "}
+              {tokenLabel(
+                review.plan.inputToken,
+                symbol(review.plan.inputToken)
+              )}
+            </dd>
+            <dt>Estimated receive</dt>
+            <dd>
+              {formatUnits(
+                review.plan.quoted,
+                precision(review.plan.outputToken)
+              )}{" "}
+              {tokenLabel(
+                review.plan.outputToken,
+                symbol(review.plan.outputToken)
+              )}
+            </dd>
+            <dt>Minimum received</dt>
+            <dd>
+              {formatUnits(
+                review.plan.minimum,
+                precision(review.plan.outputToken)
+              )}{" "}
+              {tokenLabel(
+                review.plan.outputToken,
+                symbol(review.plan.outputToken)
+              )}
+            </dd>
+            <dt>Exchange</dt>
+            <dd title={review.plan.pool.exchange.address}>
+              {review.plan.pool.exchange.name} #{String(review.plan.pool.id)}
+            </dd>
+            <dt>Quote block</dt>
+            <dd>{review.plan.block}</dd>
+            <dt>Slippage tolerance</dt>
+            <dd>{review.view.slippageText}%</dd>
+            <dt>Price impact, including fee</dt>
+            <dd
+              className={
+                review.view.highImpact ? "trade-impact-warning" : undefined
+              }
+            >
+              {review.view.impactText}%
+            </dd>
+            <dt>Liquidity provider fee</dt>
+            <dd>
+              {review.view.fee === undefined
+                ? "—"
+                : formatUnits(
+                    review.view.fee,
+                    precision(review.plan.inputToken)
+                  )}{" "}
+              {symbol(review.plan.inputToken)}
+            </dd>
+          </dl>
+          <p>
+            Token approval may require a separate wallet confirmation. Both
+            transactions use ETH for gas. The minimum received stays fixed while
+            approval is pending.
+          </p>
+          <button
+            className="button-primary"
+            disabled={pending}
+            onClick={() => {
+              const { plan } = review;
+              setReview(undefined);
+              run(
+                `Swap on ${plan.pool.exchange.name} #${plan.pool.id}`,
+                async (writer) => {
+                  setSettlement(await writer.routedSwap(plan));
+                }
+              );
+            }}
+          >
+            Confirm swap
+          </button>
+        </ConfirmationDialog>
+      )}
+      {settlement && (
+        <section className="trade-settlement" aria-label="Last confirmed swap">
+          <h2>Last confirmed swap</h2>
+          <dl className="trade-review-values">
+            <dt>Paid</dt>
+            <dd>
+              {formatUnits(settlement.amountIn, precision(settlement.tokenIn))}{" "}
+              {tokenLabel(settlement.tokenIn, symbol(settlement.tokenIn))}
+            </dd>
+            <dt>Received</dt>
+            <dd>
+              {formatUnits(
+                settlement.amountOut,
+                precision(settlement.tokenOut)
+              )}{" "}
+              {tokenLabel(settlement.tokenOut, symbol(settlement.tokenOut))}
+            </dd>
+            <dt>Quoted receive</dt>
+            <dd>
+              {formatUnits(settlement.quoted, precision(settlement.tokenOut))}{" "}
+              {symbol(settlement.tokenOut)}
+            </dd>
+            <dt>Minimum received</dt>
+            <dd>
+              {formatUnits(settlement.minimum, precision(settlement.tokenOut))}{" "}
+              {symbol(settlement.tokenOut)}
+            </dd>
+            <dt>Exchange</dt>
+            <dd title={settlement.pool.exchange.address}>
+              {settlement.pool.exchange.name} #{String(settlement.pool.id)}
+            </dd>
+            <dt>Account</dt>
+            <dd>{settlement.receipt.from}</dd>
+            <dt>Confirmed block</dt>
+            <dd>{settlement.receipt.blockNumber.toString()}</dd>
+            <dt>Transaction</dt>
+            <dd>
+              <code>{settlement.receipt.transactionHash}</code>
+            </dd>
+          </dl>
+        </section>
+      )}
     </div>
   );
 }
@@ -329,7 +469,7 @@ function TokenSelector({
   value,
   addresses,
   disabled,
-  onChange,
+  onChange
 }: {
   label: string;
   value: string;

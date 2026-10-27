@@ -4,6 +4,7 @@ import {
   defineChain,
   getAddress,
   getContract,
+  parseEventLogs,
   http,
   type Address,
   type Hex,
@@ -37,6 +38,7 @@ import { executeWrap } from "./wrapping";
 import { opportunities, executeArbitrage } from "./arbitrage";
 import type {
   ArbitrageResult,
+  SwapResult,
   LiquidityActivity,
   ChainSnapshot,
   Deployment,
@@ -397,16 +399,49 @@ class ExchangeWriter {
       { kind: "dev-faucet", sender: funder }
     );
   }
-  routedSwap(plan: RoutedSwapPlan) {
-    return this.swap(
+  async routedSwap(plan: RoutedSwapPlan): Promise<SwapResult> {
+    const receipt = await this.executeSwap(
       plan.pool,
       plan.inputToken,
       plan.input,
       plan.quoted,
       plan.slippage
     );
+    const event = parseEventLogs({
+      abi: miniDexAbi,
+      eventName: "Swap",
+      logs: receipt.logs,
+      strict: true
+    }).find(
+      (event) =>
+        getAddress(event.address) === getAddress(plan.pool.exchange.address) &&
+        event.args.poolId === plan.pool.id
+    );
+    // DEFENSE: a successful swap must provide its settlement event; incomplete RPC
+    // receipt logs cannot be presented as an actual received amount.
+    if (!event)
+      throw new Error("Confirmed swap is missing its settlement event.");
+    return {
+      pool: plan.pool,
+      tokenIn: event.args.tokenIn,
+      tokenOut: plan.outputToken,
+      amountIn: event.args.amountIn,
+      amountOut: event.args.amountOut,
+      quoted: plan.quoted,
+      minimum: plan.minimum,
+      receipt
+    };
   }
   async swap(
+    pool: Pool,
+    tokenIn: string,
+    amount: bigint,
+    quote: bigint,
+    slippage: bigint
+  ) {
+    await this.executeSwap(pool, tokenIn, amount, quote, slippage);
+  }
+  private async executeSwap(
     pool: Pool,
     tokenIn: string,
     amount: bigint,
@@ -420,7 +455,7 @@ class ExchangeWriter {
       slippage,
       await this.client.transactionTimestamp()
     );
-    await this.send("Swap tokens", () =>
+    return this.send("Swap tokens", () =>
       this.session.walletClient.writeContract({
         account: this.session.address,
         chain: this.client.chain,
@@ -433,8 +468,8 @@ class ExchangeWriter {
           plan.input,
           plan.minimum,
           this.session.address,
-          plan.deadline,
-        ],
+          plan.deadline
+        ]
       })
     );
   }

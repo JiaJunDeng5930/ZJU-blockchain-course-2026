@@ -17,6 +17,7 @@ export type RoutedSwapPlan = {
   readonly kind: "swap";
   readonly pool: Pool;
   readonly inputToken: string;
+  readonly outputToken: string;
   readonly input: bigint;
   readonly quoted: bigint;
   readonly minimum: bigint;
@@ -93,6 +94,7 @@ function decode(serialized: string) {
     base.effect?.kind === "swap" && value.effect?.kind === "swap"
       ? {
           ...base.effect,
+          outputToken: base.outputToken,
           pool: decodePool(value.effect.pool),
           minimum: BigInt(value.effect.minimum),
           block: Number(value.effect.block),
