@@ -18,6 +18,19 @@ export type SimulationTransaction = {
   blockNumber: number;
   gasUsed: string;
   status: number;
+  liquidity?: { exchange: string; poolId: string; positionId: string };
+};
+export type SimulationPositionEvidence = {
+  exchange: string;
+  poolId: string;
+  positionId: string;
+  account: string;
+  mintHash: string;
+  redeemHash: string | null;
+};
+export type SimulationJournalSummary = {
+  transactionCount: number;
+  positions: SimulationPositionEvidence[];
 };
 export type MarketSnapshot = {
   exchange: string;
@@ -90,6 +103,7 @@ export type SimulationReport = Omit<
   };
 };
 export type SimulationMessage =
+  | { type: "transaction"; transaction: SimulationTransaction }
   | { type: "progress"; progress: SimulationProgress }
   | { type: "finished"; report: SimulationReport };
 export type SimulationJob = {
@@ -108,4 +122,15 @@ export type SimulationJob = {
   error: string | null;
   reportAvailable: boolean;
   rollback: SimulationReport["rollback"] | null;
+  journal?: SimulationJournalSummary;
+};
+export type SimulationJournal = {
+  version: 1;
+  jobId: string;
+  state: SimulationJob["state"];
+  options: SimulationOptions | null;
+  finishedAt: string | null;
+  error: string | null;
+  transactions: SimulationTransaction[];
+  positions: SimulationPositionEvidence[];
 };

@@ -44,7 +44,7 @@ const stateLabels: Record<SimulationJob["state"], string> = {
   failed: "Failed",
 };
 export function SimulationPage() {
-  const { symbol, refresh, tokens } = useDex();
+  const { client, symbol, refresh, tokens } = useDex();
   const asset = (address: string) => tokenLabel(address, symbol(address));
   const amount = (value: string, address: string) =>
     formatUnits(BigInt(value), tokenDecimals(tokens, address));
@@ -99,10 +99,17 @@ export function SimulationPage() {
       <section className="card">
         <h2>20-account market simulation</h2>
         <p>
-          Let 20 funded test accounts trade and add or remove liquidity across
+          Let 20 test accounts trade and add or remove liquidity across
           Harbor and Summit. A separate arbitrageur checks both market
           directions and executes profitable routes atomically. These are real
           local-chain transactions.
+        </p>
+        <p>
+          Uses existing balances, without automatic top-ups. All accounts need
+          ETH for gas. Account 2 needs 1000 {asset(client.deployment.tokens[0].address)}
+          {" "}for the initial price displacement; Account 20 needs at least one
+          unit of either market token for scanning. Prepare funds in the wallet.
+          Checks cover preparation, not the later random workload.
         </p>
         <form
           className="form"
@@ -217,6 +224,14 @@ export function SimulationPage() {
                 Download run report
               </a>
             )}
+            {data?.id && data.journal && (
+              <a
+                href={`/api/simulation/journal?jobId=${encodeURIComponent(data.id)}`}
+                download
+              >
+                Download transaction journal
+              </a>
+            )}
           </div>
         </form>
         {view.error && <p role="alert">{view.error}</p>}
@@ -239,7 +254,7 @@ export function SimulationPage() {
             {progress
               ? ` · ${view.active ? phaseLabels[progress.phase] + " · " : ""}${
                   progress.completedRounds
-                } rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
+                } recorded rounds · ${progress.elapsedSeconds.toFixed(1)} seconds at last update`
               : ""}
           </p>
         )}
@@ -289,7 +304,52 @@ export function SimulationPage() {
             this is a partial run.
           </p>
         )}
+        {data?.state === "failed" && (
+          <p>
+            Confirmed transactions remain on chain; final cleanup was not
+            reported. Download the journal and inspect the listed NFTs in
+            Liquidity using their wallet accounts. Missing confirmation
+            responses may require checking the chain too.
+          </p>
+        )}
       </section>
+      {data?.journal && data.journal.positions.length > 0 && (
+        <section className="card sources">
+          <h2>Positions created by this run</h2>
+          <p>
+            {data.journal.transactionCount} transaction receipts received,
+            including approvals. These NFTs were minted by this run; existing
+            positions are excluded. Redemption records cover worker receipts,
+            not external transfers or burns. Check Liquidity for current ownership.
+          </p>
+          <div className="table-scroll" style={{ maxHeight: 420 }}>
+            <table>
+              <thead>
+                <tr>
+                  <th>DEX / pool</th>
+                  <th>NFT</th>
+                  <th>Minted for</th>
+                  <th>Mint transaction</th>
+                  <th>Redemption in this run</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.journal.positions.map((position) => (
+                  <tr key={`${position.exchange}:${position.positionId}`}>
+                    <td><code>{position.exchange}</code> / #{position.poolId}</td>
+                    <td>#{position.positionId}</td>
+                    <td><code>{position.account}</code></td>
+                    <td><code>{position.mintHash}</code></td>
+                    <td>{position.redeemHash
+                      ? <code>{position.redeemHash}</code>
+                      : "No redemption recorded"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </section>
+      )}
       {progress && (
         <>
           <dl className="simulation-metrics" aria-label="Simulation metrics">
@@ -441,8 +501,10 @@ export function SimulationPage() {
           <section className="card sources">
             <h2>Latest confirmed activity</h2>
             <p>
-              The latest 100 transactions appear here; download the report for
-              every transaction and full before/after evidence.
+              The latest 100 transactions from market-progress updates appear
+              here. The transaction journal includes all receipts received by
+              the service, even if the run later fails; a final run report also
+              includes the completed before/after and rollback evidence.
             </p>
             <div className="table-scroll" style={{ maxHeight: 420 }}>
               <table>
@@ -466,7 +528,9 @@ export function SimulationPage() {
                       <td>
                         {transaction.status === 1
                           ? "Confirmed"
-                          : "Reverted as expected"}
+                          : transaction.action === "expectedArbitrageRevert"
+                            ? "Reverted as expected"
+                            : "Reverted"}
                       </td>
                       <td>
                         <code>{transaction.hash}</code>

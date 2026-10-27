@@ -11,6 +11,7 @@ import {
   type ContractTransactionResponse,
   type InterfaceAbi,
   type JsonRpcSigner,
+  type TransactionReceipt,
 } from "ethers";
 
 import type {
@@ -101,6 +102,19 @@ const poolIds = await Promise.all(
       ) as Promise<bigint>,
   ),
 );
+// Check the actual preparation calls before approving or displacing either pool.
+const [etherBalances, seedBalance, capitalBalances] = await Promise.all([
+  Promise.all(addresses.map((address) => provider.getBalance(address))),
+  tokens[0].balanceOf(addresses[1]) as Promise<bigint>,
+  Promise.all(tokens.map((token) => token.balanceOf(addresses[19]) as Promise<bigint>)),
+]);
+const noGas = addresses.filter((_, index) => etherBalances[index] === 0n);
+if (noGas.length)
+  throw new Error(`Simulation accounts have no ETH for gas: ${noGas.join(", ")}. Claim test ETH in the wallet before starting.`);
+if (seedBalance < parseEther("1000"))
+  throw new Error(`Account 2 (${addresses[1]}) needs 1000 ${deployment.tokens[0].symbol} for the initial price displacement. Claim test tokens in the wallet before starting.`);
+if (capitalBalances.every((balance) => balance < parseEther("1")))
+  throw new Error(`Account 20 (${addresses[19]}) needs at least 1 ${deployment.tokens[0].symbol} or ${deployment.tokens[1].symbol}, the smallest scanned arbitrage input. Claim test tokens in the wallet before starting.`);
 if (poolIds.some((id) => id === 0n))
   throw new Error("Deploy seeded A/B pools before running the simulation");
 const arb = new Contract(
@@ -223,18 +237,43 @@ async function confirmed(
   pending: Promise<ContractTransactionResponse>,
 ) {
   const tx = await pending;
-  const receipt = await tx.wait(1, 30_000);
+  let receipt: TransactionReceipt | null;
+  try {
+    receipt = await tx.wait(1, 30_000);
+  } catch (error) {
+    // DEFENSE: ethers rejects wait() for a mined revert; its actual receipt is still execution evidence.
+    if (isError(error, "CALL_EXCEPTION") && error.receipt?.status === 0)
+      await recordTransaction(action, await signer.getAddress(), error.receipt);
+    throw error;
+  }
   if (!receipt || receipt.status !== 1)
     throw new Error(`Simulation transaction did not succeed: ${tx.hash}`);
-  transactions.push({
+  await recordTransaction(action, await signer.getAddress(), receipt);
+  return receipt;
+}
+async function recordTransaction(action: SimulationAction, account: string, receipt: TransactionReceipt) {
+  const transaction: SimulationTransaction = {
     action,
-    account: await signer.getAddress(),
-    hash: tx.hash,
+    account,
+    hash: receipt.hash,
     blockNumber: receipt.blockNumber,
     gasUsed: receipt.gasUsed.toString(),
-    status: receipt.status,
-  });
-  return receipt;
+    status: receipt.status!,
+  };
+  if (receipt.status === 1 && (action === "addLiquidity" || action === "removeLiquidity")) {
+    const name = action === "addLiquidity" ? "LiquidityAdded" : "LiquidityRemoved";
+    for (const log of receipt.logs) {
+      const exchange = deployment.exchanges.findIndex((item) => item.address.toLowerCase() === log.address.toLowerCase());
+      if (exchange < 0) continue;
+      const event = dex[exchange].interface.parseLog({ topics: [...log.topics], data: log.data });
+      if (event?.name === name)
+        transaction.liquidity = { exchange: log.address, poolId: event.args.poolId.toString(), positionId: event.args.positionId.toString() };
+    }
+  }
+  transactions.push(transaction);
+  // Publish each received confirmation before the worker can start another chain write.
+  // KNOWN LIMITATION: a killed process or timed-out receipt wait can leave the final submission absent; this journal is not a chain rescan.
+  await publish({ type: "transaction", transaction });
 }
 async function approve(
   tokenAddress: string,
@@ -536,14 +575,7 @@ async function verifyRollback() {
   const after = { pools: await snapshot(), balances: await balances() };
   if (JSON.stringify(before) !== JSON.stringify(after))
     throw new Error("Failed arbitrage changed reserves or token balances");
-  transactions.push({
-    action: "expectedArbitrageRevert",
-    account: addresses[19],
-    hash: receipt.hash,
-    blockNumber: receipt.blockNumber,
-    gasUsed: receipt.gasUsed.toString(),
-    status: 0,
-  });
+  await recordTransaction("expectedArbitrageRevert", addresses[19], receipt);
   return {
     hash: receipt.hash,
     status: 0,

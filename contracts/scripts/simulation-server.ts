@@ -6,11 +6,15 @@ import {
 import { fork, type ChildProcess } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { randomUUID } from "node:crypto";
+import { readFile, rename } from "node:fs/promises";
 import type {
   SimulationJob,
   SimulationMessage,
   SimulationOptions,
+  SimulationJournal,
+  SimulationJournalSummary,
   SimulationReport,
+  SimulationTransaction,
 } from "./simulation-protocol.js";
 
 const port = Number(process.env.SIMULATION_PORT ?? 8787);
@@ -31,6 +35,7 @@ const allowedOrigins = new Set([
 ]);
 let worker: ChildProcess | null = null;
 let report: SimulationReport | null = null;
+let transactions: SimulationTransaction[] = [];
 let job: SimulationJob = {
   id: null,
   state: "idle",
@@ -41,12 +46,52 @@ let job: SimulationJob = {
   reportAvailable: false,
   rollback: null,
 };
+// A terminal job can be handed over during an explicit service upgrade without replacing its result.
+const restorePath = process.env.SIMULATION_RESTORE_SNAPSHOT;
+if (restorePath) {
+  const saved = JSON.parse(await readFile(restorePath, "utf8")) as {
+    job: SimulationJob;
+    report: SimulationReport;
+    transactions: SimulationTransaction[];
+  };
+  if (!saved.job.id || !["completed", "stopped"].includes(saved.job.state) ||
+      saved.job.state !== saved.report.status || !saved.job.reportAvailable)
+    throw new Error("Simulation handoff requires a terminal job and its completed report.");
+  job = saved.job;
+  report = saved.report;
+  transactions = saved.transactions;
+}
 class RequestError extends Error {
   readonly status: number;
   constructor(status: number, message: string) {
     super(message);
     this.status = status;
   }
+}
+function journalSummary(): SimulationJournalSummary {
+  const positions = new Map<
+    string,
+    SimulationJournalSummary["positions"][number]
+  >();
+  for (const transaction of transactions) {
+    if (!transaction.liquidity) continue;
+    const identity = transaction.liquidity;
+    const key = `${identity.exchange.toLowerCase()}:${identity.positionId}`;
+    if (transaction.action === "addLiquidity") {
+      positions.set(key, {
+        ...identity,
+        account: transaction.account,
+        mintHash: transaction.hash,
+        redeemHash: null,
+      });
+    } else {
+      positions.get(key)!.redeemHash = transaction.hash;
+    }
+  }
+  return { transactionCount: transactions.length, positions: [...positions.values()] };
+}
+function observation(): SimulationJob {
+  return { ...job, journal: journalSummary() };
 }
 
 function respond(response: ServerResponse, status: number, body: unknown) {
@@ -120,6 +165,7 @@ function start(input: SimulationOptions) {
       "A simulation is already running. Stop or wait for it before starting another.",
     );
   report = null;
+  transactions = [];
   const id = randomUUID();
   job = {
     id,
@@ -152,7 +198,9 @@ function start(input: SimulationOptions) {
   });
   child.on("message", (incoming: unknown) => {
     const message = incoming as SimulationMessage;
-    if (message.type === "progress") {
+    if (message.type === "transaction") {
+      transactions.push(message.transaction);
+    } else if (message.type === "progress") {
       job = {
         ...job,
         progress: message.progress,
@@ -196,7 +244,30 @@ const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", `http://127.0.0.1:${port}`);
     const pathname = url.pathname;
     if (request.method === "GET" && pathname === "/api/simulation")
-      return respond(response, 200, job);
+      return respond(response, 200, observation());
+    if (request.method === "GET" && pathname === "/api/simulation/journal") {
+      if (job.id === null)
+        throw new RequestError(404, "There is no simulation transaction journal.");
+      // DEFENSE: a download opened from an older job must not return a newer run's receipts.
+      if (url.searchParams.get("jobId") !== job.id)
+        throw new RequestError(409, "Simulation changed. Refresh before downloading its journal.");
+      const evidence: SimulationJournal = {
+        version: 1,
+        jobId: job.id,
+        state: job.state,
+        options: job.options,
+        finishedAt: job.finishedAt,
+        error: job.error,
+        transactions,
+        positions: journalSummary().positions,
+      };
+      response.writeHead(200, {
+        "content-type": "application/json; charset=utf-8",
+        "content-disposition": `attachment; filename="twopool-simulation-${job.id}-journal.json"`,
+        "cache-control": "no-store",
+      });
+      return response.end(JSON.stringify(evidence, null, 2));
+    }
     if (request.method === "GET" && pathname === "/api/simulation/report") {
       // DEFENSE: an already displayed download link must not return a newer job's report.
       if (
@@ -222,7 +293,7 @@ const server = createServer(async (request, response) => {
     if (request.method === "POST" && pathname === "/api/simulation/start") {
       const input = options(await body(request));
       start(input);
-      return respond(response, 202, job);
+      return respond(response, 202, observation());
     }
     if (request.method === "POST" && pathname === "/api/simulation/stop") {
       const input = await body(request);
@@ -244,7 +315,7 @@ const server = createServer(async (request, response) => {
       // DEFENSE: a finished worker disconnects IPC before close; a stop can
       // arrive in that interval and must wait for its existing final report.
       if (worker.connected) worker.send({ type: "stop" });
-      return respond(response, 202, job);
+      return respond(response, 202, observation());
     }
     throw new RequestError(404, "Simulation endpoint not found.");
   } catch (error) {
@@ -253,9 +324,10 @@ const server = createServer(async (request, response) => {
     });
   }
 });
-server.listen(port, "127.0.0.1", () =>
-  console.log(`Simulation service listening on http://127.0.0.1:${port}`),
-);
+server.listen(port, "127.0.0.1", async () => {
+  if (restorePath) await rename(restorePath, `${restorePath}.imported`);
+  console.log(`Simulation service listening on http://127.0.0.1:${port}`);
+});
 process.on("SIGTERM", () => {
   if (worker) worker.send({ type: "stop" });
   server.close();
