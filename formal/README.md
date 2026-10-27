@@ -9,12 +9,11 @@ Prepare the pinned, isolated tools using [TOOLCHAIN.md](TOOLCHAIN.md). Coq 8.20.
 From the repository root:
 
 ```bash
-node scripts/bootstrap-formal.mjs
 npm run setup
-npm --prefix contracts run compile
-node scripts/generate-frontend-abi.mjs
-node scripts/build-formal.mjs
-npm --prefix frontend run build
+npm run formal:bootstrap
+npm run build
+npm run formal:verify
+npm test
 ```
 
 The bootstrap also writes `.local/toolchain/env.sh` for manually invoked verification scripts. Source that file before the commands below. Bootstrap reuse is an explicit mode documented in TOOLCHAIN.md; a reused compiler is checked against its pinned sources and build patch.
@@ -37,7 +36,7 @@ node contracts/scripts/verify-liquidity.rocq.cjs
 node contracts/scripts/verify-liquidity-supply.rocq.cjs
 ```
 
-A translation command checks generation, not the semantic refinement theorem. Read the corresponding proof runner's result before attributing refinement. `verify-wrapping.cjs` records the current unsupported whole-source SMT attempt; it is not a successful WETH verification gate.
+A translation command checks generation, not the semantic refinement theorem. Read the corresponding proof runner's result before attributing refinement. `verify-wrapping.cjs` and `verify-assets.cjs` record the current unclosed whole-source WETH/faucet SMT attempts. Unsupported features, unknown results or solver timeout do not certify either contract. They must not be presented as successful proof gates.
 
 `build-formal.mjs` copies sources into a fresh build snapshot, orders dependencies, runs `coqc` and `coqchk`, extracts the selected kernels, compiles the OCaml bridges, and links one JavaScript program. Explicit Zarith JavaScript runtime files and `--disable genprim` prevent missing bigint primitives from becoming dummy stubs. Output is installed atomically as `frontend/src/generated/dex_logic.js`. Generated ABI and logic files are ignored by Git and regenerated from source. Source hashes, the compiler, and the output hash are recorded in `.local/formal/frontend-build.json`; the build log is adjacent. A generated program change requires a full page reload because an old React closure may retain an OCaml controller from the previous program.
 
@@ -69,6 +68,7 @@ SMTChecker harnesses import production helper code rather than a second arithmet
 | `LiquidityAccounting.sol` | `verify-liquidity.cjs`; `.local/formal/liquidity-smt.json` | 11 proved assertions about successful reserve/share updates |
 | `ArbitrageSettlement.sol` | `verify-arbitrage.cjs`; `.local/formal/arbitrage-smt.json` | Four proved settlement assertions; `settlement_smt_assertions` connects their conjunction to the shared settlement predicate |
 | Generated `checkedProfit` | `ArbitrageRefinement.v`; `.local/formal/arbitrage-rocq.json` | `checked_profit_runs` and `checked_profit_refines_settlement` use the official `Run.t` execution relation |
+| `TestToken.faucet` and inherited OpenZeppelin mint | `verify-assets.cjs`; `.local/formal/assets-smt.json` | Full faucet balance/supply verification has not closed; the frontend faucet capability proof does not establish the ERC20 implementation |
 | `WrappedEther.sol` and inherited OpenZeppelin code | `verify-wrapping.cjs`; `.local/formal/wrapping-smt.json` | The attempted full-source check is unproved because the upstream checker reports unsupported features |
 
 Liquidity reserve and supply refinement sources are separate proof obligations. A completed proof source is not listed as a completed checker run until its runner produces a successful report. AMM source translation is likewise separate from a checked `Run.t` refinement.

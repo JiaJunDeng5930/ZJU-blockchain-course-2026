@@ -9,8 +9,8 @@
 在仓库根目录执行：
 
 ```bash
-node scripts/bootstrap-formal.mjs
 npm run setup
+npm run formal:bootstrap
 npm run dev
 ```
 
@@ -19,9 +19,7 @@ npm run dev
 如果需要分别运行各个服务，先生成编译产物与前端内核：
 
 ```bash
-npm --prefix contracts run compile
-node scripts/generate-frontend-abi.mjs
-node scripts/build-formal.mjs
+npm run build
 ```
 
 再在不同终端执行：
@@ -156,18 +154,16 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 | AMM 报价 | 共享恒定乘积模型；SMTChecker 检查生产 `AMMMath` 的断言 | 成功路径的储备/输入范围、整数算术与舍入；不等于整个 DEX 的 EVM 证明 |
 | 流动性会计 | 共享份额模型；SMTChecker 检查实际 `LiquidityAccounting` helper | 储备与份额更新；OpenZeppelin `sqrt`、`mulDiv` 的实现精化与整个合约不变量组合仍独立 |
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
-| WETH | 前端本金/最高 gas 预算模型及提取逻辑 | 实际 WETH 全源码 SMT 受到上游 unsupported 特性限制，未获得 EVM 认证 |
+| WETH 与测试币 faucet | 前端本金/最高 gas 预算、资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
 
 `atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。
 
 在仓库根目录，准备工具链后执行：
 
 ```bash
-npm --prefix contracts run compile
-node scripts/generate-frontend-abi.mjs
-node scripts/build-formal.mjs
-npm --prefix frontend run build
-npm --prefix contracts test
+npm run build
+npm run formal:verify
+npm test
 ```
 
 生成内核与 ABI 不提交仓库。提取构建记录输入哈希、编译器与输出哈希；完整日志和验证报告保存在 `.local/formal/`。Solidity SMT 与 IR 精化分别运行，不能把 JavaScript 构建通过当成 Solidity 证明通过。浏览器场景不作为此次错误发现或形式化结论的依据。既有公开合约入口验收覆盖领取、WETH、建池、NFT 转让和赎回、手续费/滑点/期限、20 地址操作，以及原子套利成功和失败回滚；测试通过只说明该运行覆盖的外部行为。
