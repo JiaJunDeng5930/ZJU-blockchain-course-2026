@@ -130,3 +130,38 @@ touch the development node. Each `.local/routing-public-*/result.json` retains
 the production program hash, raw quotes, submitted calls, and scenario results.
 These are external-behavior checks; they do not prove RPC honesty, React
 rendering, compilers, or EVM semantics.
+
+## Transaction replacement confirmation and recovery
+
+After the production build, run with Node.js 26:
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/replacements-public.mts
+```
+
+The runner drives the existing `WalletController.perform` and history recovery
+entry points on an isolated real chain. It pauses mining and sends a higher-fee
+transaction with the original sender and nonce, as a wallet speed-up or cancel
+would. Same-call repricing must retain the new receipt and permit the original
+approved flow; a different call must not be credited as the original swap or
+allow its next write. Wallet changes and a read failure after confirmation must
+preserve the existing authorization and confirmation rules.
+The existing ERC20 creation flow also checks the valid null recipient of a
+creation transaction and its actual returned contract address after repricing.
+
+Recovery uses native WebStorage and separate processes. The producing page exits
+only after its public pending descriptor is saved. A replacement is then mined,
+followed by more blocks, and the RPC endpoint no longer returns the old hash.
+The new observer must find the past replacement without signing, sending,
+resuming the old operation, or rewriting the original page's archive. A faucet
+case deliberately uses a funding sender different from its beneficiary. Another
+case saves an already Replaced outcome and checks that a successful replacement
+receipt cannot turn it into success for the old operation. A real version-one
+archive fixture has no nonce metadata and must retain an unknown outcome.
+
+The existing chain is advanced before these recovery cases so a full scan from
+genesis is distinguishable from bounded lookup. Request counts are only a
+resource bound for the recovery path, not a nonce indexing benchmark. The
+evidence under `.local/replacements-public-*/` includes raw receipts, hashes,
+public journal records, RPC reads, wallet writes and the production bundle hash.
+No browser, private model state or replacement business-logic mock is used.
