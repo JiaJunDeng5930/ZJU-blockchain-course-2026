@@ -383,6 +383,31 @@ Proof.
   apply settlement_sound in settled. tauto.
 Qed.
 
+Theorem prepare_at_valid_time arbitrage route minimum balance allowance before after plan :
+  prepare arbitrage route minimum balance allowance before = Prepared plan ->
+  Types.valid_call_time after = true ->
+  exists current,
+    prepare arbitrage route minimum balance allowance after = Prepared current /\
+    execution_route current = execution_route plan /\
+    minimum_profit current = minimum_profit plan /\
+    approval_required current = approval_required plan /\
+    deadline current = Types.call_deadline after.
+Proof.
+  unfold prepare. destruct minimum as [required|]; [|discriminate].
+  destruct (negb (uint256b required)); [discriminate|].
+  destruct (negb (route_validb (buy route) (sell route) (capital_token route) &&
+    (0 <? capital route) && uint256b (capital route) && uint256b (returned route)));
+    [discriminate|].
+  destruct (negb (uint256b balance && (capital route <=? balance))); [discriminate|].
+  destruct (negb (uint256b allowance)); [discriminate|].
+  destruct (negb (nonzero_addressb arbitrage)); [discriminate|].
+  destruct (negb (Types.valid_call_time before)); [discriminate|].
+  destruct (settlement (capital route) (returned route) required); [|discriminate].
+  intros prepared valid. inversion prepared; subst plan.
+  rewrite valid. cbn -[Types.call_deadline Types.approval_needed].
+  eexists. split; [reflexivity|]. repeat split; reflexivity.
+Qed.
+
 Definition prepare_request (quote : quote_function) (arbitrage : address)
     (buy_reference sell_reference : pool) (markets : list pool)
     (input_token : address) (input : Z) (minimum : option Z)

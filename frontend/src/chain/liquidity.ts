@@ -43,18 +43,20 @@ export async function addLiquidity(
       client.token(pool.token1).read.allowance([owner, exchange]),
       client.transactionTimestamp(),
     ]);
-  const plan = prepareDepositWrite(
-    pool,
-    amount0,
-    amount1,
-    balance0,
-    balance1,
-    slippage,
-    timestamp,
-    allowance0,
-    allowance1,
-  );
-  if (plan.approve0)
+  const prepareAt = (now: bigint) =>
+    prepareDepositWrite(
+      pool,
+      amount0,
+      amount1,
+      balance0,
+      balance1,
+      slippage,
+      now,
+      allowance0,
+      allowance1,
+    );
+  const approvalPlan = prepareAt(timestamp);
+  if (approvalPlan.approve0)
     await send("Approve ERC20", () =>
       session.walletClient.writeContract({
         account: owner,
@@ -62,10 +64,10 @@ export async function addLiquidity(
         address: getAddress(pool.token0),
         abi: testTokenAbi,
         functionName: "approve",
-        args: [exchange, plan.desired0],
+        args: [exchange, approvalPlan.desired0],
       }),
     );
-  if (plan.approve1)
+  if (approvalPlan.approve1)
     await send("Approve ERC20", () =>
       session.walletClient.writeContract({
         account: owner,
@@ -73,9 +75,12 @@ export async function addLiquidity(
         address: getAddress(pool.token1),
         abi: testTokenAbi,
         functionName: "approve",
-        args: [exchange, plan.desired1],
+        args: [exchange, approvalPlan.desired1],
       }),
     );
+  // Approval confirmation can take many blocks. Keep the captured deposit
+  // request and let the extracted planner bind its deadline to submission time.
+  const plan = prepareAt(await client.transactionTimestamp());
   return send("Add liquidity", () =>
     session.walletClient.writeContract({
       account: owner,

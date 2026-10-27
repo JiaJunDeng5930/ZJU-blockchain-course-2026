@@ -70,6 +70,22 @@ Definition prepare_deposit_write r0 r1 total d0 d1 b0 b1 slip now allowance0 all
     | None => WriteDepositRejected "The deposit exceeds its budget, capacity, or liquidity constraints."
     end
   else WriteDepositRejected "The transaction deadline cannot be represented.".
+
+Lemma prepared_deposit_at_valid_time r0 r1 total d0 d1 b0 b1 slip before after
+    allowance0 allowance1 plan deadline approve0 approve1 :
+  prepare_deposit_write r0 r1 total d0 d1 b0 b1 slip before allowance0 allowance1 =
+    WriteDepositPrepared plan deadline approve0 approve1 ->
+  valid_call_time after = true ->
+  prepare_deposit_write r0 r1 total d0 d1 b0 b1 slip after allowance0 allowance1 =
+    WriteDepositPrepared plan (call_deadline after) approve0 approve1.
+Proof.
+  unfold prepare_deposit_write.
+  destruct (valid_call_time before); [|discriminate].
+  destruct (prepare_deposit r0 r1 total d0 d1 b0 b1 slip); [|discriminate].
+  intros prepared valid. inversion prepared; subst.
+  now rewrite valid.
+Qed.
+
 Definition withdrawal_message r0 r1 total shares owner current slip now :=
   if valid_call_time now then withdrawal_error r0 r1 total shares owner current slip
   else Some "The transaction deadline cannot be represented.".

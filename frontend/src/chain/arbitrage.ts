@@ -12,7 +12,7 @@ export async function opportunities(
   selected: Pool,
   _pools: Pool[],
   tokenIn: string,
-  supportedTokens: readonly Token[]
+  supportedTokens: readonly Token[],
 ): Promise<Opportunity[]> {
   assertSupportedPool(selected, supportedTokens);
   const block = await client.rpc.getBlockNumber();
@@ -22,7 +22,7 @@ export async function opportunities(
     pools,
     tokenIn,
     Number(block),
-    supportedTokens
+    supportedTokens,
   );
 }
 
@@ -33,7 +33,7 @@ export async function executeArbitrage(
     send: SendTransaction;
   },
   route: Opportunity,
-  minimum: string
+  minimum: string,
 ): Promise<ArbitrageResult> {
   const { client, session, send } = context;
   const capital = getAddress(route.tokenIn);
@@ -57,7 +57,7 @@ export async function executeArbitrage(
     }),
   ]);
   // Quote state uses one mined block; the deadline uses the execution clock.
-  const [verifiedTokens, executionTimestamp] = await Promise.all([
+  const [verifiedTokens, preflightTimestamp] = await Promise.all([
     Promise.all([
       importAsset(client, route.buy.token0),
       importAsset(client, route.buy.token1),
@@ -66,21 +66,23 @@ export async function executeArbitrage(
   ]);
   assertSupportedPool(route.buy, verifiedTokens);
   assertSupportedPool(route.sell, verifiedTokens);
-  const plan = prepareArbitrage({
-    arbitrage,
-    route,
-    pools,
-    supportedTokens: verifiedTokens,
-    token: verifiedTokens.find(
-      (token) => getAddress(token.address) === capital
-    )!,
-    minimum,
-    balance,
-    allowance,
-    now: executionTimestamp,
-    block: Number(block.number),
-  });
-  if (plan.requiresApproval) {
+  const prepareAt = (now: bigint) =>
+    prepareArbitrage({
+      arbitrage,
+      route,
+      pools,
+      supportedTokens: verifiedTokens,
+      token: verifiedTokens.find(
+        (token) => getAddress(token.address) === capital,
+      )!,
+      minimum,
+      balance,
+      allowance,
+      now,
+      block: Number(block.number),
+    });
+  const approvalPlan = prepareAt(preflightTimestamp);
+  if (approvalPlan.requiresApproval) {
     await send("Approve arbitrage capital", () =>
       session.walletClient.writeContract({
         account: session.address,
@@ -88,10 +90,13 @@ export async function executeArbitrage(
         address: capital,
         abi: testTokenAbi,
         functionName: "approve",
-        args: [arbitrage, plan.route.amountIn],
-      })
+        args: [arbitrage, approvalPlan.route.amountIn],
+      }),
     );
   }
+  // Keep the quoted route and profit bound; an approval wait only changes
+  // the execution clock passed to the same extracted planner.
+  const plan = prepareAt(await client.transactionTimestamp());
   const receipt = await send("Execute atomic arbitrage", () =>
     session.walletClient.writeContract({
       account: session.address,
@@ -109,7 +114,7 @@ export async function executeArbitrage(
         plan.minimumProfit,
         plan.deadline,
       ],
-    })
+    }),
   );
   const event = parseEventLogs({
     abi: arbitrageAbi,
@@ -125,7 +130,7 @@ export async function executeArbitrage(
     const snapshot = snapshots.find(
       (log) =>
         getAddress(log.args.exchange) === getAddress(pool.exchange.address) &&
-        log.args.poolId === pool.id
+        log.args.poolId === pool.id,
     )!;
     return {
       before: {
