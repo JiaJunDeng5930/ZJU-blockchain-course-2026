@@ -194,3 +194,37 @@ The runner uses the public `SimulationController` and `performSimulation` interf
 A normal twenty-round run exercises twenty funded addresses. A fresh controller observes the same run and progress without issuing a command. Completed reports are checked against actual receipts, reserves, token profits, gas costs and the original NFT balances after position cleanup, then remain observable through 300 successive read-only HTTP requests. This spans the previously observed 256-request decoder failure without creating another run. A subsequent run rejects the old run's stop and report identities with HTTP 409. The current run is then stopped while a real transaction awaits mining: it must remain stopping until that transaction settles and its positions are redeemed, and the final report must belong to that run. The fixture resumes continuous block production, rather than assuming that enabling automining alone advances already submitted transactions and receipt subscriptions.
 
 This checks the service and worker obligations at the Rocq model's external boundary, rather than repeating the model's pure transition proofs. It does not test React, browsers, wallet extensions or arbitrary external RPC providers. Results, source and generated-kernel fingerprints, HTTP observations, service logs and chain logs are saved in `.local/simulation-public-*/`. Both spawned process groups are stopped and the isolated node's exit is observed before a successful result is published.
+
+## Realized atomic arbitrage amounts and execution fee
+
+After building the production frontend and contract artifacts, run:
+
+```sh
+contracts/node_modules/.bin/tsx frontend/acceptance/arbitrage-evidence-public.mts
+```
+
+Set `DEX_EXPECTED_KERNEL_SHA256` to a frozen production bundle SHA-256 when
+accepting a particular build. The runner records the loaded kernel and relevant
+source fingerprints and checks that those files stay unchanged during execution.
+
+The two scenarios use 18-decimal and 6-decimal capital respectively, real pools
+on two exchanges, and the public `WalletController.perform` / writer entrypoint.
+ERC20 approval is a real, separately confirmed transaction before the observation
+window. The wallet sends exactly one transaction during that window. Its native
+ETH balance decrease independently checks `gasCostWei`, excluding the approval
+fee. No duplicate settlement or gas multiplication model supplies the oracle.
+
+The result's `amountIn` and `amountOut` must match both `ArbitrageExecuted` and
+the actual capital-token transfers into and out of the arbitrage contract. Its
+`profit` must match the capital-token balance increase. Both swap legs must be
+logged in the same successful execution receipt. Before/after reserves must
+match the reserve events and direct historical contract reads for each pool.
+Token quantities retain their token precision; the ETH fee is recorded in wei,
+with no currency conversion or combined net-profit claim.
+
+Receipts, approval evidence, balances, pool states and fingerprints are saved
+under `.local/arbitrage-evidence-public-*/result.json`; the isolated node's log
+and fixture compiler output stay in that directory. The runner stops its own
+node and wallet controller and does not use the browser or development services.
+This accepts the public transaction-result boundary, not React rendering,
+wallet-provider honesty, compiler correctness or EVM semantics.
