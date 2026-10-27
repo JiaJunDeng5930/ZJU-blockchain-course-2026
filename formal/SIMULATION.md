@@ -51,3 +51,10 @@ The OCaml bridge only serializes/deserializes domain values. Decimal validation,
 integer range checks, command availability, state updates, and response selection
 execute the extracted program. Graph coordinates remain approximate display
 calculations; token and gas amounts use exact integer formatting.
+
+The worker waits for each Node IPC send callback before proceeding, including
+the final report, and disconnects only after that write completes. The service
+classifies a missing report on the child's `close` event, after its streams have
+closed, rather than on the earlier `exit` event. This ordering repairs an
+observed zero-exit report loss; it is an integration obligation of the trusted
+Node interface and is not claimed as a Rocq theorem.

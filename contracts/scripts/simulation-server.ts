@@ -176,7 +176,8 @@ function start(input: SimulationOptions) {
       finishedAt: new Date().toISOString(),
     };
   });
-  child.once("exit", (code, signal) => {
+  // "exit" can precede queued IPC/stdout delivery; classify the outcome only after streams close.
+  child.once("close", (code, signal) => {
     worker = null;
     if (!report)
       job = {

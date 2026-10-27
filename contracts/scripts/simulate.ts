@@ -136,8 +136,15 @@ process.on("message", (message: unknown) => {
 process.on("SIGTERM", () => {
   stopRequested = true;
 });
-function publish(message: SimulationMessage) {
-  if (process.connected) process.send?.(message);
+async function publish(message: SimulationMessage): Promise<void> {
+  if (!process.connected) return;
+  // The IPC write is asynchronous: disconnecting before its callback can drop a complete report.
+  await new Promise<void>((resolve, reject) => {
+    process.send!(message, (error: Error | null) => {
+      if (error) reject(error);
+      else resolve();
+    });
+  });
 }
 async function publishProgress() {
   if (!process.connected) return;
@@ -172,7 +179,7 @@ async function publishProgress() {
     marketHistory.push(markets);
     if (marketHistory.length > 120) marketHistory.shift();
   }
-  publish({
+  await publish({
     type: "progress",
     progress: {
       startedAt,
@@ -642,6 +649,6 @@ console.log(
   ),
 );
 await publishProgress();
-publish({ type: "finished", report });
+await publish({ type: "finished", report });
 await provider.destroy();
 if (process.connected) process.disconnect();
