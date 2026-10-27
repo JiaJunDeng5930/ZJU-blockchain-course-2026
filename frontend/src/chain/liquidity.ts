@@ -1,6 +1,6 @@
 import { importAsset } from "./assets";
 import { assertSupportedPool } from "../logic/assets";
-import { getAddress } from "viem";
+import { getAddress, parseEventLogs } from "viem";
 import { miniDexAbi, testTokenAbi } from "../generated/abis";
 import {
   prepareDepositWrite,
@@ -9,7 +9,7 @@ import {
 } from "../logic/liquidity";
 import type { ExchangeClient, SendTransaction } from "./client";
 import type { WalletSession } from "../wallet/session";
-import type { Pool } from "./types";
+import type { LiquidityConfirmation, Pool } from "./types";
 
 async function verifyPoolAssets(client: ExchangeClient, pool: Pool) {
   const assets = await Promise.all([
@@ -30,7 +30,7 @@ export async function addLiquidity(
   amount0: bigint,
   amount1: bigint,
   slippage: bigint,
-) {
+): Promise<LiquidityConfirmation> {
   const { client, session, send } = context;
   await verifyPoolAssets(client, pool);
   const owner = session.address,
@@ -81,7 +81,7 @@ export async function addLiquidity(
   // Approval confirmation can take many blocks. Keep the captured deposit
   // request and let the extracted planner bind its deadline to submission time.
   const plan = prepareAt(await client.transactionTimestamp());
-  return send("Add liquidity", () =>
+  const receipt = await send("Add liquidity", () =>
     session.walletClient.writeContract({
       account: owner,
       chain: client.chain,
@@ -98,6 +98,24 @@ export async function addLiquidity(
       ],
     }),
   );
+  const event = parseEventLogs({
+    abi: miniDexAbi,
+    eventName: "LiquidityAdded",
+    logs: receipt.logs,
+  }).find(
+    (log) =>
+      getAddress(log.address) === exchange && log.args.poolId === pool.id,
+  )!;
+  return {
+    kind: "deposit",
+    pool,
+    positionId: event.args.positionId,
+    owner: event.args.provider,
+    amount0: event.args.amount0,
+    amount1: event.args.amount1,
+    shares: event.args.shares,
+    receipt,
+  };
 }
 export async function removeLiquidity(
   context: Context,
@@ -105,7 +123,7 @@ export async function removeLiquidity(
   id: bigint,
   amounts: readonly [bigint, bigint],
   slippage: bigint,
-) {
+): Promise<LiquidityConfirmation> {
   const { client, session, send } = context;
   await verifyPoolAssets(client, pool);
   const exchange = getAddress(pool.exchange.address);
@@ -134,7 +152,7 @@ export async function removeLiquidity(
     position[0],
     amounts,
   );
-  return send("Redeem position", () =>
+  const receipt = await send("Redeem position", () =>
     session.walletClient.writeContract({
       account: session.address,
       chain: client.chain,
@@ -144,13 +162,33 @@ export async function removeLiquidity(
       args: [id, plan.minimum0, plan.minimum1, plan.deadline],
     }),
   );
+  const event = parseEventLogs({
+    abi: miniDexAbi,
+    eventName: "LiquidityRemoved",
+    logs: receipt.logs,
+  }).find(
+    (log) =>
+      getAddress(log.address) === exchange &&
+      log.args.poolId === pool.id &&
+      log.args.positionId === id,
+  )!;
+  return {
+    kind: "redeem",
+    pool,
+    positionId: event.args.positionId,
+    owner: event.args.owner,
+    amount0: event.args.amount0,
+    amount1: event.args.amount1,
+    shares: event.args.shares,
+    receipt,
+  };
 }
 export async function transferPosition(
   context: Context,
   pool: Pool,
   id: bigint,
   recipient: string,
-) {
+): Promise<LiquidityConfirmation> {
   const { client, session, send } = context;
   const exchange = getAddress(pool.exchange.address);
   const owner = await client.rpc.readContract({
@@ -161,7 +199,7 @@ export async function transferPosition(
   });
   const plan = prepareTransfer(owner, session.address, recipient);
   if (!plan.ok) throw new Error(plan.error);
-  return send("Transfer position", () =>
+  const receipt = await send("Transfer position", () =>
     session.walletClient.writeContract({
       account: session.address,
       chain: client.chain,
@@ -171,4 +209,19 @@ export async function transferPosition(
       args: [session.address, plan.recipient, id],
     }),
   );
+  const event = parseEventLogs({
+    abi: miniDexAbi,
+    eventName: "Transfer",
+    logs: receipt.logs,
+  }).find(
+    (log) => getAddress(log.address) === exchange && log.args.tokenId === id,
+  )!;
+  return {
+    kind: "transfer",
+    pool,
+    positionId: event.args.tokenId,
+    from: event.args.from,
+    to: event.args.to,
+    receipt,
+  };
 }

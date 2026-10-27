@@ -479,7 +479,7 @@ class ExchangeWriter {
     amount1: bigint,
     slippage: bigint
   ) {
-    await addLiquidity(this.context(), pool, amount0, amount1, slippage);
+    return addLiquidity(this.context(), pool, amount0, amount1, slippage);
   }
   async removeLiquidity(
     pool: Pool,
@@ -487,10 +487,10 @@ class ExchangeWriter {
     amounts: readonly [bigint, bigint],
     slippage: bigint
   ) {
-    await removeLiquidity(this.context(), pool, id, amounts, slippage);
+    return removeLiquidity(this.context(), pool, id, amounts, slippage);
   }
   async transferPosition(pool: Pool, positionId: bigint, recipient: string) {
-    await transferPosition(this.context(), pool, positionId, recipient);
+    return transferPosition(this.context(), pool, positionId, recipient);
   }
   createPool(exchange: string, token0: string, token1: string) {
     return createAssetPool(this.context(), exchange, token0, token1);

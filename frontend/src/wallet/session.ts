@@ -501,7 +501,7 @@ export class WalletController {
   async perform(
     operation: {
       label: string;
-      perform: (writer: Writer) => Promise<void>;
+      perform: (writer: Writer) => Promise<unknown>;
       session: WalletSession | undefined;
     },
     onReceipt?: () => void,

@@ -19,7 +19,7 @@ import {
   tokenLabel,
 } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
-import type { Pool, Position } from "../chain/types";
+import type { LiquidityConfirmation, Pool, Position } from "../chain/types";
 import {
   counterpartAmount,
   depositPreview,
@@ -41,7 +41,14 @@ export function LiquidityPage({
 }) {
   const { snapshot, session, pending, symbol, tokens } = useDex();
   const [managed, setManaged] = useState<string>();
+  const [confirmation, setConfirmation] = useState<LiquidityConfirmation>();
   const [inspectedPool, setInspectedPool] = useState(poolKey(pool));
+  const confirmed = (result: LiquidityConfirmation) => {
+    setConfirmation(result);
+    setInspectedPool(poolKey(result.pool));
+    if (result.kind === "deposit")
+      setManaged(`${result.pool.exchange.address}:${result.positionId}`);
+  };
   const pools = snapshot.data?.pools ?? [];
   const supportedPools = pools.filter((candidate) =>
     poolAssetsSupported(candidate, tokens),
@@ -67,6 +74,7 @@ export function LiquidityPage({
           New position
         </button>
       </header>
+      {confirmation && <ConfirmedLiquidityAction result={confirmation} />}
       <section className="liquidity-positions" aria-label="My positions">
         {!session ? (
           <div className="liquidity-empty">
@@ -102,6 +110,7 @@ export function LiquidityPage({
                 <PositionCard
                   key={key}
                   position={position}
+                  onConfirmed={confirmed}
                   expanded={managed === key}
                   onToggle={() => setManaged(managed === key ? undefined : key)}
                 />
@@ -136,14 +145,18 @@ export function LiquidityPage({
         </div>
         <PoolActivity key={poolKey(inspected)} pool={inspected} />
       </section>
-      {creating && supportedPools.length > 0 && (
+      {/* Keep the draft mounted so wallet cancellation does not discard inputs. */}
+      {supportedPools.length > 0 && (
         <CreatePosition
+          key={poolKey(pool)}
+          open={creating}
           pools={supportedPools}
           initialPool={
             supportedPools.find(
               (candidate) => poolKey(candidate) === poolKey(pool),
             ) ?? supportedPools[0]
           }
+          onConfirmed={confirmed}
           onClose={() => setCreating(false)}
         />
       )}
@@ -152,10 +165,14 @@ export function LiquidityPage({
 }
 
 function CreatePosition({
+  open,
   initialPool,
   pools,
   onClose,
+  onConfirmed,
 }: {
+  open: boolean;
+  onConfirmed: (result: LiquidityConfirmation) => void;
   initialPool: Pool;
   pools: Pool[];
   onClose: () => void;
@@ -167,6 +184,7 @@ function CreatePosition({
   const [amount1, setAmount1] = useState("");
   const [slippage, setSlippage] = useState("0.5");
   const [reviewing, setReviewing] = useState(false);
+  if (!open) return null;
   const pool = pools.find((candidate) => poolKey(candidate) === selection)!;
   const decision = depositPreview(
     pool,
@@ -195,7 +213,10 @@ function CreatePosition({
   return (
     <ConfirmationDialog
       title={reviewing ? "Review new position" : "New liquidity position"}
-      onClose={onClose}
+      onClose={() => {
+        setReviewing(false);
+        onClose();
+      }}
     >
       {reviewing && used && decision.ok ? (
         <div className="liquidity-create-review">
@@ -282,15 +303,17 @@ function CreatePosition({
               className="button-primary"
               disabled={pending || !session || !decision.ok}
               onClick={() => {
+                setReviewing(false);
                 onClose();
-                run("Add liquidity", (writer) =>
-                  writer.addLiquidity(
+                run("Add liquidity", async (writer) => {
+                  const result = await writer.addLiquidity(
                     pool,
                     positiveAmount(amount0, precision(pool.token0)),
                     positiveAmount(amount1, precision(pool.token1)),
                     slippageBps(slippage),
-                  ),
-                );
+                  );
+                  onConfirmed(result);
+                });
               }}
             >
               Approve & mint position NFT
@@ -388,6 +411,7 @@ type TransferDraft = {
   onRecipientChange: (value: string) => void;
 };
 type PositionCardProps = {
+  onConfirmed: (result: LiquidityConfirmation) => void;
   position: Position;
   expanded: boolean;
   onToggle: () => void;
@@ -412,6 +436,7 @@ function PositionCard(props: PositionCardProps) {
     <UnsupportedPositionCard
       pool={pool}
       position={position}
+      onConfirmed={props.onConfirmed}
       recipient={recipient}
       onRecipientChange={setRecipient}
     />
@@ -422,6 +447,7 @@ function SupportedPositionCard({
   position,
   expanded,
   onToggle,
+  onConfirmed,
   pool,
   recipient,
   onRecipientChange,
@@ -593,14 +619,16 @@ function SupportedPositionCard({
             disabled={pending || !!invalidTolerance}
             onClick={() => {
               setReview(undefined);
-              run("Redeem position", (writer) =>
-                writer.removeLiquidity(
-                  pool,
-                  position.id,
-                  amounts,
-                  slippageBps(slippage),
-                ),
-              );
+              run("Redeem position", async (writer) => {
+                onConfirmed(
+                  await writer.removeLiquidity(
+                    pool,
+                    position.id,
+                    amounts,
+                    slippageBps(slippage),
+                  ),
+                );
+              });
             }}
           >
             Confirm redemption
@@ -611,6 +639,7 @@ function SupportedPositionCard({
         <TransferPositionDialog
           recipient={recipient}
           onRecipientChange={onRecipientChange}
+          onConfirmed={onConfirmed}
           pool={pool}
           position={position}
           onClose={() => setReview(undefined)}
@@ -625,7 +654,12 @@ function UnsupportedPositionCard({
   position,
   recipient,
   onRecipientChange,
-}: { pool: Pool; position: Position } & TransferDraft) {
+  onConfirmed,
+}: {
+  pool: Pool;
+  position: Position;
+  onConfirmed: (result: LiquidityConfirmation) => void;
+} & TransferDraft) {
   const { pending, session } = useDex();
   const [transferring, setTransferring] = useState(false);
   return (
@@ -645,6 +679,7 @@ function UnsupportedPositionCard({
         <TransferPositionDialog
           recipient={recipient}
           onRecipientChange={onRecipientChange}
+          onConfirmed={onConfirmed}
           pool={pool}
           position={position}
           onClose={() => setTransferring(false)}
@@ -660,7 +695,13 @@ function TransferPositionDialog({
   onClose,
   recipient,
   onRecipientChange,
-}: { pool: Pool; position: Position; onClose: () => void } & TransferDraft) {
+  onConfirmed,
+}: {
+  pool: Pool;
+  position: Position;
+  onClose: () => void;
+  onConfirmed: (result: LiquidityConfirmation) => void;
+} & TransferDraft) {
   const { pending, session, run, symbol } = useDex();
   const recipientError = transferError(
     position.owner,
@@ -688,13 +729,108 @@ function TransferPositionDialog({
         disabled={pending || !!recipientError}
         onClick={() => {
           onClose();
-          run("Transfer position", (writer) =>
-            writer.transferPosition(pool, position.id, recipient),
-          );
+          run("Transfer position", async (writer) => {
+            onConfirmed(
+              await writer.transferPosition(pool, position.id, recipient),
+            );
+          });
         }}
       >
         Confirm transfer
       </button>
     </ConfirmationDialog>
+  );
+}
+
+function ConfirmedLiquidityAction({
+  result,
+}: {
+  result: LiquidityConfirmation;
+}) {
+  const { symbol, precision } = useDex();
+  const { pool, receipt } = result;
+  return (
+    <section
+      className="liquidity-confirmation"
+      aria-label="Confirmed liquidity action"
+    >
+      <h2>Confirmed liquidity action</h2>
+      <dl>
+        <dt>Action</dt>
+        <dd>
+          {
+            {
+              deposit: "Position NFT minted",
+              redeem: "Position NFT redeemed and burned",
+              transfer: "Position NFT transferred",
+            }[result.kind]
+          }
+        </dd>
+        <dt>Pool</dt>
+        <dd>{poolLabel(pool, symbol)}</dd>
+        <dt>Exchange contract</dt>
+        <dd>
+          <code>{pool.exchange.address}</code>
+        </dd>
+        <dt>NFT</dt>
+        <dd>#{String(result.positionId)}</dd>
+        {result.kind === "transfer" ? (
+          <>
+            <dt>Transferred from</dt>
+            <dd>
+              <code>{result.from}</code>
+            </dd>
+            <dt>Transferred to</dt>
+            <dd>
+              <code>{result.to}</code>
+            </dd>
+          </>
+        ) : (
+          <>
+            <dt>
+              {result.kind === "deposit" ? "Minted to" : "Asset recipient"}
+            </dt>
+            <dd>
+              <code>{result.owner}</code>
+            </dd>
+            <dt>
+              {tokenLabel(pool.token0, symbol(pool.token0))}{" "}
+              {result.kind === "deposit" ? "deposited" : "received"}
+            </dt>
+            <dd>{formatUnits(result.amount0, precision(pool.token0))}</dd>
+            <dt>
+              {tokenLabel(pool.token1, symbol(pool.token1))}{" "}
+              {result.kind === "deposit" ? "deposited" : "received"}
+            </dt>
+            <dd>{formatUnits(result.amount1, precision(pool.token1))}</dd>
+            <dt>Position shares</dt>
+            <dd>{String(result.shares)}</dd>
+          </>
+        )}
+        <dt>Executed by</dt>
+        <dd>
+          <code>{receipt.from}</code>
+        </dd>
+        <dt>Confirmed block</dt>
+        <dd>{String(receipt.blockNumber)}</dd>
+        <dt>Transaction</dt>
+        <dd>
+          <code>{receipt.transactionHash}</code>
+        </dd>
+      </dl>
+      {result.kind === "deposit" && (
+        <p>
+          Token amounts come from this receipt; unused budget stayed in your
+          wallet. Gas is paid separately in ETH.
+        </p>
+      )}
+      {result.kind === "redeem" && (
+        <p>
+          Received tokens include this position's share of retained pool fees.
+          Changes from the initial deposit also reflect market prices. Gas is
+          paid separately in ETH.
+        </p>
+      )}
+    </section>
   );
 }

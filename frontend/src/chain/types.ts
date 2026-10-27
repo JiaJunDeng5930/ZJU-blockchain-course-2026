@@ -79,6 +79,21 @@ export type SwapResult = {
   minimum: bigint;
   receipt: TransactionReceipt;
 };
+export type LiquidityConfirmation = {
+  pool: Pool;
+  positionId: bigint;
+  receipt: TransactionReceipt;
+} & (
+  | {
+      kind: "deposit" | "redeem";
+      owner: string;
+      amount0: bigint;
+      amount1: bigint;
+      shares: bigint;
+    }
+  | { kind: "transfer"; from: string; to: string }
+);
+
 export type JournalEntry = {
   descriptor: TransactionDescriptor | null;
   originalHash: string | null;
