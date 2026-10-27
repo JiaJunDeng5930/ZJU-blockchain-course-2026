@@ -13,16 +13,14 @@ import {
   useQuery,
   useQueryClient,
 } from "@tanstack/react-query";
-import { getAddress, type Hex, type TransactionReceipt } from "viem";
 import { ExchangeClient, type Writer } from "./client";
 import { errorMessage, sameAddress } from "./amounts";
 import {
   sessionIdentity,
-  transportErrorCode,
   useWallet,
   type WalletSession,
 } from "../wallet/session";
-import { accepted, renderActivity } from "../wallet/kernel";
+import { renderActivity } from "../wallet/kernel";
 import type { JournalEntry, Token } from "./types";
 import { AssetCatalog, catalogView } from "../logic/assets";
 
@@ -56,6 +54,12 @@ function useDexState(client: ExchangeClient) {
   const journal: JournalEntry[] = wallet.view.journal.map((entry) => {
     if (entry.state === "confirmed")
       return { ...entry, block: BigInt(entry.block), gas: BigInt(entry.gas) };
+    if (entry.state === "failed")
+      return {
+        ...entry,
+        block: entry.block === undefined ? undefined : BigInt(entry.block),
+        gas: entry.gas === undefined ? undefined : BigInt(entry.gas),
+      };
     return entry;
   });
   const session =
@@ -111,100 +115,9 @@ function useDexState(client: ExchangeClient) {
       perform: (writer: Writer) => Promise<void>;
       session: WalletSession | undefined;
     }) => {
-      const captured = operation.session;
-      const context = accepted<string>(
-        wallet.controller.dispatch({
-          kind: "begin-operation",
-          label: operation.label,
-          identity: captured ? sessionIdentity(captured) : null,
-        }),
-      );
-      const send = async (
-        label: string,
-        submit: () => Promise<Hex>,
-        authority?: { kind: "dev-faucet"; sender: `0x${string}` },
-      ): Promise<TransactionReceipt> => {
-        const transaction = accepted<string>(
-          wallet.controller.dispatch({
-            kind: "request-write",
-            operation: context,
-            label,
-            authority: authority ?? null,
-          }),
-        );
-        try {
-          const observation = await wallet.controller.read(captured!.kind);
-          accepted(
-            wallet.controller.dispatch({
-              kind: "authorize",
-              operation: context,
-              transaction,
-              ...observation,
-            }),
-          );
-        } catch (error) {
-          wallet.controller.dispatch({
-            kind: "preflight-failed",
-            transaction,
-            message: errorMessage(error),
-          });
-          throw error;
-        }
-        let hash: Hex;
-        try {
-          hash = await submit();
-        } catch (error) {
-          wallet.controller.dispatch({
-            kind: "signature-failed",
-            transaction,
-            code: transportErrorCode(error),
-            message: errorMessage(error),
-          });
-          throw error;
-        }
-        wallet.controller.dispatch({ kind: "broadcast", transaction, hash });
-        let receipt: TransactionReceipt;
-        try {
-          receipt = await client.rpc.waitForTransactionReceipt({ hash });
-        } catch (error) {
-          wallet.controller.dispatch({
-            kind: "receipt-unavailable",
-            transaction,
-            message: errorMessage(error),
-          });
-          throw error;
-        }
-        accepted(
-          wallet.controller.dispatch({
-            kind: "receipt",
-            transaction,
-            hash: receipt.transactionHash,
-            sender: getAddress(receipt.from),
-            status: receipt.status,
-            block: receipt.blockNumber.toString(),
-            gasUsed: receipt.gasUsed.toString(),
-            gasPrice: receipt.effectiveGasPrice.toString(),
-          }),
-        );
+      await wallet.controller.perform(operation, () => {
         void cache.invalidateQueries({ queryKey: ["chain", client.key] });
-        return receipt;
-      };
-      try {
-        // Accepted begin-operation witnesses that the captured identity exists and is current.
-        await operation.perform(client.writer(captured!, send));
-        wallet.controller.dispatch({
-          kind: "finish-operation",
-          operation: context,
-          error: null,
-        });
-      } catch (error) {
-        wallet.controller.dispatch({
-          kind: "finish-operation",
-          operation: context,
-          error: errorMessage(error),
-        });
-        throw error;
-      }
+      });
     },
     onSuccess: () => {
       void cache.invalidateQueries({ queryKey: ["chain", client.key] });
@@ -222,6 +135,7 @@ function useDexState(client: ExchangeClient) {
     tokens,
     catalogError: catalogDisplay.error,
     journal,
+    history: wallet.view.history,
     status: renderActivity(wallet.view.activity, client.deployment.chainId),
     pending: wallet.view.pending,
     run: (label: string, perform: (writer: Writer) => Promise<void>) =>

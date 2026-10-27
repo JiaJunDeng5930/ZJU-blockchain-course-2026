@@ -19,6 +19,7 @@ export type WalletView = {
 );
 export type JournalView = {
   id: string;
+  instance: string;
   label: string;
   account: string;
   beneficiary: string;
@@ -54,8 +55,16 @@ export type ActivityView =
       label: string;
       message: string;
     };
+export type HistoryView = {
+  kind: "loading" | "ready" | "saving" | "memory";
+  error: string | null;
+  canRefresh: boolean;
+  canRetryLoad: boolean;
+  canRetrySave: boolean;
+};
 export type KernelView = {
   wallet: WalletView;
+  history: HistoryView;
   journal: JournalView[];
   pending: boolean;
   error: string | null;
@@ -72,6 +81,14 @@ export type WalletEffect =
   | {
       kind: "persist";
       preference: { source: WalletSource; address: string | null };
+    }
+  | { kind: "load-history" }
+  | { kind: "save-history"; key: string; archive: string }
+  | {
+      kind: "observe-receipt";
+      instance: string;
+      transaction: string;
+      hash: string;
     };
 export type Decision<T> =
   { kind: "accepted"; value: T } | { kind: "denied"; message: string };
@@ -137,13 +154,41 @@ export type KernelEvent =
       gasUsed: string;
       gasPrice: string;
     }
-  | { kind: "finish-operation"; operation: string; error: string | null };
+  | { kind: "finish-operation"; operation: string; error: string | null }
+  | {
+      kind: "history-loaded";
+      key: string;
+      snapshots: { owner: string; archive: string }[];
+    }
+  | { kind: "history-load-failed"; key: string; message: string }
+  | { kind: "history-saved" }
+  | { kind: "history-save-failed"; message: string }
+  | { kind: "history-preference-warning"; message: string }
+  | { kind: "history-retry-save" | "history-retry-load" | "history-refresh" }
+  | {
+      kind: "history-receipt";
+      instance: string;
+      transaction: string;
+      hash: string;
+      sender: string;
+      status: "success" | "reverted";
+      block: string;
+      gasUsed: string;
+      gasPrice: string;
+    }
+  | {
+      kind: "history-observation-failed";
+      instance: string;
+      transaction: string;
+      message: string;
+    };
 type RawKernel = {
   view(): string;
   start(): string;
   dispatch(event: string): string;
   retainsSnapshot(identity: string): boolean;
   fundingPlan(observation: string): string;
+  historyKey(genesis: string, deployment: string, endpoint: string): string;
 };
 declare global {
   var DEXWallet: {
@@ -161,6 +206,7 @@ export class WalletKernel {
     chain: string;
     source: string | null;
     address: string | null;
+    instance?: string | null;
   }) {
     this.raw = globalThis.DEXWallet.create(JSON.stringify(configuration));
     this.view = JSON.parse(this.raw.view());
@@ -183,6 +229,9 @@ export class WalletKernel {
   }
   dispatch<T = unknown>(event: KernelEvent) {
     return this.publish<T>(this.raw.dispatch(JSON.stringify(event)));
+  }
+  historyKey(genesis: string, deployment: string, endpoint: string) {
+    return this.raw.historyKey(genesis, deployment, endpoint);
   }
   retainsSnapshot(identity: WalletIdentity | null) {
     return this.raw.retainsSnapshot(JSON.stringify(identity));

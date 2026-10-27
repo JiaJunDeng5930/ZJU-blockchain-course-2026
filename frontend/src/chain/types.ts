@@ -68,9 +68,15 @@ export type JournalEntry = {
   authority: "wallet" | "dev-faucet";
 } & (
   | { state: "awaiting-wallet" }
-  | { state: "submitted"; hash: string }
+  | { state: "submitted"; hash: string; message?: string | null }
   | { state: "confirmed"; hash: string; block: bigint; gas: bigint }
-  | { state: "failed"; message: string; hash?: string }
+  | {
+      state: "failed";
+      message: string;
+      hash?: string;
+      block?: bigint;
+      gas?: bigint;
+    }
   | { state: "submission-unknown"; message: string }
 );
 

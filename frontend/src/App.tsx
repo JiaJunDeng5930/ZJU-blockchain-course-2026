@@ -7,6 +7,7 @@ import {
 } from "@tanstack/react-query";
 import { ExchangeClient } from "./chain/client";
 import { DexProvider, useDex } from "./chain/DexProvider";
+import { HistoryStatus } from "./components/HistoryStatus";
 import type { Deployment } from "./chain/types";
 import { poolKey } from "./chain/amounts";
 import { WalletMenu } from "./components/WalletMenu";
@@ -100,7 +101,7 @@ function Bootstrap() {
   );
 }
 function Workspace() {
-  const { snapshot } = useDex();
+  const { snapshot, history } = useDex();
   const [search, setSearch] = useSearchParams();
   const [walletOpen, setWalletOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
@@ -246,6 +247,7 @@ function Workspace() {
       <main
         className={`workspace-content ${page === "Swap" ? "swap-workspace" : "tool-workspace"}`}
       >
+        {page !== "Transactions" && <HistoryStatus history={history} quiet />}
         {snapshot.error && (
           <p role="alert" className="read-error">
             Unable to refresh chain data. Confirmed transactions are still
