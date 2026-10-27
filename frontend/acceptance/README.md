@@ -1,5 +1,20 @@
 # Frontend public acceptance
 
+## Transaction deadlines after approvals
+
+Run from the repository root after building the current contracts and extracted frontend:
+
+```sh
+npm run build
+contracts/node_modules/.bin/tsx frontend/acceptance/deadlines-public.mts
+```
+
+The runner uses `WalletController.perform` and the existing liquidity, swap and atomic-arbitrage writers against an isolated real chain. Its RPC fixture broadcasts each required approval with automining disabled, advances the next ordinary mined block by 1,500 seconds, mines the approval and resumes normal mining. This represents an approval confirmation taking longer than the business transaction's 20-minute lifetime without waiting 20 wall-clock minutes.
+
+The three scenarios check two successive liquidity approvals, one swap approval and one arbitrage approval. They verify the submitted business call's deadline against its actual pending chain time, successful receipts and resulting NFT, token balances, pool reserves or arbitrage profit. Captured calldata must preserve the confirmed amounts, slippage minima and arbitrage route/minimum profit. The swap scenario also provides an existing-behavior control. The runner does not read the business implementation to derive these criteria and does not use a browser. It complements the Rocq deadline and parameter-preservation proofs by checking the external clock and wallet-call binding.
+
+Results, the loaded extracted-program SHA256 and fingerprints of the wallet/effect source files are written to `.local/deadlines-public-*/result.json`; these local artifacts are not committed. This distinguishes effect changes even when proof erasure leaves the generated program unchanged. The fixture uses ordinary `evm_mine` blocks and does not change the main development chain or its services.
+
 ## Transaction history
 
 Run from the repository root with Node.js 26 and installed project dependencies:
