@@ -14,6 +14,7 @@
     "formal:bootstrap": "node scripts/bootstrap-formal.mjs",
     "formal:build": "node scripts/build-formal.mjs",
     "deploy": "npm --prefix contracts run deploy",
-    "formal:verify": "node scripts/verify-formal.mjs"
+    "formal:verify": "node scripts/verify-formal.mjs",
+    "test:history": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/history-public.mts"
   }
 }
