@@ -36,9 +36,16 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
   const [review, setReview] = useState<{
     plan: RoutedSwapPlan;
     view: RoutedSwapView;
+    caller: string;
+    submit: typeof run;
   }>();
   const [settlement, setSettlement] = useState<SwapResult>();
-  useEffect(() => setReview(undefined), [session?.address]);
+  useEffect(() => setReview(undefined), [
+    session?.kind,
+    session?.address,
+    session?.chainId,
+    session?.epoch
+  ]);
   const context = {
     tokens,
     pool,
@@ -55,10 +62,10 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
     const { effect } = controller.dispatch(event, context);
     render();
     if (effect?.kind === "wallet") onOpenWallet();
-    if (effect?.kind === "swap") {
+    if (effect?.kind === "swap" && session) {
       // The extracted effect is the reviewed intent. Live quotes may continue to
       // change, but confirmation submits this same route, input and minimum.
-      setReview({ plan: effect, view });
+      setReview({ plan: effect, view, caller: session.address, submit: run });
     }
   }
 
@@ -335,6 +342,8 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           onClose={() => setReview(undefined)}
         >
           <dl className="trade-review-values">
+            <dt>Trader</dt>
+            <dd>{review.caller}</dd>
             <dt>Pay</dt>
             <dd>
               {formatUnits(
@@ -406,7 +415,9 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             onClick={() => {
               const { plan } = review;
               setReview(undefined);
-              run(
+              // Capture the reviewed wallet session as well as the economic
+              // effect; the wallet kernel rejects a superseded session.
+              review.submit(
                 `Swap on ${plan.pool.exchange.name} #${plan.pool.id}`,
                 async (writer) => {
                   setSettlement(await writer.routedSwap(plan));
