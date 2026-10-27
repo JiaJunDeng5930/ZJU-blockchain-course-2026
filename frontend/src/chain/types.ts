@@ -12,6 +12,23 @@ export type Token = {
   decimals: number;
 };
 export type Exchange = { address: string; name: string };
+export type TokenCreationConfirmation = {
+  kind: "token";
+  address: string;
+  name: string;
+  symbol: string;
+  receipt: TransactionReceipt;
+};
+export type PoolCreationConfirmation = {
+  kind: "pool";
+  exchange: Exchange;
+  poolId: bigint;
+  token0: string;
+  token1: string;
+  receipt: TransactionReceipt;
+};
+export type AssetCreationConfirmation =
+  TokenCreationConfirmation | PoolCreationConfirmation;
 export type Deployment = {
   schemaVersion: 1;
   chainId: number;

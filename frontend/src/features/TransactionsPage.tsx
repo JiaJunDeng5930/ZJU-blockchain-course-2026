@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useQuery } from "@tanstack/react-query";
 import {
   activityStep,
   activityView,
@@ -6,7 +7,8 @@ import {
   type ActivityEvent,
 } from "../logic/activity";
 import { HistoryStatus } from "../components/HistoryStatus";
-import { formatEther } from "viem";
+import { formatEther, type Hex } from "viem";
+import type { JournalView } from "../wallet/kernel";
 import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 export function TransactionsPage() {
@@ -143,6 +145,10 @@ export function TransactionsPage() {
                   </td>
                   <td>
                     {"hash" in entry && entry.hash && <code>{entry.hash}</code>}
+                    {entry.state === "confirmed" &&
+                      entry.descriptor?.to === null && (
+                        <CreatedContractReceipt entry={entry} />
+                      )}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
                         {replacement.kind === "repriced"
@@ -194,5 +200,61 @@ export function TransactionsPage() {
         </nav>
       )}
     </section>
+  );
+}
+
+function CreatedContractReceipt({
+  entry,
+}: {
+  entry: Extract<JournalView, { state: "confirmed" }>;
+}) {
+  const { client } = useDex();
+  // The kernel exposes only archives from this RPC/genesis/deployment scope;
+  // restored confirmations have already been re-observed on that same RPC.
+  const receipt = useQuery({
+    queryKey: [
+      "created-contract-receipt",
+      client.deployment.rpcUrl,
+      client.key,
+      entry.instance,
+      entry.id,
+      entry.hash,
+    ],
+    queryFn: () =>
+      client.rpc.getTransactionReceipt({ hash: entry.hash as Hex }),
+    enabled: false,
+    retry: false,
+  });
+  return (
+    <div>
+      {receipt.data?.status === "success" && receipt.data.contractAddress ? (
+        <>
+          <p>
+            Created contract: <code>{receipt.data.contractAddress}</code>
+          </p>
+          <p>
+            Copy this address into Pools &amp; tokens → Import to read its
+            metadata.
+          </p>
+        </>
+      ) : receipt.data ? (
+        <p>The observed receipt contains no successful contract creation.</p>
+      ) : null}
+      {receipt.error && (
+        <p role="alert">
+          Creation receipt could not be read: {receipt.error.message}
+        </p>
+      )}
+      <button
+        className="text"
+        type="button"
+        disabled={receipt.isFetching}
+        onClick={() => void receipt.refetch()}
+      >
+        {receipt.isFetching
+          ? "Reading creation receipt…"
+          : "Read created contract"}
+      </button>
+    </div>
   );
 }

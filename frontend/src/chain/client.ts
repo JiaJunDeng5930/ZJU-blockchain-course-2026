@@ -495,7 +495,7 @@ class ExchangeWriter {
   createPool(exchange: string, token0: string, token1: string) {
     return createAssetPool(this.context(), exchange, token0, token1);
   }
-  createToken(name: string, symbol: string): Promise<Token> {
+  createToken(name: string, symbol: string) {
     return createAsset(this.context(), name, symbol);
   }
   wrap(amount: bigint, withdraw: boolean) {

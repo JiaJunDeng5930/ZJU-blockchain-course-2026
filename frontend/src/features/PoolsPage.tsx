@@ -1,6 +1,15 @@
-import { useMemo, useRef, useSyncExternalStore, type RefObject } from "react";
+import {
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type RefObject,
+} from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useDex } from "../chain/DexProvider";
-import { poolLabel, shorten } from "../chain/amounts";
+import { poolLabel, shorten, tokenLabel } from "../chain/amounts";
+import type { ExchangeClient } from "../chain/client";
 import { formatUnits } from "../logic/units";
 import { dispatchAssetEvent } from "../chain/assets";
 import {
@@ -9,10 +18,16 @@ import {
   assetPoolPrice,
   poolAssetsSupported,
   unsupportedPoolError,
+  verifyDeployedAsset,
   type AssetEvent,
   type AssetFormsView,
 } from "../logic/assets";
-import type { Pool, Token } from "../chain/types";
+import type {
+  AssetCreationConfirmation,
+  Pool,
+  Token,
+  TokenCreationConfirmation,
+} from "../chain/types";
 import { FormError, SubmitButton, TokenSelect } from "../components/Forms";
 import { WrapAssets } from "./WrapAssets";
 import "./PoolsPage.css";
@@ -40,7 +55,24 @@ export function PoolsPage({
     run,
     registerToken,
   } = useDex();
+  const cache = useQueryClient();
+  const [created, setCreated] = useState<{
+    clientKey: string;
+    result: AssetCreationConfirmation;
+  }>();
   const poolForm = useRef<HTMLFormElement>(null);
+  const useToken = (token: Token) => {
+    dispatch({ kind: "edit", field: "first", value: token.address });
+    poolForm.current!.focus({ preventScroll: true });
+    poolForm.current!.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+  const discoverCreatedToken = async (result: TokenCreationConfirmation) => {
+    const query = createdTokenQuery(client, result);
+    // Discovery has its own observable query error; it cannot undo a confirmed deployment.
+    await cache.prefetchQuery(query);
+    const token = cache.getQueryData<Token>(query.queryKey);
+    if (token) registerToken(token);
+  };
   const environment = assetEnvironment(
     client.deployment.exchanges,
     tokens,
@@ -53,11 +85,29 @@ export function PoolsPage({
   const forms = controller.view(environment);
   const dispatch = (event: AssetEvent) =>
     dispatchAssetEvent(
-      { client, controller, environment, run, registerToken },
+      {
+        client,
+        controller,
+        environment,
+        run,
+        registerToken,
+        onCreated: (result) => {
+          setCreated({ clientKey: client.key, result });
+          if (result.kind === "token") void discoverCreatedToken(result);
+        },
+      },
       event,
     );
   return (
     <>
+      {created?.clientKey === client.key && (
+        <ConfirmedCreation
+          result={created.result}
+          onUseToken={useToken}
+          onReadToken={discoverCreatedToken}
+          onProvideLiquidity={onProvideLiquidity}
+        />
+      )}
       <section className="card">
         <h2>Exchange pools</h2>
         {snapshot.data?.pools.length === 0 && (
@@ -127,20 +177,206 @@ export function PoolsPage({
         <CreatePool view={forms} dispatch={dispatch} formRef={poolForm} />
         <TokenRegistry view={forms} dispatch={dispatch} />
       </div>
-      <AvailableTokens
-        onUseToken={(token) => {
-          dispatch({ kind: "edit", field: "first", value: token.address });
-          poolForm.current!.focus({ preventScroll: true });
-          poolForm.current!.scrollIntoView({
-            behavior: "smooth",
-            block: "start",
-          });
-        }}
-      />
+      <AvailableTokens onUseToken={useToken} />
       <WrapAssets />
     </>
   );
 }
+function createdTokenQuery(
+  client: ExchangeClient,
+  result: TokenCreationConfirmation,
+) {
+  return {
+    queryKey: [
+      "created-token",
+      client.deployment.rpcUrl,
+      client.key,
+      result.address,
+      result.receipt.transactionHash,
+    ],
+    queryFn: async () => {
+      const token = await client.importToken(result.address);
+      verifyDeployedAsset(result.name, result.symbol, token);
+      return token;
+    },
+    staleTime: Infinity,
+    retry: false,
+  };
+}
+
+function ConfirmedCreation({
+  result,
+  onUseToken,
+  onReadToken,
+  onProvideLiquidity,
+}: {
+  result: AssetCreationConfirmation;
+  onUseToken: (token: Token) => void;
+  onReadToken: (result: TokenCreationConfirmation) => Promise<void>;
+  onProvideLiquidity: (pool: Pool) => void;
+}) {
+  const { client } = useDex();
+  const panel = useRef<HTMLElement>(null);
+  useEffect(() => {
+    panel.current!.focus({ preventScroll: true });
+    panel.current!.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, [result.receipt.transactionHash]);
+  return (
+    <section
+      ref={panel}
+      tabIndex={-1}
+      className="card creation-result"
+      aria-label="Confirmed creation"
+    >
+      <h2>Confirmed creation</h2>
+      {result.kind === "token" ? (
+        <CreatedToken
+          result={result}
+          onUseToken={onUseToken}
+          onReadToken={onReadToken}
+        />
+      ) : (
+        <CreatedPool result={result} onProvideLiquidity={onProvideLiquidity} />
+      )}
+      <dl className="creation-result-values">
+        <dt>Created by</dt>
+        <dd>
+          <code>{result.receipt.from}</code>
+        </dd>
+        <dt>Chain</dt>
+        <dd>{client.deployment.chainId}</dd>
+        <dt>Confirmed block</dt>
+        <dd>{result.receipt.blockNumber.toString()}</dd>
+        <dt>Transaction</dt>
+        <dd>
+          <code>{result.receipt.transactionHash}</code>
+        </dd>
+      </dl>
+    </section>
+  );
+}
+
+function CreatedToken({
+  result,
+  onUseToken,
+  onReadToken,
+}: {
+  result: TokenCreationConfirmation;
+  onUseToken: (token: Token) => void;
+  onReadToken: (result: TokenCreationConfirmation) => Promise<void>;
+}) {
+  const { client } = useDex();
+  const metadata = useQuery({
+    ...createdTokenQuery(client, result),
+    enabled: false,
+  });
+  return (
+    <>
+      <p>
+        ERC20 deployed: {result.name} ({result.symbol}).
+      </p>
+      <code className="creation-address">{result.address}</code>
+      <p>
+        New test tokens start with zero supply. Once metadata is read, claim
+        test tokens in the wallet before providing liquidity.
+      </p>
+      {metadata.isFetching ? (
+        <p role="status">Reading the created token's metadata…</p>
+      ) : metadata.error ? (
+        <p role="alert">
+          Creation is confirmed. Metadata read failed: {metadata.error.message}
+        </p>
+      ) : metadata.data ? (
+        <p>Verified token metadata · {metadata.data.decimals} decimals.</p>
+      ) : (
+        <p>Token metadata has not been read.</p>
+      )}
+      {metadata.data ? (
+        <button type="button" onClick={() => onUseToken(metadata.data)}>
+          Use as first token
+        </button>
+      ) : (
+        <button
+          type="button"
+          disabled={metadata.isFetching}
+          onClick={() => void onReadToken(result)}
+        >
+          Read token metadata
+        </button>
+      )}
+    </>
+  );
+}
+
+function CreatedPool({
+  result,
+  onProvideLiquidity,
+}: {
+  result: Extract<AssetCreationConfirmation, { kind: "pool" }>;
+  onProvideLiquidity: (pool: Pool) => void;
+}) {
+  const { snapshot, symbol, tokens, session, pending } = useDex();
+  const pool = snapshot.data?.pools.find(
+    (candidate) =>
+      candidate.id === result.poolId &&
+      candidate.exchange.address.toLowerCase() ===
+        result.exchange.address.toLowerCase(),
+  );
+  return (
+    <>
+      <p>
+        {result.exchange.name} · pool #{result.poolId.toString()} created.
+        Creating a pool does not deposit tokens.
+      </p>
+      <dl className="creation-result-values">
+        <dt>Exchange</dt>
+        <dd>
+          <code>{result.exchange.address}</code>
+        </dd>
+        <dt>First asset</dt>
+        <dd>
+          {tokenLabel(result.token0, symbol(result.token0))}
+          <code>{result.token0}</code>
+        </dd>
+        <dt>Second asset</dt>
+        <dd>
+          {tokenLabel(result.token1, symbol(result.token1))}
+          <code>{result.token1}</code>
+        </dd>
+      </dl>
+      {pool ? (
+        <>
+          <p>
+            Pool state observed at block {snapshot.data!.block}. Add liquidity
+            using this observed state.
+          </p>
+          <button
+            type="button"
+            disabled={pending || !session || !poolAssetsSupported(pool, tokens)}
+            onClick={() => onProvideLiquidity(pool)}
+          >
+            Add liquidity to this pool
+          </button>
+        </>
+      ) : (
+        <>
+          <p role="status">
+            Creation is confirmed. Waiting to read this pool's state before
+            preparing a deposit.
+          </p>
+          <button
+            type="button"
+            disabled={snapshot.isFetching}
+            onClick={() => void snapshot.refetch()}
+          >
+            Read created pool
+          </button>
+        </>
+      )}
+    </>
+  );
+}
+
 function CreatePool({
   view,
   dispatch,
