@@ -1,4 +1,4 @@
-From Stdlib Require Import ZArith String List Bool Lia.
+From Coq Require Import ZArith String List Bool Lia.
 From DEXFormal.Spec Require Import Types.
 Import ListNotations.
 Open Scope Z_scope.

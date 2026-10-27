@@ -17,5 +17,5 @@ let active_owners json =
   |> List.map owner_to_json |> fun owners -> Js.string (Yojson.Safe.to_string (`List owners))
 
 let () =
-  Js.export "DEXLedger"
+  Js.Unsafe.set Js.Unsafe.global "DEXLedger"
     (Js.Unsafe.obj [| "activeOwners", Js.Unsafe.inject (Js.wrap_callback active_owners) |])
