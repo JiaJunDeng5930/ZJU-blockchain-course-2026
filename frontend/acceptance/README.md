@@ -444,6 +444,29 @@ This establishes the receipt-to-result and journal bindings for these observed
 operations. It does not verify RPC honesty, React rendering, EVM semantics,
 estimated fees or cross-currency net returns.
 
+## Recovering historical liquidity receipts
+
+Run `npm run test:liquidity-receipt`, or run
+`contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-receipt-public.mts`
+when the generated kernel and contract artifacts are already built.
+
+The public wallet mints an 18/6-decimal position, another actor trades against
+the pool, the NFT is transferred, and its new holder redeems it. Only transaction
+hashes and the public storage archive
+survive the simulated page reload. A new client and wallet controller must
+restore confirmed history and recover all three operations after the NFT has
+been burned. Independent RPC events, historical token balances, metadata and
+native debits establish the reported identities, quantities, precision and
+execution fees; the runner does not recompute the AMM or fee formulas.
+
+Actual approvals and same-ABI events from an unconfigured DEX must produce no
+liquidity result. An actual reverted receipt must reject. A real HTTP 503 for
+receipt reads must remain visible; retrying after recovery must return the
+original evidence. The isolated chain and
+proxy are closed afterward. Evidence and source fingerprints stay under
+`.local/liquidity-receipt-public-*/`; this does not establish browser rendering,
+RPC honesty or archive availability on other providers.
+
 ## Realized liquidity actions
 
 ```sh
