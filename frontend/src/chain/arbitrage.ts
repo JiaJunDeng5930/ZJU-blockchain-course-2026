@@ -56,9 +56,13 @@ export async function executeArbitrage(
       blockNumber: block.number,
     }),
   ]);
-  const verifiedTokens = await Promise.all([
-    importAsset(client, route.buy.token0),
-    importAsset(client, route.buy.token1),
+  // Quote state uses one mined block; the deadline uses the execution clock.
+  const [verifiedTokens, executionTimestamp] = await Promise.all([
+    Promise.all([
+      importAsset(client, route.buy.token0),
+      importAsset(client, route.buy.token1),
+    ]),
+    client.transactionTimestamp(),
   ]);
   assertSupportedPool(route.buy, verifiedTokens);
   assertSupportedPool(route.sell, verifiedTokens);
@@ -70,7 +74,7 @@ export async function executeArbitrage(
     minimum,
     balance,
     allowance,
-    now: block.timestamp,
+    now: executionTimestamp,
     block: Number(block.number),
   });
   if (plan.requiresApproval) {
