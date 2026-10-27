@@ -330,6 +330,7 @@ let create_exn configuration =
       reply effects [object_ ["kind", text "load-history"]] `Null));
     "dispatch", Js.Unsafe.inject (Js.wrap_callback dispatch);
     "activity", Js.Unsafe.inject (Js.wrap_callback activity);
+    "allowances", Js.Unsafe.inject (Js.wrap_callback (AllowancesBridge.create ~current_identity:(fun () -> W.current_identity !wallet) ~pending:(fun () -> T.pending (tx ()))));
     "historyKey", Js.Unsafe.inject (Js.wrap_callback (fun genesis deployment endpoint -> H.scope (Js.to_string genesis) (Js.to_string deployment) (Js.to_string endpoint) |> Js.string));
     "retainsSnapshot", Js.Unsafe.inject (Js.wrap_callback (fun encoded ->
       Json.from_string (Js.to_string encoded) |> optional_identity_exn |> W.retains_snapshot !wallet |> Js.bool));

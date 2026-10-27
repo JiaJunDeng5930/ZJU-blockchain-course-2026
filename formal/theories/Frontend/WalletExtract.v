@@ -1,5 +1,5 @@
 From Coq Require Import Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt.
-From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity.
+From DEXFormal.Frontend Require Import Wallet Transactions TransactionHistory Activity Allowances.
 
 Extraction Language OCaml.
 Extraction "formal/build/wallet/WalletKernel.ml"
@@ -19,4 +19,7 @@ Extraction "formal/build/wallet/WalletKernel.ml"
   TransactionHistory.needs_save TransactionHistory.can_refresh TransactionHistory.can_retry_load TransactionHistory.can_retry_save
   TransactionHistory.visible_entries TransactionHistory.flush_loaded
   TransactionHistory.receive_receipt TransactionHistory.receipt_unavailable
+  Allowances.pairs_for Allowances.initial Allowances.normalize Allowances.can_revoke Allowances.begin_read Allowances.matches_request
+  Allowances.loaded Allowances.failed Allowances.select Allowances.cancel Allowances.take Allowances.validate
+  Allowances.can_refresh Allowances.can_confirm Allowances.simulation_allowed Allowances.submitted Allowances.rejected Allowances.amount_parameter Allowances.unlimited
   Activity.initial Activity.view Activity.step.

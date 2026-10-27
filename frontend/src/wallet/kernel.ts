@@ -182,6 +182,9 @@ export type KernelEvent =
       transaction: string;
       message: string;
     };
+export type RawAllowances = {
+  view(): string; command(event:string):string; writePlan(input:string):string; simulation(accepted:boolean):string;
+};
 type RawKernel = {
   view(): string;
   start(): string;
@@ -190,6 +193,7 @@ type RawKernel = {
   fundingPlan(observation: string): string;
   historyKey(genesis: string, deployment: string, endpoint: string): string;
   activity(input: string): string;
+  allowances(configuration:string): RawAllowances;
 };
 declare global {
   var DEXWallet: {
@@ -212,6 +216,9 @@ export class WalletKernel {
   }) {
     this.raw = globalThis.DEXWallet.create(JSON.stringify(configuration));
     this.view = JSON.parse(this.raw.view());
+  }
+  createAllowances(configuration:{tokens:string[];spenders:string[]}): RawAllowances {
+    return this.raw.allowances(JSON.stringify(configuration));
   }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => {

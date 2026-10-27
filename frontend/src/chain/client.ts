@@ -30,6 +30,8 @@ import {
   claimAsset,
 } from "./assets";
 import { addLiquidity, removeLiquidity, transferPosition } from "./liquidity";
+import { revokeAllowance, type RevokePlan } from "./allowances";
+import type { RawAllowances } from "../wallet/kernel";
 import { executeWrap } from "./wrapping";
 import { opportunities, executeArbitrage } from "./arbitrage";
 import type {
@@ -351,6 +353,9 @@ class ExchangeWriter {
           args: [getAddress(spender), amount],
         }),
       );
+  }
+  revokeAllowance(plan: RevokePlan, runtime: RawAllowances) {
+    return revokeAllowance(this.context(), plan, runtime);
   }
   faucet(token: Token) {
     return claimAsset(this.context(), token);

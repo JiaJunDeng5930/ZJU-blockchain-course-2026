@@ -17,6 +17,7 @@ import { LiquidityPage } from "./features/LiquidityPage";
 import { PoolsPage } from "./features/PoolsPage";
 import { ArbitragePage } from "./features/ArbitragePage";
 import { SimulationPage } from "./features/SimulationPage";
+import { AllowancesPage } from "./features/AllowancesPage";
 import { TransactionsPage } from "./features/TransactionsPage";
 import "./App.css";
 
@@ -33,6 +34,7 @@ const workspaces = [
   { name: "Arbitrage", route: "arbitrage" },
   { name: "Simulation", route: "simulation" },
   { name: "Transactions", route: "activity" },
+  { name: "Token approvals", route: "approvals" },
 ] as const;
 type WorkspaceName = (typeof workspaces)[number]["name"];
 export default function App() {
@@ -256,6 +258,8 @@ function Workspace() {
         )}
         {page === "Simulation" ? (
           <SimulationPage />
+        ) : page === "Token approvals" ? (
+          <AllowancesPage />
         ) : page === "Transactions" ? (
           <TransactionsPage />
         ) : !snapshot.data ? (

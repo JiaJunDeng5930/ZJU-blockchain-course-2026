@@ -80,7 +80,7 @@ try {
       extract: "theories/Frontend/WalletExtract.v",
       cwd: work,
       directory: "wallet",
-      bridges: ["WalletBridge"],
+      bridges: ["AllowancesBridge", "WalletBridge"],
     },
     {
       extract: "theories/Frontend/ExtractTrade.v",
