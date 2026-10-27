@@ -142,7 +142,7 @@ function useDexState(client: ExchangeClient) {
   const mutation = useMutation({
     mutationFn: async (operation: {
       label: string;
-      perform: (writer: Writer) => Promise<void>;
+      perform: (writer: Writer) => Promise<unknown>;
       session: WalletSession | undefined;
     }) => {
       await wallet.controller.perform(operation, () => {
@@ -168,7 +168,7 @@ function useDexState(client: ExchangeClient) {
     history: wallet.view.history,
     status: renderActivity(wallet.view.activity, client.deployment.chainId),
     pending: wallet.view.pending,
-    run: (label: string, perform: (writer: Writer) => Promise<void>) =>
+    run: (label: string, perform: (writer: Writer) => Promise<unknown>) =>
       mutation.mutate({ label, perform, session }),
     registerToken,
     precision: (address: string) => tokenDecimals(tokens, address),

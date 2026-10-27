@@ -268,15 +268,8 @@ pre {
 .form p {
   margin-bottom: 0;
 }
-.form-error,
-.read-error {
+.form-error {
   color: #b23e33;
-}
-.read-error {
-  padding: 12px;
-  background: #fff0ec;
-  border-radius: 10px;
-  font-size: 13px;
 }
 .pool-strip {
   display: flex;

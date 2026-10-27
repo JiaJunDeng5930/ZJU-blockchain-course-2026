@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from "react";
 import { BrowserRouter, useSearchParams } from "react-router-dom";
-import {
-  QueryClient,
-  QueryClientProvider,
-  useQuery,
-} from "@tanstack/react-query";
+import { QueryClientProvider, useQuery } from "@tanstack/react-query";
+import { createChainQueryClient } from "./chain/queryClient";
 import { ExchangeClient } from "./chain/client";
 import { DexProvider, useDex } from "./chain/DexProvider";
 import { HistoryStatus } from "./components/HistoryStatus";
+import { ChainDataStatus } from "./components/ChainDataStatus";
 import type { Deployment } from "./chain/types";
 import { poolKey } from "./chain/amounts";
 import { WalletMenu } from "./components/WalletMenu";
@@ -21,12 +19,7 @@ import { AllowancesPage } from "./features/AllowancesPage";
 import { TransactionsPage } from "./features/TransactionsPage";
 import "./App.css";
 
-const queries = new QueryClient({
-  defaultOptions: {
-    queries: { retry: false, staleTime: 2000, refetchOnWindowFocus: false },
-    mutations: { retry: false },
-  },
-});
+const queries = createChainQueryClient();
 const workspaces = [
   { name: "Swap", route: "swap" },
   { name: "Liquidity", route: "liquidity" },
@@ -84,11 +77,12 @@ function Bootstrap() {
             <p role="alert">{deployment.error.message}</p>
             <button
               className="button-primary"
+              disabled={deployment.isFetching}
               onClick={() => {
                 void deployment.refetch();
               }}
             >
-              Retry connection
+              {deployment.isFetching ? "Connecting…" : "Retry connection"}
             </button>
           </>
         ) : (
@@ -253,12 +247,7 @@ function Workspace() {
         className={`workspace-content ${page === "Swap" ? "swap-workspace" : "tool-workspace"}`}
       >
         {page !== "Transactions" && <HistoryStatus history={history} quiet />}
-        {snapshot.error && (
-          <p role="alert" className="read-error">
-            Unable to refresh chain data. Confirmed transactions are still
-            available in Activity. {snapshot.error.message}
-          </p>
-        )}
+        <ChainDataStatus />
         {page === "Simulation" ? (
           <SimulationPage />
         ) : page === "Token approvals" ? (
@@ -266,8 +255,13 @@ function Workspace() {
         ) : page === "Transactions" ? (
           <TransactionsPage />
         ) : !snapshot.data ? (
-          <div className="workspace-loading" role="status">
-            Loading markets…
+          <div
+            className="workspace-loading"
+            role={snapshot.error ? undefined : "status"}
+          >
+            {snapshot.error
+              ? "No market snapshot is available. Use Refresh above to try again."
+              : "Loading markets…"}
           </div>
         ) : page === "Pools & tokens" ? (
           <PoolsPage
