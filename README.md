@@ -256,7 +256,7 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
 | WETH 与测试币 faucet | 前端本金/最高 gas 预算、转换账务与资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
 
-`atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。
+`atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。 另见[实际领取存储性质](formal/TEST-TOKEN-STATE.md)与[池存储目标](formal/MINIDEX-STATE.md)，其中分别列出前提、求解结果和未闭合边界。
 
 在仓库根目录，准备工具链后执行：
 
@@ -441,19 +441,19 @@ ERC20 资产使用单层标识，名称与完整合约地址可悬停查看。�
 
 ### 创建代币、交易池与刷新后恢复
 
-以下三图来自使用同一验证版本源码和提取内核的独立文档演示部署，使用本地测试钱包和测试 ETH，与上述运行至区块 851 的演示链是不同环境。BASE、OTHER 和初始池由部署脚本准备；下面的 CDT 合约与 BASE/CDT 新池均通过页面实际提交交易创建。
+以下三图来自上述本地演示链，经用户授权实际创建 RCP、领取测试币并在 Harbor 创建 RCP/TKA 空池。三个操作分别位于区块 852、853、854；原有池的储备、初始 NFT 持有人和已完成的模拟报告保持不变。
 
-在 `Tools → Pools & tokens` 创建 Course Demo Token（CDT），区块 17 的成功结果包含合约地址、创建账户及交易哈希。读取到代币元数据后，可以直接将它选作新池资产。新代币初始供应量为零，提供流动性前需在钱包中领取测试币。
+在 `Tools → Pools & tokens` 创建 Receipt Evidence Token（RCP）。成功结果包含合约地址、创建账户、区块和交易哈希；元数据确认后，可将它直接选作新池资产。部署时供应量为零。
 
-![独立演示部署：真实 ERC20 创建回执与已读取的元数据](docs/screenshots/49-isolated-token-created.jpg)
+![演示链：RCP 创建回执与已读取的元数据](docs/screenshots/52-rcp-token-created.jpg)
 
-选择 CDT 和 BASE 后创建 Documentation Harbor 的池 #2；结果中的资产按合约的地址顺序显示。区块 18 的真实回执确认池已创建；创建池不会自动注入代币或铸造流动性 NFT。
+打开钱包领取 10,000 RCP。展开领取回执，可查看实际铸币数量、代币合约、收款人、手续费付款人和执行费；钱包余额与回执分别读取。
 
-![独立演示部署：新池编号、两种资产及创建交易回执](docs/screenshots/50-isolated-pool-created.jpg)
+![演示链：钱包中的 RCP 余额与领取回执](docs/screenshots/53-rcp-test-assets-claimed.jpg)
 
-刷新页面后，在 `Tools → Transactions` 对同一创建交易点击 `Read transaction result`，可重新读取池 #2 的创建结果。卡片区分原始创建回执与当前池状态；图中当前池状态也观测于区块 18，`Add liquidity to this pool` 可继续向该池提供流动性。本次截图流程没有提交额外的注资交易。
+选择 Harbor、RCP 和 TKA 创建池 #2。刷新后，在 `Tools → Transactions` 点击该交易的 `Read transaction result`，恢复原始创建身份与当前池状态。链上核对该池两侧储备和总份额均为零；创建池没有注资或铸造 NFT，`Add liquidity to this pool` 可继续首次注资。本次授权演示只提交上述三笔交易。
 
-![独立演示部署：刷新后从交易记录恢复同一池的创建结果](docs/screenshots/51-isolated-pool-history.jpg)
+![演示链：刷新后恢复 Harbor RCP/TKA 空池的创建结果](docs/screenshots/54-rcp-pool-restored.jpg)
 
 ### 历史 MetaMask 确认
 
