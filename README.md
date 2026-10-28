@@ -88,6 +88,8 @@ SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用
 
 运行 `npm run test:funding-receipt`，可通过公开钱包和 SDK 接口验收代币/ETH 领取恢复、领取后花费、记录重建、错误上下文及 RPC 故障后的手动重读。
 
+运行 `npm run test:wrapping-callback`，可在隔离链验收合约持有人部分提现、接收方拒收后的整笔回滚与恢复重试，以及储备充足时的回调重复支出防护。验收绑定真实部署字节码及其 build-info；这些公开入口场景与上述存储证明分别记录。
+
 包装和解包成功后，确认结果分别展示实际本金、WETH 变化、该笔交易的 ETH 变化及执行费。包装会支付 ETH 本金和 gas；解包释放的 ETH 本金仍需扣除 gas，因此微小解包的 ETH 净变化可能为负。本金来自 WETH 合约的铸造/销毁事件，费用来自同一收据；结果不依赖确认后的余额读取。
 
 刷新后，在 Tools → Transactions 的已确认记录中点击 Read transaction result，也可恢复包装和解包结果，包括直接向配置 WETH 合约发送 ETH 的 `receive` 路径。恢复只读取原回执，不需要当前余额或历史状态查询；普通 WETH 转账与授权、其他代币的铸造都不会被当成包装。本项目的 WrappedEther 协议固定使用 18 位精度，历史结果复用实时确认的本金与手续费结算规则。
@@ -256,7 +258,7 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 | 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
 | WETH 与测试币 faucet | 前端本金/最高 gas 预算、转换账务与资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
 
-`atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。 另见[实际领取存储性质](formal/TEST-TOKEN-STATE.md)与[池存储目标](formal/MINIDEX-STATE.md)，其中分别列出前提、求解结果和未闭合边界。
+`atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。 另见[实际领取存储性质](formal/TEST-TOKEN-STATE.md)、[WETH 存储性质](formal/WRAPPED-ETHER-STATE.md)与[池存储目标](formal/MINIDEX-STATE.md)，其中分别列出前提、求解结果和未闭合边界。
 
 在仓库根目录，准备工具链后执行：
 
