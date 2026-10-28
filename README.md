@@ -90,6 +90,8 @@ SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用
 
 运行 `npm run test:wrapping-callback`，可在隔离链验收合约持有人部分提现、接收方拒收后的整笔回滚与恢复重试，以及储备充足时的回调重复支出防护。验收绑定真实部署字节码及其 build-info；这些公开入口场景与上述存储证明分别记录。
 
+运行 `npm run test:liquidity-callback`，可验收流动性 NFT 合约接收方的安全铸造与转发、拒收后的资金和授权回滚、批准操作者重试，以及回调期间的他人仓位保护。成功路径核对事件与实际 NFT、储备和份额记录；范围见[流动性回调验收](formal/LIQUIDITY-CALLBACKS.md)。
+
 包装和解包成功后，确认结果分别展示实际本金、WETH 变化、该笔交易的 ETH 变化及执行费。包装会支付 ETH 本金和 gas；解包释放的 ETH 本金仍需扣除 gas，因此微小解包的 ETH 净变化可能为负。本金来自 WETH 合约的铸造/销毁事件，费用来自同一收据；结果不依赖确认后的余额读取。
 
 刷新后，在 Tools → Transactions 的已确认记录中点击 Read transaction result，也可恢复包装和解包结果，包括直接向配置 WETH 合约发送 ETH 的 `receive` 路径。恢复只读取原回执，不需要当前余额或历史状态查询；普通 WETH 转账与授权、其他代币的铸造都不会被当成包装。本项目的 WrappedEther 协议固定使用 18 位精度，历史结果复用实时确认的本金与手续费结算规则。
