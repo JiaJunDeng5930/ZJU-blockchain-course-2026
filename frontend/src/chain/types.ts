@@ -25,6 +25,10 @@ export type AssetFundingConfirmation = {
   gasCostWei: bigint;
   receipt: TransactionReceipt;
 } & ({ kind: "native" } | { kind: "token"; token: Token });
+export type FundingRecoveryContext = {
+  authority: "wallet" | "dev-faucet";
+  beneficiary: string;
+};
 export type PoolCreationConfirmation = {
   kind: "pool";
   exchange: Exchange;
@@ -123,6 +127,7 @@ export type SwapReceiptDetails = {
   tokens: readonly [Token, Token];
 };
 export type RecoveredTransactionResult =
+  | { kind: "funding"; details: AssetFundingConfirmation }
   | { kind: "pool-creation"; details: PoolCreationConfirmation }
   | { kind: "swap"; details: SwapReceiptDetails }
   | { kind: "liquidity"; details: LiquidityReceiptDetails }

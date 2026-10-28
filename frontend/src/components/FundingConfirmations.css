@@ -1,8 +1,8 @@
 .funding-confirmations { margin: 16px 0; }
 .funding-confirmations h3 { margin: 0 0 8px; font-size: 14px; }
 .funding-confirmations p { font-size: 12px; color: #626875; }
-.funding-confirmations details { padding: 10px 0; border-top: 1px solid #e4e7ec; }
-.funding-confirmations summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
-.funding-confirmations dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: 12px; }
-.funding-confirmations dd { margin: 0; overflow-wrap: anywhere; }
-.funding-confirmations dt { color: #626875; }
+.funding-confirmation { padding: 10px 0; border-top: 1px solid #e4e7ec; }
+.funding-confirmation summary { cursor: pointer; font-size: 13px; overflow-wrap: anywhere; }
+.funding-confirmation dl { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 8px; font-size: 12px; }
+.funding-confirmation dd { margin: 0; overflow-wrap: anywhere; }
+.funding-confirmation dt { color: #626875; }

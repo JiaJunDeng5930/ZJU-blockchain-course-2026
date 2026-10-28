@@ -51,6 +51,9 @@ import type {
 } from "./types";
 import type { WalletSession } from "../wallet/session";
 import { planNativeFunding } from "../wallet/kernel";
+import { nativeFundingConfirmation } from "./fundingConfirmation";
+import { readFundingReceipt } from "./fundingReceipt";
+import type { FundingRecoveryContext } from "./types";
 
 export type SendTransaction = (
   label: string,
@@ -361,7 +364,8 @@ export class ExchangeClient {
   swapReceipt(hash: Hex) { return readSwapReceipt(this, hash); }
   wrappingReceipt(hash: Hex) { return readWrappingReceipt(this, hash); }
   poolCreationReceipt(hash: Hex) { return readPoolCreationReceipt(this, hash); }
-  transactionResult(hash: Hex) { return readTransactionResult(this, hash); }
+  transactionResult(hash: Hex, context?: FundingRecoveryContext) { return readTransactionResult(this, hash, context); }
+  fundingReceipt(hash: Hex, context?: FundingRecoveryContext) { return readFundingReceipt(this, hash, context); }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);
   }
@@ -419,8 +423,7 @@ class ExchangeWriter {
         }),
       { kind: "dev-faucet", sender: funder }
     );
-    return { kind: "native" as const, recipient: this.session.address,
-      amount: funding.amountWei, gasCostWei: executionFeeWei(receipt), receipt };
+    return nativeFundingConfirmation(receipt, this.session.address, funding.amountWei);
   }
   async routedSwap(plan: RoutedSwapPlan): Promise<SwapResult> {
     const receipt = await this.executeSwap(

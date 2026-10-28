@@ -1,8 +1,8 @@
 import "../generated/dex_logic.js";
 import { toFunctionSelector } from "viem";
-import { arbitrageAbi, miniDexAbi, wrappedEtherAbi } from "../generated/abis";
+import { arbitrageAbi, miniDexAbi, wrappedEtherAbi, testTokenAbi } from "../generated/abis";
 import type { TransactionDescriptor } from "../wallet/kernel";
-import type { Exchange, Token } from "../chain/types";
+import type { Exchange, Token, FundingRecoveryContext } from "../chain/types";
 import { selectWrappedAddress } from "./wrapping";
 
 export type ReceiptFact = {
@@ -35,6 +35,9 @@ declare global {
     selectWrapping(input: string): string;
     selectPoolCreation(input: string): string;
     continueCreatedPool(input: string): string;
+    selectTokenFunding(input: string): string;
+    nativeFundingCandidate(input: string): boolean;
+    nativeFundingValue(input: string): string;
   };
 }
 
@@ -51,9 +54,10 @@ function scopeWire(scope: Scope) {
 export function transactionResultAvailable(
   scope: Scope,
   descriptor: TransactionDescriptor | null,
+  context?: FundingRecoveryContext,
 ) {
   const selector = descriptor?.input.slice(0, 10);
-  const method = [...miniDexAbi, ...arbitrageAbi, ...wrappedEtherAbi].find(
+  const method = [...miniDexAbi, ...arbitrageAbi, ...wrappedEtherAbi, ...testTokenAbi].find(
     (item) => item.type === "function" && toFunctionSelector(item) === selector,
   );
   return globalThis.DEXSwapReceipt.available(
@@ -61,6 +65,8 @@ export function transactionResultAvailable(
       ...scopeWire(scope),
       descriptorKnown: descriptor !== null,
       creation: descriptor?.to === null,
+      authority: context?.authority ?? "",
+      beneficiary: context?.beneficiary.toLowerCase() ?? "",
       target: descriptor?.to?.toLowerCase() ?? "",
       operation: method?.type === "function" ? method.name
         : descriptor?.input === "0x" ? "receive" : "",

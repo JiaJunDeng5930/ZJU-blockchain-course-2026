@@ -1,4 +1,4 @@
-From Coq Require Import List String Bool.
+From Coq Require Import List String Bool ZArith.
 From DEXFormal.Spec Require Import Ledger.
 From DEXFormal.Frontend Require Import ReceiptScope PoolSelection.
 Import ListNotations.
@@ -54,6 +54,117 @@ Definition available known arbitrage descriptor_known creation target operation 
 
 Definition output_asset input token0 token1 :=
   if String.eqb input token0 then token1 else token0.
+
+(* The asset adapter separately recognizes the deployed TestToken runtime before
+   presenting a mint as a test-token grant. Receipt selection only binds the
+   observed mint to the direct target and caller. *)
+Definition token_funding_fact target owner fact :=
+  String.eqb (fact_source fact) target &&
+  String.eqb (fact_from fact) Ledger.zero_address &&
+  String.eqb (fact_to fact) owner &&
+  match fact_type fact with TransferFact => true | _ => false end.
+Inductive token_funding_selection := NoTokenFunding | SelectedTokenFunding (fact : receipt_fact)
+| MultipleTokenFundings | RevertedTokenFunding.
+Definition token_funding_scope expected_target expected_owner target owner :=
+  String.eqb target expected_target && String.eqb owner expected_owner.
+Definition select_token_funding (successful : bool) expected_target expected_owner target owner facts :=
+  if successful then
+    if token_funding_scope expected_target expected_owner target owner then
+      match filter (token_funding_fact target owner) facts with
+      | [] => NoTokenFunding | [fact] => SelectedTokenFunding fact | _ => MultipleTokenFundings end
+    else NoTokenFunding
+  else RevertedTokenFunding.
+
+(* A native transfer does not encode its purpose. Only the preserved journal
+   authority identifies a grant; chain data supplies its recipient and value. *)
+Definition native_funding_candidate (successful : bool) authority beneficiary target owner :=
+  successful && String.eqb authority "dev-faucet" &&
+  negb (String.eqb beneficiary "") && String.eqb target beneficiary &&
+  negb (String.eqb owner beneficiary).
+Definition native_funding_value successful authority beneficiary target owner input (amount : Z) :=
+  if native_funding_candidate successful authority beneficiary target owner &&
+     String.eqb input "0x" && Z.ltb 0 amount
+  then Some amount else None.
+Definition available_with_funding (previous descriptor_known : bool)
+    authority beneficiary target operation :=
+  previous || (descriptor_known &&
+    ((String.eqb operation "faucet" && negb (String.eqb target "")) ||
+     (String.eqb authority "dev-faucet" && negb (String.eqb beneficiary "") &&
+      String.eqb target beneficiary && String.eqb operation "receive"))).
+
+Theorem selected_token_funding_was_observed successful expected_target expected_owner target owner facts fact :
+  select_token_funding successful expected_target expected_owner target owner facts = SelectedTokenFunding fact ->
+  In fact facts /\ token_funding_fact target owner fact = true.
+Proof.
+  unfold select_token_funding. destruct successful; try discriminate.
+  destruct (token_funding_scope expected_target expected_owner target owner); try discriminate.
+  remember (filter (token_funding_fact target owner) facts) as selected eqn:Hselected.
+  destruct selected as [|first rest]; try discriminate.
+  destruct rest; try discriminate. intros H; inversion H; subst first.
+  apply filter_In. rewrite <- Hselected. simpl; auto.
+Qed.
+
+Theorem selected_token_funding_matches_captured_scope successful expected_target expected_owner target owner facts fact :
+  select_token_funding successful expected_target expected_owner target owner facts = SelectedTokenFunding fact ->
+  target = expected_target /\ owner = expected_owner.
+Proof.
+  unfold select_token_funding. destruct successful; try discriminate.
+  destruct (token_funding_scope expected_target expected_owner target owner) eqn:H; try discriminate.
+  intros _. unfold token_funding_scope in H. apply andb_true_iff in H.
+  destruct H as [Ht Ho]. split; apply String.eqb_eq; assumption.
+Qed.
+
+Theorem selected_token_funding_binds_target_and_caller target owner fact :
+  token_funding_fact target owner fact = true ->
+  fact_source fact = target /\ fact_from fact = Ledger.zero_address /\ fact_to fact = owner.
+Proof.
+  unfold token_funding_fact. repeat rewrite andb_true_iff.
+  intros [[[Hs Hf] Ht] _]. repeat split; apply String.eqb_eq; assumption.
+Qed.
+
+Theorem reverted_token_funding_is_not_selected expected_target expected_owner target owner facts :
+  select_token_funding false expected_target expected_owner target owner facts = RevertedTokenFunding.
+Proof. reflexivity. Qed.
+
+Theorem native_funding_requires_recorded_authority successful authority beneficiary target owner :
+  native_funding_candidate successful authority beneficiary target owner = true ->
+  authority = "dev-faucet" /\ target = beneficiary /\ owner <> beneficiary.
+Proof.
+  unfold native_funding_candidate. repeat rewrite andb_true_iff.
+  intros [[[[Hs Ha] Hb] Ht] Ho].
+  apply String.eqb_eq in Ha, Ht. apply negb_true_iff in Ho.
+  apply String.eqb_neq in Ho. auto.
+Qed.
+
+Theorem native_funding_preserves_positive_transaction_value successful authority beneficiary target owner input amount selected :
+  native_funding_value successful authority beneficiary target owner input amount = Some selected ->
+  selected = amount /\ (0 < amount)%Z /\ input = "0x" /\ successful = true.
+Proof.
+  unfold native_funding_value.
+  destruct (native_funding_candidate successful authority beneficiary target owner &&
+    String.eqb input "0x" && Z.ltb 0 amount) eqn:H; try discriminate.
+  intros E; inversion E; subst selected. repeat rewrite andb_true_iff in H.
+  destruct H as [[Hc Hi] Ha]. apply Z.ltb_lt in Ha. apply String.eqb_eq in Hi.
+  unfold native_funding_candidate in Hc. repeat rewrite andb_true_iff in Hc.
+  destruct Hc as [[[[Hs _] _] _] _]. auto.
+Qed.
+
+Theorem native_funding_without_context_is_not_a_grant successful beneficiary target owner input amount :
+  native_funding_value successful "" beneficiary target owner input amount = None.
+Proof. unfold native_funding_value, native_funding_candidate. destruct successful; reflexivity. Qed.
+
+Theorem native_funding_wrong_recipient_is_not_a_grant successful authority beneficiary target owner input amount :
+  target <> beneficiary ->
+  native_funding_value successful authority beneficiary target owner input amount = None.
+Proof.
+  intros H. apply String.eqb_neq in H.
+  unfold native_funding_value, native_funding_candidate.
+  rewrite H, andb_false_r. reflexivity.
+Qed.
+
+Theorem funding_availability_preserves_existing_results known authority beneficiary target operation :
+  available_with_funding true known authority beneficiary target operation = true.
+Proof. reflexivity. Qed.
 
 (* WrappedEther only mints to, or burns from, its direct caller. This selection
    preserves that scope so the existing settlement includes that owner's fee. *)

@@ -31,6 +31,7 @@
     "test:asset-setup": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/asset-setup-public.mts",
     "test:wrapping-settlement": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-settlement-public.mts",
     "test:funding-confirmation": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/funding-confirmation-public.mts",
+    "test:funding-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/funding-receipt-public.mts",
     "test:creation-results": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/creation-results-public.mts",
     "test:liquidity-evidence": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-evidence-public.mts",
     "test:liquidity-fees": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-fees-public.mts",

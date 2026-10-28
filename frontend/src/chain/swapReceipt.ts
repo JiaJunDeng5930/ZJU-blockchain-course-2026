@@ -18,12 +18,14 @@ import { liquidityReceiptFromReceipt } from "./liquidity";
 import { arbitrageReceiptFromReceipt } from "./arbitrage";
 import { wrappingReceiptFacts, wrappingReceiptFromReceipt } from "./wrapping";
 import { poolCreationReceiptFacts, poolCreationReceiptFromReceipt } from "./poolCreationReceipt";
+import { fundingReceiptFromReceipt } from "./fundingReceipt";
 import type { ExchangeClient } from "./client";
 import type {
   PoolIdentity,
   RecoveredTransactionResult,
   SwapExecution,
   SwapReceiptDetails,
+  FundingRecoveryContext,
 } from "./types";
 
 type SwapEvent = ReturnType<typeof swapEvents>[number];
@@ -171,11 +173,14 @@ export async function readSwapReceipt(client: ExchangeClient, hash: Hex) {
 export async function readTransactionResult(
   client: ExchangeClient,
   hash: Hex,
+  context?: FundingRecoveryContext,
 ): Promise<RecoveredTransactionResult | null> {
   const receipt = await client.rpc.getTransactionReceipt({ hash });
   switch (recoveredTransactionKind(client.deployment, observation(receipt))) {
-    case "none":
-      return null;
+    case "none": {
+      const details = await fundingReceiptFromReceipt(client, receipt, context);
+      return details === null ? null : { kind: "funding", details };
+    }
     case "reverted":
       // DEFENSE: a manually supplied hash can be an on-chain reverted transaction.
       throw new Error(

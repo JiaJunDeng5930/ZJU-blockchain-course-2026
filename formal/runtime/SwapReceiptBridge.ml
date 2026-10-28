@@ -44,9 +44,38 @@ let classify input =
 
 let available input =
   let v = value input in
-  Kernel.available_with_pool_creation (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
+  let previous = Kernel.available_with_pool_creation (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
     (boolean "descriptorKnown" v) (boolean "creation" v)
-    (text "target" v) (text "operation" v) |> Js.bool
+    (text "target" v) (text "operation" v) in
+  Kernel.available_with_funding previous (boolean "descriptorKnown" v)
+    (text "authority" v) (text "beneficiary" v) (text "target" v)
+    (text "operation" v) |> Js.bool
+
+let select_token_funding input =
+  let v = value input in
+  let result = match Kernel.select_token_funding (boolean "successful" v)
+      (text "expectedTarget" v) (text "expectedOwner" v) (text "target" v) (text "owner" v) (facts v) with
+    | Kernel.NoTokenFunding -> `Assoc ["kind", `String "none"]
+    | Kernel.RevertedTokenFunding -> `Assoc ["kind", `String "reverted"]
+    | Kernel.MultipleTokenFundings -> `Assoc ["kind", `String "multiple"]
+    | Kernel.SelectedTokenFunding fact ->
+        `Assoc ["kind", `String "selected"; "index", `Int fact.Kernel.fact_index] in
+  encode result
+
+let native_funding_candidate input =
+  let v = value input in
+  Kernel.native_funding_candidate (boolean "successful" v) (text "authority" v)
+    (text "beneficiary" v) (text "target" v) (text "owner" v) |> Js.bool
+
+let native_funding_value input =
+  let v = value input in
+  let result = match Kernel.native_funding_value (boolean "successful" v)
+      (text "authority" v) (text "beneficiary" v) (text "target" v)
+      (text "owner" v) (text "input" v) (text "amount" v |> Z.of_string) with
+    | None -> `Assoc ["kind", `String "none"]
+    | Some amount -> `Assoc ["kind", `String "selected";
+        "amount", `String (Z.to_string amount)] in
+  encode result
 
 let output_asset input =
   let v = value input in
@@ -93,6 +122,9 @@ let () =
     (Js.Unsafe.obj [|"select", Js.Unsafe.inject (Js.wrap_callback select);
       "classify", Js.Unsafe.inject (Js.wrap_callback classify);
       "available", Js.Unsafe.inject (Js.wrap_callback available);
+      "selectTokenFunding", Js.Unsafe.inject (Js.wrap_callback select_token_funding);
+      "nativeFundingCandidate", Js.Unsafe.inject (Js.wrap_callback native_funding_candidate);
+      "nativeFundingValue", Js.Unsafe.inject (Js.wrap_callback native_funding_value);
       "selectWrapping", Js.Unsafe.inject (Js.wrap_callback select_wrapping);
       "selectPoolCreation", Js.Unsafe.inject (Js.wrap_callback select_pool_creation);
       "continueCreatedPool", Js.Unsafe.inject (Js.wrap_callback continue_created_pool);

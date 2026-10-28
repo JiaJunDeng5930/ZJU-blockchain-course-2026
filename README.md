@@ -84,6 +84,10 @@ SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用
 
 运行 `npm run test:asset-setup`，可在隔离链上通过公开钱包接口验收从无资金账户领取测试资产、创建并领取新代币、在指定交易所建空池，以及真实包装和解包的连续流程。验收使用实际部署回执、代币元数据、交易和余额变化；夹具通过开发 RPC 设定起始余额时不伪造交易回执；实际领取 ETH 由本地出资账户发送交易。无法支付 gas 的转换会在发送前拒绝。
 
+领取测试代币和 ETH 后，也可在 Tools → Transactions 的已确认记录中点击 Read transaction result，恢复原始领取数量、接收人、发送人、执行费和区块。代币数量来自真实 TestToken 合约向直接调用者铸币的 `Transfer` 事件，ETH 本金来自原交易的 `value`；后续花掉资产、切换账户或余额读取失败不会改变领取结果。读取故障保留记录的 confirmed 状态，可手动重读。ETH 转账本身不记录用途，因此恢复本地 ETH 领取还需要交易记录中保存的 `dev-faucet` 身份和接收人；缺少或不匹配的上下文不会把普通转账解释为领取。SDK 使用 `client.fundingReceipt(hash, context?)`，统一入口为 `client.transactionResult(hash, context?)`；`context` 是记录中的 `{ authority, beneficiary }`。见 [ADR 022](docs/adr/022-recover-funding-with-chain-values-and-journal-purpose.md)。
+
+运行 `npm run test:funding-receipt`，可通过公开钱包和 SDK 接口验收代币/ETH 领取恢复、领取后花费、记录重建、错误上下文及 RPC 故障后的手动重读。
+
 包装和解包成功后，确认结果分别展示实际本金、WETH 变化、该笔交易的 ETH 变化及执行费。包装会支付 ETH 本金和 gas；解包释放的 ETH 本金仍需扣除 gas，因此微小解包的 ETH 净变化可能为负。本金来自 WETH 合约的铸造/销毁事件，费用来自同一收据；结果不依赖确认后的余额读取。
 
 刷新后，在 Tools → Transactions 的已确认记录中点击 Read transaction result，也可恢复包装和解包结果，包括直接向配置 WETH 合约发送 ETH 的 `receive` 路径。恢复只读取原回执，不需要当前余额或历史状态查询；普通 WETH 转账与授权、其他代币的铸造都不会被当成包装。本项目的 WrappedEther 协议固定使用 18 位精度，历史结果复用实时确认的本金与手续费结算规则。

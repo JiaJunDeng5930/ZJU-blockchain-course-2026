@@ -1,6 +1,6 @@
-import { getAddress, parseEventLogs, zeroAddress } from "viem";
+import { getAddress } from "viem";
 import type { ExchangeClient, SendTransaction } from "./client";
-import { executionFeeWei } from "../logic/receipts";
+import { tokenFundingConfirmation, tokenFundingEvent } from "./fundingConfirmation";
 import { poolCreationReceiptFromReceipt } from "./poolCreationReceipt";
 import type { WalletSession } from "../wallet/session";
 import type {
@@ -134,11 +134,9 @@ export async function claimAsset(
       functionName: "faucet",
     }),
   );
-  const mint = parseEventLogs({ abi: testTokenAbi, eventName: "Transfer", logs: receipt.logs })
-    .find((event) => getAddress(event.address) === getAddress(verified.address) &&
-      event.args.from === zeroAddress && getAddress(event.args.to) === session.address)!;
-  return { kind: "token", token: verified, recipient: session.address,
-    amount: mint.args.value, gasCostWei: executionFeeWei(receipt), receipt };
+  return tokenFundingConfirmation(verified, receipt, tokenFundingEvent(receipt, {
+    token: verified.address, recipient: session.address,
+  })!);
 }
 
 import { errorMessage } from "./amounts";

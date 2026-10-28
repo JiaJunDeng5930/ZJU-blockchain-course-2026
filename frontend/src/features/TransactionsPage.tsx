@@ -7,6 +7,7 @@ import {
   type ActivityEvent,
 } from "../logic/activity";
 import { HistoryStatus } from "../components/HistoryStatus";
+import { FundingConfirmation } from "../components/FundingConfirmations";
 import { formatEther, type Hex } from "viem";
 import type { JournalView } from "../wallet/kernel";
 import { shorten } from "../chain/amounts";
@@ -156,6 +157,7 @@ export function TransactionsPage({ onProvideLiquidity }: { onProvideLiquidity: (
                       transactionResultAvailable(
                         client.deployment,
                         entry.descriptor,
+                        entry,
                       ) && <TransactionReceipt entry={entry} onProvideLiquidity={onProvideLiquidity} />}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
@@ -228,13 +230,18 @@ function TransactionReceipt({
       entry.instance,
       entry.id,
       entry.hash,
+      entry.authority,
+      entry.beneficiary,
     ],
-    queryFn: () => client.transactionResult(entry.hash as Hex),
+    queryFn: () => client.transactionResult(entry.hash as Hex, entry),
     enabled: false,
     retry: false,
   });
   return (
     <div>
+      {result.data?.kind === "funding" && (
+        <FundingConfirmation confirmation={result.data.details} />
+      )}
       {result.data?.kind === "swap" && (
         <ConfirmedSwapAction
           execution={result.data.details.execution}
