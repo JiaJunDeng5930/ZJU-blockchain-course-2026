@@ -43,6 +43,7 @@
     "test:swap-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/swap-receipt-public.mts",
     "test:wrapping-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-receipt-public.mts",
     "test:pool-creation-receipt": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/pool-creation-receipt-public.mts",
-    "test:wrapping-callback": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-callback-public.mts"
+    "test:wrapping-callback": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/wrapping-callback-public.mts",
+    "test:liquidity-callback": "npm run build && contracts/node_modules/.bin/tsx frontend/acceptance/liquidity-callback-public.mts"
   }
 }
