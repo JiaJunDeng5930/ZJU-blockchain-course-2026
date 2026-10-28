@@ -435,6 +435,22 @@ ERC20 资产使用单层标识，名称与完整合约地址可悬停查看。�
 
 ![授权额度所属链、钱包来源与观测区块](docs/screenshots/38-approval-observation-review.jpg)
 
+### 创建代币、交易池与刷新后恢复
+
+以下三图来自使用同一验证版本源码和提取内核的独立文档演示部署，使用本地测试钱包和测试 ETH，与上述运行至区块 851 的演示链是不同环境。BASE、OTHER 和初始池由部署脚本准备；下面的 CDT 合约与 BASE/CDT 新池均通过页面实际提交交易创建。
+
+在 `Tools → Pools & tokens` 创建 Course Demo Token（CDT），区块 17 的成功结果包含合约地址、创建账户及交易哈希。读取到代币元数据后，可以直接将它选作新池资产。新代币初始供应量为零，提供流动性前需在钱包中领取测试币。
+
+![独立演示部署：真实 ERC20 创建回执与已读取的元数据](docs/screenshots/49-isolated-token-created.jpg)
+
+选择 CDT 和 BASE 后创建 Documentation Harbor 的池 #2；结果中的资产按合约的地址顺序显示。区块 18 的真实回执确认池已创建；创建池不会自动注入代币或铸造流动性 NFT。
+
+![独立演示部署：新池编号、两种资产及创建交易回执](docs/screenshots/50-isolated-pool-created.jpg)
+
+刷新页面后，在 `Tools → Transactions` 对同一创建交易点击 `Read transaction result`，可重新读取池 #2 的创建结果。卡片区分原始创建回执与当前池状态；图中当前池状态也观测于区块 18，`Add liquidity to this pool` 可继续向该池提供流动性。本次截图流程没有提交额外的注资交易。
+
+![独立演示部署：刷新后从交易记录恢复同一池的创建结果](docs/screenshots/51-isolated-pool-history.jpg)
+
 ### 历史 MetaMask 确认
 
 下面这张图来自形式化迁移前的真实钱包演示，保留为历史操作记录；它不代表当前提取内核或当前字节码的验收。详细历史记录见[迁移前真实钱包演示](docs/wallet-demo.md)。
