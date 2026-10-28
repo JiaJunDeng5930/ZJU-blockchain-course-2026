@@ -113,6 +113,14 @@ amountOut = floor(amountInWithFee × y / (x × 10000 + amountInWithFee))
 
 运行 `npm run test:swap-receipt` 可验证混合精度交换、同一区块前后其他交易、刷新恢复、统一结果派发及真实 RPC 故障；实现选择见 [ADR 019](docs/adr/019-recover-swap-executions-through-one-receipt-entry.md)。
 
+### 创建交易池后的继续操作
+
+创建交易池只确定代币对，不注入代币。刷新后可在 Tools → Transactions 中点击 Read transaction result，按原回执恢复交易所、池编号、两种资产、创建账户和实际手续费；恢复不依赖当前池状态或代币元数据读取。其他交易所的同号池不会替代目标。
+
+结果中的 Add liquidity to this pool 使用当前观测的目标池。若另一账户已先注资，将按当前非空池比例准备存入；原创建回执不表示池子现在仍为空。目标尚未读到时可点击 Read created pool；需要连接钱包、等待当前操作或导入资产时会给出相应提示。进入表单不会自动授权或提交交易。
+
+运行 `npm run test:pool-creation-receipt` 可通过公开入口验收刷新恢复、同号池隔离、真实旧快照、首笔及后续流动性、事件过滤和 RPC 故障恢复。选择依据见 [ADR 021](docs/adr/021-continue-from-pool-creation-with-observed-state.md)。
+
 ### ERC721 流动性与分红
 
 已有池按[当前池比例](https://developers.uniswap.org/docs/protocols/v2/guides/providing-liquidity)计算双币投入。用余额准备时，表单保留两侧的原始余额上限，展示预计实际投入及未用余额；Review 后确认实际代币数量与 NFT 份额。原始上限会传到合约调用，不把已经向下舍入的使用量当成新上限再次计算。余额尚未读到、余额不足以铸造份额或滑点无效时，该入口给出原因。需要自行限制投入时，也可手动填写数量。空池需要用户确定初始价格，因此不会从钱包余额自动推导首次投入比例。

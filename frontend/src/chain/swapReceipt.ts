@@ -17,6 +17,7 @@ import { importAsset } from "./assets";
 import { liquidityReceiptFromReceipt } from "./liquidity";
 import { arbitrageReceiptFromReceipt } from "./arbitrage";
 import { wrappingReceiptFacts, wrappingReceiptFromReceipt } from "./wrapping";
+import { poolCreationReceiptFacts, poolCreationReceiptFromReceipt } from "./poolCreationReceipt";
 import type { ExchangeClient } from "./client";
 import type {
   PoolIdentity,
@@ -48,6 +49,7 @@ function observation(receipt: TransactionReceipt) {
     logs: receipt.logs,
   });
   const facts: ReceiptFact[] = [
+    ...poolCreationReceiptFacts(receipt),
     ...swaps.map((event, index) => ({
       index,
       source: event.address.toLowerCase(),
@@ -196,6 +198,10 @@ export async function readTransactionResult(
     case "wrapping": {
       const details = wrappingReceiptFromReceipt(client, receipt);
       return details === null ? null : { kind: "wrapping", details };
+    }
+    case "pool-creation": {
+      const details = poolCreationReceiptFromReceipt(client, receipt);
+      return details === null ? null : { kind: "pool-creation", details };
     }
   }
 }

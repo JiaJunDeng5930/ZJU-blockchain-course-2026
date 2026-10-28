@@ -83,6 +83,15 @@ Recovery needs no balance, block-state or token-metadata request: this project's
 WrappedEther inherits the fixed 18-decimal protocol definition. The guarantee
 applies to the DApp's single direct conversion, not arbitrary nested callbacks.
 
+Pool-creation recovery extends the same receipt model with a configured direct
+`PoolCreated` selection. Its identity contains no reserves. The continuation
+composes `PoolSelection.select_pool` with connection, pending-operation and
+asset-support observations, returning the current observed pool only when ready.
+Nine additional closed theorems establish event origin and source, reverted and
+existing-result priority, exact observed target, and the missing, disconnected,
+pending and unsupported-asset cases. The ABI and chain-observation boundary is
+unchanged; the result does not certify the EVM or a node's response.
+
 `runtime/*Bridge.ml` adapts JSON and JavaScript calls. `frontend/src/logic` wraps these generated exports; chain adapters interpret their effects with viem. React displays the returned state. Monetary values, shares, request identifiers and transaction parameters cross the JavaScript boundary as decimal strings and exact bigint values. Display-only chart approximations do not supply transaction parameters.
 
 The wallet kernel's `recordFunding` records a confirmed funding block only for

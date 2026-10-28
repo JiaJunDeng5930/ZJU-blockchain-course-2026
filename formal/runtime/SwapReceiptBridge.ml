@@ -11,6 +11,7 @@ let facts value =
       | "swap" -> Kernel.SwapFact | "liquidity" -> Kernel.LiquidityFact
       | "transfer" -> Kernel.TransferFact | "arbitrage" -> Kernel.ArbitrageFact
       | "wrapping" -> Kernel.WrappingFact
+      | "pool-creation" -> Kernel.PoolCreationFact
       | other -> invalid_arg ("Unknown receipt ABI fact: " ^ other) in
     { Kernel.fact_index = Field.member "index" fact |> Field.to_int;
       fact_source = text "source" fact; fact_type;
@@ -31,18 +32,19 @@ let select input =
 
 let classify input =
   let v = value input in
-  let kind = match Kernel.result_with_wrapping (boolean "successful" v) (boolean "creation" v)
+  let kind = match Kernel.result_with_pool_creation (boolean "successful" v) (boolean "creation" v)
       (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
       (text "target" v) (text "owner" v) (facts v) with
     | Kernel.NoResult -> "none" | Kernel.CreationResult -> "creation"
     | Kernel.SwapResult -> "swap" | Kernel.LiquidityResult -> "liquidity"
     | Kernel.ArbitrageResult -> "arbitrage" | Kernel.WrappingResult -> "wrapping"
+    | Kernel.PoolCreationResult -> "pool-creation"
     | Kernel.RevertedResult -> "reverted" in
   Js.string kind
 
 let available input =
   let v = value input in
-  Kernel.available_with_wrapping (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
+  Kernel.available_with_pool_creation (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
     (boolean "descriptorKnown" v) (boolean "creation" v)
     (text "target" v) (text "operation" v) |> Js.bool
 
@@ -62,10 +64,36 @@ let select_wrapping input =
           "withdraw", `Bool withdraw] in
   encode result
 
+let select_pool_creation input =
+  let v = value input in
+  let result = match Kernel.select_pool_creation (boolean "successful" v)
+      (strings "exchanges" v) (text "target" v) (facts v) with
+    | Kernel.NoPoolCreation -> `Assoc ["kind", `String "none"]
+    | Kernel.RevertedPoolCreation -> `Assoc ["kind", `String "reverted"]
+    | Kernel.MultiplePoolCreations -> `Assoc ["kind", `String "multiple"]
+    | Kernel.SelectedPoolCreation fact ->
+        `Assoc ["kind", `String "selected"; "index", `Int fact.Kernel.fact_index] in
+  encode result
+
+let continue_created_pool input =
+  let v = value input in
+  let with_key kind key = `Assoc ["kind", `String kind; "key", `String key] in
+  let result = match Kernel.continue_created_pool (text "requested" v)
+      (strings "available" v) (strings "supported" v)
+      (boolean "connected" v) (boolean "pending" v) with
+    | Kernel.ReadCreatedPool -> `Assoc ["kind", `String "read-state"]
+    | Kernel.ConnectCreatedPool key -> with_key "connect-wallet" key
+    | Kernel.PendingCreatedPool key -> with_key "pending" key
+    | Kernel.UnsupportedCreatedPool key -> with_key "unsupported-assets" key
+    | Kernel.ReadyCreatedPool key -> with_key "ready" key in
+  encode result
+
 let () =
   Js.Unsafe.set Js.Unsafe.global "DEXSwapReceipt"
     (Js.Unsafe.obj [|"select", Js.Unsafe.inject (Js.wrap_callback select);
       "classify", Js.Unsafe.inject (Js.wrap_callback classify);
       "available", Js.Unsafe.inject (Js.wrap_callback available);
       "selectWrapping", Js.Unsafe.inject (Js.wrap_callback select_wrapping);
+      "selectPoolCreation", Js.Unsafe.inject (Js.wrap_callback select_pool_creation);
+      "continueCreatedPool", Js.Unsafe.inject (Js.wrap_callback continue_created_pool);
       "outputAsset", Js.Unsafe.inject (Js.wrap_callback output_asset)|])

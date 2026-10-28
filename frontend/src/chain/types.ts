@@ -123,6 +123,7 @@ export type SwapReceiptDetails = {
   tokens: readonly [Token, Token];
 };
 export type RecoveredTransactionResult =
+  | { kind: "pool-creation"; details: PoolCreationConfirmation }
   | { kind: "swap"; details: SwapReceiptDetails }
   | { kind: "liquidity"; details: LiquidityReceiptDetails }
   | { kind: "arbitrage"; details: ArbitrageReceiptDetails }

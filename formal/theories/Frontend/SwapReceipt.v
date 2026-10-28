@@ -1,10 +1,10 @@
 From Coq Require Import List String Bool.
 From DEXFormal.Spec Require Import Ledger.
-From DEXFormal.Frontend Require Import ReceiptScope.
+From DEXFormal.Frontend Require Import ReceiptScope PoolSelection.
 Import ListNotations.
 Open Scope string_scope.
 
-Inductive fact_kind := SwapFact | LiquidityFact | TransferFact | ArbitrageFact | WrappingFact.
+Inductive fact_kind := SwapFact | LiquidityFact | TransferFact | ArbitrageFact | WrappingFact | PoolCreationFact.
 Record receipt_fact := ReceiptFact {
   fact_index : nat; fact_source : string; fact_type : fact_kind;
   fact_from : string; fact_to : string
@@ -34,7 +34,7 @@ Definition arbitrage_fact source fact :=
   match fact_type fact with ArbitrageFact => true | _ => false end.
 
 Inductive result_kind := NoResult | CreationResult | SwapResult
-| LiquidityResult | ArbitrageResult | WrappingResult | RevertedResult.
+| LiquidityResult | ArbitrageResult | WrappingResult | PoolCreationResult | RevertedResult.
 Definition result_for (successful creation : bool) known arbitrage target facts :=
   if successful then
     if creation then CreationResult
@@ -193,3 +193,96 @@ Proof.
   - apply negb_true_iff. apply String.eqb_neq. exact H.
   - simpl. rewrite String.eqb_refl. reflexivity.
 Qed.
+
+Definition pool_creation_fact known target fact :=
+  configured known target && String.eqb (fact_source fact) target &&
+  match fact_type fact with PoolCreationFact => true | _ => false end.
+Inductive pool_creation_selection := NoPoolCreation
+| SelectedPoolCreation (fact : receipt_fact)
+| MultiplePoolCreations | RevertedPoolCreation.
+Definition select_pool_creation (successful : bool) known target facts :=
+  if successful then match filter (pool_creation_fact known target) facts with
+  | [] => NoPoolCreation | [fact] => SelectedPoolCreation fact
+  | _ => MultiplePoolCreations end else RevertedPoolCreation.
+Definition result_with_pool_creation successful creation known arbitrage wrapped target owner facts :=
+  match result_with_wrapping successful creation known arbitrage wrapped target owner facts with
+  | NoResult => if existsb (pool_creation_fact known target) facts then PoolCreationResult else NoResult
+  | result => result end.
+Definition available_with_pool_creation known arbitrage wrapped descriptor_known creation target operation :=
+  available_with_wrapping known arbitrage wrapped descriptor_known creation target operation ||
+  operation_receipt_available known ["createPool"] descriptor_known target operation.
+
+Inductive creation_continuation := ReadCreatedPool
+| ConnectCreatedPool (key : string) | PendingCreatedPool (key : string)
+| UnsupportedCreatedPool (key : string) | ReadyCreatedPool (key : string).
+Definition continue_created_pool requested available supported (connected pending : bool) :=
+  match PoolSelection.select_pool (Some requested) available with
+  | PoolSelection.SelectedPool key =>
+      if connected then
+        if pending then PendingCreatedPool key
+        else if configured supported key then ReadyCreatedPool key
+        else UnsupportedCreatedPool key
+      else ConnectCreatedPool key
+  | _ => ReadCreatedPool
+  end.
+
+Theorem selected_creation_was_observed successful known target facts fact :
+  select_pool_creation successful known target facts = SelectedPoolCreation fact ->
+  In fact facts /\ pool_creation_fact known target fact = true.
+Proof.
+  unfold select_pool_creation. destruct successful; try discriminate.
+  remember (filter (pool_creation_fact known target) facts) as selected eqn:Hselected.
+  destruct selected as [|first rest]; try discriminate.
+  destruct rest; try discriminate. intros H; inversion H; subst first.
+  apply filter_In. rewrite <- Hselected. simpl; auto.
+Qed.
+Theorem selected_creation_is_configured successful known target facts fact :
+  select_pool_creation successful known target facts = SelectedPoolCreation fact ->
+  configured known target = true /\ fact_source fact = target.
+Proof.
+  intros H. apply selected_creation_was_observed in H as [_ H].
+  unfold pool_creation_fact in H. apply andb_true_iff in H as [H _].
+  apply andb_true_iff in H as [H Hsource].
+  apply String.eqb_eq in Hsource. auto.
+Qed.
+Theorem reverted_creation_has_no_result known target facts :
+  select_pool_creation false known target facts = RevertedPoolCreation.
+Proof. reflexivity. Qed.
+Theorem existing_result_keeps_priority successful creation known arbitrage wrapped target owner facts result :
+  result_with_wrapping successful creation known arbitrage wrapped target owner facts = result ->
+  result <> NoResult ->
+  result_with_pool_creation successful creation known arbitrage wrapped target owner facts = result.
+Proof. unfold result_with_pool_creation. intros H Hnot. rewrite H. destruct result; congruence. Qed.
+Theorem ready_creation_targets_observed_pool requested available supported connected pending key :
+  continue_created_pool requested available supported connected pending = ReadyCreatedPool key ->
+  key = requested /\ In key available /\ connected = true /\ pending = false /\ configured supported key = true.
+Proof.
+  unfold continue_created_pool.
+  destruct (PoolSelection.select_pool (Some requested) available) as [selected|missing|] eqn:Hselected;
+    try discriminate.
+  destruct connected; try discriminate. destruct pending; try discriminate.
+  destruct (configured supported selected) eqn:Hsupported; try discriminate.
+  intros H; inversion H; subst selected.
+  apply PoolSelection.explicit_pool_is_not_substituted in Hselected as [Hkey Hin].
+  auto.
+Qed.
+Theorem absent_creation_requires_read requested available supported connected pending :
+  ~ In requested available ->
+  continue_created_pool requested available supported connected pending = ReadCreatedPool.
+Proof.
+  intros H. unfold continue_created_pool.
+  apply PoolSelection.missing_pool_has_no_match in H. rewrite H. reflexivity.
+Qed.
+Theorem disconnected_creation_requires_connection requested available supported key :
+  PoolSelection.select_pool (Some requested) available = PoolSelection.SelectedPool key ->
+  forall pending, continue_created_pool requested available supported false pending = ConnectCreatedPool key.
+Proof. unfold continue_created_pool. intros H pending. now rewrite H. Qed.
+Theorem pending_creation_waits requested available supported key :
+  PoolSelection.select_pool (Some requested) available = PoolSelection.SelectedPool key ->
+  continue_created_pool requested available supported true true = PendingCreatedPool key.
+Proof. unfold continue_created_pool. intros H. now rewrite H. Qed.
+Theorem unsupported_creation_keeps_identity requested available supported key :
+  PoolSelection.select_pool (Some requested) available = PoolSelection.SelectedPool key ->
+  configured supported key = false ->
+  continue_created_pool requested available supported true false = UnsupportedCreatedPool key.
+Proof. unfold continue_created_pool. intros H Hsupported. now rewrite H, Hsupported. Qed.

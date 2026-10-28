@@ -31,6 +31,8 @@ import type {
 import { FormError, SubmitButton, TokenSelect } from "../components/Forms";
 import { WrapAssets } from "./WrapAssets";
 import "./PoolsPage.css";
+import "../components/ConfirmedCreation.css";
+import { ConfirmedPoolCreation } from "../components/ConfirmedPoolCreation";
 
 type FormProps = {
   view: AssetFormsView;
@@ -204,16 +206,25 @@ function createdTokenQuery(
   };
 }
 
-function ConfirmedCreation({
-  result,
-  onUseToken,
-  onReadToken,
-  onProvideLiquidity,
-}: {
+function ConfirmedCreation({ result, onUseToken, onReadToken, onProvideLiquidity }: {
   result: AssetCreationConfirmation;
   onUseToken: (token: Token) => void;
   onReadToken: (result: TokenCreationConfirmation) => Promise<void>;
   onProvideLiquidity: (pool: Pool) => void;
+}) {
+  return result.kind === "pool"
+    ? <ConfirmedPoolCreation result={result} onProvideLiquidity={onProvideLiquidity} focusOnReceipt />
+    : <ConfirmedTokenCreation result={result} onUseToken={onUseToken} onReadToken={onReadToken} />;
+}
+
+function ConfirmedTokenCreation({
+  result,
+  onUseToken,
+  onReadToken,
+}: {
+  result: TokenCreationConfirmation;
+  onUseToken: (token: Token) => void;
+  onReadToken: (result: TokenCreationConfirmation) => Promise<void>;
 }) {
   const { client } = useDex();
   const panel = useRef<HTMLElement>(null);
@@ -229,15 +240,7 @@ function ConfirmedCreation({
       aria-label="Confirmed creation"
     >
       <h2>Confirmed creation</h2>
-      {result.kind === "token" ? (
-        <CreatedToken
-          result={result}
-          onUseToken={onUseToken}
-          onReadToken={onReadToken}
-        />
-      ) : (
-        <CreatedPool result={result} onProvideLiquidity={onProvideLiquidity} />
-      )}
+      <CreatedToken result={result} onUseToken={onUseToken} onReadToken={onReadToken} />
       <dl className="creation-result-values">
         <dt>Created by</dt>
         <dd>
@@ -303,75 +306,6 @@ function CreatedToken({
         >
           Read token metadata
         </button>
-      )}
-    </>
-  );
-}
-
-function CreatedPool({
-  result,
-  onProvideLiquidity,
-}: {
-  result: Extract<AssetCreationConfirmation, { kind: "pool" }>;
-  onProvideLiquidity: (pool: Pool) => void;
-}) {
-  const { snapshot, symbol, tokens, session, pending } = useDex();
-  const pool = snapshot.data?.pools.find(
-    (candidate) =>
-      candidate.id === result.poolId &&
-      candidate.exchange.address.toLowerCase() ===
-        result.exchange.address.toLowerCase(),
-  );
-  return (
-    <>
-      <p>
-        {result.exchange.name} · pool #{result.poolId.toString()} created.
-        Creating a pool does not deposit tokens.
-      </p>
-      <dl className="creation-result-values">
-        <dt>Exchange</dt>
-        <dd>
-          <code>{result.exchange.address}</code>
-        </dd>
-        <dt>First asset</dt>
-        <dd>
-          {tokenLabel(result.token0, symbol(result.token0))}
-          <code>{result.token0}</code>
-        </dd>
-        <dt>Second asset</dt>
-        <dd>
-          {tokenLabel(result.token1, symbol(result.token1))}
-          <code>{result.token1}</code>
-        </dd>
-      </dl>
-      {pool ? (
-        <>
-          <p>
-            Pool state observed at block {snapshot.data!.block}. Add liquidity
-            using this observed state.
-          </p>
-          <button
-            type="button"
-            disabled={pending || !session || !poolAssetsSupported(pool, tokens)}
-            onClick={() => onProvideLiquidity(pool)}
-          >
-            Add liquidity to this pool
-          </button>
-        </>
-      ) : (
-        <>
-          <p role="status">
-            Creation is confirmed. Waiting to read this pool's state before
-            preparing a deposit.
-          </p>
-          <button
-            type="button"
-            disabled={snapshot.isFetching}
-            onClick={() => void snapshot.refetch()}
-          >
-            Read created pool
-          </button>
-        </>
       )}
     </>
   );

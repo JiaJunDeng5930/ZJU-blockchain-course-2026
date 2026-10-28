@@ -18,6 +18,7 @@ import { ArbitragePage } from "./features/ArbitragePage";
 import { SimulationPage } from "./features/SimulationPage";
 import { AllowancesPage } from "./features/AllowancesPage";
 import { TransactionsPage } from "./features/TransactionsPage";
+import type { Pool } from "./chain/types";
 import "./App.css";
 
 const queries = createChainQueryClient();
@@ -125,6 +126,10 @@ function Workspace() {
     setToolsOpen(false);
     setWalletOpen(false);
     setCreatingPositionFor(undefined);
+  }
+  function provideLiquidity(next: Pool) {
+    goTo("Liquidity", poolKey(next));
+    setCreatingPositionFor(poolKey(next));
   }
   function selectPool(key: string) {
     setCreatingPositionFor(undefined);
@@ -260,7 +265,7 @@ function Workspace() {
         ) : page === "Token approvals" ? (
           <AllowancesPage />
         ) : page === "Transactions" ? (
-          <TransactionsPage />
+          <TransactionsPage onProvideLiquidity={provideLiquidity} />
         ) : !snapshot.data ? (
           <div
             className="workspace-loading"
@@ -273,10 +278,7 @@ function Workspace() {
         ) : page === "Pools & tokens" ? (
           <PoolsPage
             onSelect={(next) => goTo("Swap", poolKey(next))}
-            onProvideLiquidity={(next) => {
-              goTo("Liquidity", poolKey(next));
-              setCreatingPositionFor(poolKey(next));
-            }}
+            onProvideLiquidity={provideLiquidity}
           />
         ) : selection.kind === "missing" ? (
           <section className="empty-state missing-pool">

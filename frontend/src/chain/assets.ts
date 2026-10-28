@@ -1,6 +1,7 @@
 import { getAddress, parseEventLogs, zeroAddress } from "viem";
 import type { ExchangeClient, SendTransaction } from "./client";
 import { executionFeeWei } from "../logic/receipts";
+import { poolCreationReceiptFromReceipt } from "./poolCreationReceipt";
 import type { WalletSession } from "../wallet/session";
 import type {
   AssetCreationConfirmation,
@@ -110,29 +111,13 @@ export async function createAssetPool(
       args: [getAddress(plan.first), getAddress(plan.second)],
     }),
   );
-  const event = parseEventLogs({
-    abi: miniDexAbi,
-    eventName: "PoolCreated",
-    strict: true,
-    logs: receipt.logs.filter(
-      (log) => log.address.toLowerCase() === plan.exchange.toLowerCase(),
-    ),
-  })[0];
+  const confirmation = poolCreationReceiptFromReceipt(client, receipt);
   // DEFENSE: an authentic successful createPool receipt must identify its pool in the target DEX's event.
-  if (!event)
+  if (!confirmation)
     throw new Error(
       "Confirmed pool creation has no PoolCreated event from its exchange.",
     );
-  return {
-    kind: "pool",
-    exchange: client.deployment.exchanges.find(
-      (item) => item.address.toLowerCase() === plan.exchange.toLowerCase(),
-    )!,
-    poolId: event.args.poolId,
-    token0: getAddress(event.args.token0),
-    token1: getAddress(event.args.token1),
-    receipt,
-  };
+  return confirmation;
 }
 export async function claimAsset(
   { client, session, send }: AssetContext,

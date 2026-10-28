@@ -16,7 +16,9 @@ import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction
 import { transactionResultAvailable } from "../logic/swapReceipt";
 import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
 import { ConfirmedWrappingAction } from "../components/ConfirmedWrappingAction";
-export function TransactionsPage() {
+import { ConfirmedPoolCreation } from "../components/ConfirmedPoolCreation";
+import type { Pool } from "../chain/types";
+export function TransactionsPage({ onProvideLiquidity }: { onProvideLiquidity: (pool: Pool) => void }) {
   const { history, wallet, client } = useDex();
   const [query, setQuery] = useState<ActivityQuery | null>(null);
   const context = { kernel: wallet.controller.kernel };
@@ -154,7 +156,7 @@ export function TransactionsPage() {
                       transactionResultAvailable(
                         client.deployment,
                         entry.descriptor,
-                      ) && <TransactionReceipt entry={entry} />}
+                      ) && <TransactionReceipt entry={entry} onProvideLiquidity={onProvideLiquidity} />}
                     {entry.replacements.map((replacement) => (
                       <p key={replacement.hash}>
                         {replacement.kind === "repriced"
@@ -211,8 +213,10 @@ export function TransactionsPage() {
 
 function TransactionReceipt({
   entry,
+  onProvideLiquidity,
 }: {
   entry: Extract<JournalView, { state: "confirmed" }>;
+  onProvideLiquidity: (pool: Pool) => void;
 }) {
   const { client } = useDex();
   // Archives have been scoped and re-observed by the wallet kernel before display.
@@ -262,6 +266,9 @@ function TransactionReceipt({
       )}
       {result.data?.kind === "wrapping" && (
         <ConfirmedWrappingAction result={result.data.details} />
+      )}
+      {result.data?.kind === "pool-creation" && (
+        <ConfirmedPoolCreation result={result.data.details} onProvideLiquidity={onProvideLiquidity} />
       )}
       {result.data === null && (
         <p>

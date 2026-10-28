@@ -8,7 +8,7 @@ import { selectWrappedAddress } from "./wrapping";
 export type ReceiptFact = {
   index: number;
   source: string;
-  kind: "swap" | "liquidity" | "transfer" | "arbitrage" | "wrapping";
+  kind: "swap" | "liquidity" | "transfer" | "arbitrage" | "wrapping" | "pool-creation";
   from: string;
   to: string;
 };
@@ -24,7 +24,7 @@ type Selection =
   | { kind: "none" | "reverted" | "multiple" }
   | { kind: "selected"; index: number };
 export type RecoveredKind =
-  "none" | "creation" | "swap" | "liquidity" | "arbitrage" | "wrapping" | "reverted";
+  "none" | "creation" | "swap" | "liquidity" | "arbitrage" | "wrapping" | "pool-creation" | "reverted";
 
 declare global {
   var DEXSwapReceipt: {
@@ -33,6 +33,8 @@ declare global {
     available(input: string): boolean;
     outputAsset(input: string): string;
     selectWrapping(input: string): string;
+    selectPoolCreation(input: string): string;
+    continueCreatedPool(input: string): string;
   };
 }
 
@@ -87,6 +89,12 @@ export function selectSwapReceipt(
       }),
     ),
   ) as Selection;
+}
+
+export function selectPoolCreationReceipt(scope: Scope, observation: Observation): Selection {
+  return JSON.parse(globalThis.DEXSwapReceipt.selectPoolCreation(
+    JSON.stringify({ ...scopeWire(scope), ...observation }),
+  )) as Selection;
 }
 
 export function swapOutputAsset(input: string, token0: string, token1: string) {
