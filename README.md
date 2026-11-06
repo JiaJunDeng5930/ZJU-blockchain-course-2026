@@ -17,7 +17,7 @@ CHOKIDAR_USEPOLLING=true npm run dev
 
 ## 完成一次建池、交易和赎回
 
-1. 右上角选 **Demo wallet → Account 1**。在 **Tools → Pools & tokens** 创建测试代币，再回钱包领取新币；钱包也可领取测试 ETH。使用扩展钱包时按[连接指南](docs/wallet-guide.md)准备本地网络和资产。
+1. 右上角选 **Demo wallet → Account 1**。在 **Tools → Pools & tokens** 创建测试代币；各个 Demo 账户可在钱包分别领取新币和测试 ETH。使用扩展钱包时按[连接指南](docs/wallet-guide.md)准备本地网络和资产。
 2. 选交易所及两种代币创建空池，点 **Add liquidity to this pool** 首次注资，获得 NFT。**Liquidity → Manage** 查看份额、创建时间和赎回报价；**Explore a pool → Pool information** 查看该池的流动性来源。
 3. 切到 **Account 2**，在 **Swap → Active pool** 选择新池，输入金额，经 **Review swap → Confirm swap** 完成兑换，读取实际到账。
 4. 切回 **Account 1**，在新 NFT 的 **Manage** 中点 **Burn NFT… & redeem**，核对最低收到数量后确认，取回资产和份额中的手续费。
@@ -35,21 +35,21 @@ CHOKIDAR_USEPOLLING=true npm run dev
 
 </details>
 
-## 验证多用户运行和原子套利
+## 验证多用户运行和原子套利（含 Bonus）
 
 打开 **Tools → Simulation**，设置最少轮数、最短运行时间、间隔和种子，点 **Start simulation**。20 个地址执行随机兑换、添加/撤销流动性和自动套利；每笔操作等待真实回执。结束后展示参与地址、操作统计、成功套利的本金与利润、两池 Before/After，以及真实失败交易的回滚检查。要修改已完成一轮的参数，展开 **Run settings**。
 
-2026-11-06 的一次独立运行使用种子 `20261106`、最少 20 轮、最短 60 秒、间隔 150 ms：**20 个地址持续运行 63.077 秒、150 轮，取得 265 笔回执和 12 次盈利套利**。其中兑换 87 次、添加和撤销各 44 次；总代币利润为 45.490483964136775863 TKA。真实失败套利的收据状态为 `0`，两池储备和代币余额均未改变。
+本次截图使用种子 `20261106`、最少 20 轮、最短 60 秒、间隔 150 ms：**20 个地址持续运行 62.526 秒、156 轮，取得 271 笔回执和 12 次盈利套利**。其中兑换 90 次、添加和撤销各 45 次；累计代币利润约为 38.9793 TKA。真实失败套利的收据状态为 `0`，两池储备和代币余额均未改变。
 
 ![20 个用户的持续运行结果](docs/screenshots/08-simulation-completed.jpg)
 
 <details>
-<summary>查看一笔成功套利的数量与价格变化</summary>
+<summary>查看套利前后变化与失败回滚证据</summary>
 
-该笔交易以 500 TKA 为本金，实际利润为 44.326295632524166828 TKA；两图的 Before/After 对应同一笔执行。
+下图为模拟开始前的一笔手动套利：本金 500 TKA，实际利润约 44.3263 TKA，表中的 Before/After 来自同一笔交易的合约事件。第二图展示独立的失败交易及整体回滚检查。
 
-![套利本金、利润和两池储备](docs/screenshots/09-arbitrage-result.jpg)
-![同一笔交易的另一储备列与价格](docs/screenshots/10-arbitrage-prices.jpg)
+![套利本金、利润及两池前后储备与价格](docs/screenshots/09-arbitrage-result.jpg)
+![真实失败套利的收据与整体回滚](docs/screenshots/10-arbitrage-rollback.jpg)
 
 </details>
 
@@ -65,7 +65,7 @@ amountOut = floor(997 × a × y / (1000 × x + 997 × a))
 
 完整输入进入储备，手续费留在池中。NFT 记录池和份额，赎回按 `floor(positionShares × reserve / totalShares)` 取回两种资产；首次总份额为 `floor(sqrt(amount0 × amount1))`，其中 1000 份永久锁定。赎回值也受价格变化影响，不能把它与初始存入的差额直接视为手续费收益。转让 NFT 会转移赎回权。
 
-Harbor 与 Summit 为独立合约。原子套利使用调用者本金，在低价池买入、高价池卖出，最后检查最低利润；任一步失败则整笔回滚。代币利润计入池手续费，ETH gas 另列。A/ETH 市场先将 ETH 按 1:1 包装为 WETH，再使用同一套 ERC20 建池流程。支持普通、无转账税且不 rebasing 的 ERC20。
+**两项 Bonus**：Harbor 与 Summit 为独立交易所，同一币对维护各自储备，随机交易形成价差。原子套利使用调用者本金，在低价池买入、高价池卖出，最后检查最低利润；任一步失败则整笔回滚。代币利润计入池手续费，ETH gas 另列。A/ETH 市场先将 ETH 按 1:1 包装为 WETH，再使用同一套 ERC20 建池流程。支持普通、无转账税且不 rebasing 的 ERC20。
 
 ## 验证与进一步阅读
 
