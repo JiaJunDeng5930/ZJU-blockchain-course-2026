@@ -89,12 +89,6 @@ try {
       bridges: ["ArbitrageReceiptBridge"],
     },
     {
-      extract: "theories/Frontend/LiquidityReceiptExtract.v",
-      cwd: work,
-      directory: "liquidityreceipt",
-      bridges: ["LiquidityReceiptBridge"],
-    },
-    {
       extract: "theories/Frontend/WrappingSettlementExtract.v",
       cwd: work,
       directory: "wrappingsettlement",
@@ -116,7 +110,7 @@ try {
       extract: "theories/Frontend/WalletExtract.v",
       cwd: work,
       directory: "wallet",
-      bridges: ["AllowancesBridge", "WalletBridge"],
+      bridges: ["WalletBridge"],
     },
     {
       extract: "theories/Frontend/ExtractTrade.v",
