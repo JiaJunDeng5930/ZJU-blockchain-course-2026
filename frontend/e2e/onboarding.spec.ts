@@ -120,7 +120,7 @@ async function installNewWallet(page: Page, address: string) {
 
 test("a new zero-asset wallet can add the local network, recover from rejection and fund its first trade", async ({
   page,
-}) => {
+}, testInfo) => {
   const address = Wallet.createRandom().address;
   await rpc.send("hardhat_impersonateAccount", [address]);
   try {
@@ -198,7 +198,7 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
       page.getByRole("dialog", { name: "Wallet and test assets" }),
     ).toContainText("9,990");
     await page.screenshot({
-      path: "../docs/screenshots/06-first-wallet.png",
+      path: testInfo.outputPath("06-first-wallet.png"),
       fullPage: true,
     });
   } finally {

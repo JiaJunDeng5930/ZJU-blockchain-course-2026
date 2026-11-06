@@ -16,11 +16,9 @@ const provider = new JsonRpcProvider(deployment.rpcUrl, deployment.chainId, {
   staticNetwork: true,
   cacheTimeout: -1,
 });
-const shots = "../docs/screenshots";
-
 test("complete browser workflow uses real local blockchain transactions", async ({
   page,
-}) => {
+}, testInfo) => {
   const consoleErrors: string[] = [];
   page.on("pageerror", (error) => consoleErrors.push(error.message));
   await page.goto("/");
@@ -40,7 +38,10 @@ test("complete browser workflow uses real local blockchain transactions", async 
     .click();
   await expectStatus(page, "Swap tokens confirmed");
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.screenshot({ path: `${shots}/01-swap.png`, fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("01-swap.png"),
+    fullPage: true,
+  });
 
   await goToWorkspace(page, "Liquidity");
   const liquidityMarket = new Contract(
@@ -75,7 +76,10 @@ test("complete browser workflow uses real local blockchain transactions", async 
       exact: true,
     }),
   ).toBeVisible();
-  await page.screenshot({ path: `${shots}/02-liquidity.png`, fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("02-liquidity.png"),
+    fullPage: true,
+  });
   await page
     .getByRole("button", {
       name: `Burn NFT #${positionId} & redeem`,
@@ -113,7 +117,10 @@ test("complete browser workflow uses real local blockchain transactions", async 
   await expectStatus(page, "Wrap ETH confirmed");
   await page.getByRole("button", { name: "Unwrap WETH", exact: true }).click();
   await expectStatus(page, "Unwrap WETH confirmed");
-  await page.screenshot({ path: `${shots}/03-pools.png`, fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("03-pools.png"),
+    fullPage: true,
+  });
 
   // Generate a real market imbalance, then find and execute the route entirely in the UI.
   const signer = await provider.getSigner(0);
@@ -149,13 +156,16 @@ test("complete browser workflow uses real local blockchain transactions", async 
     "Realized token profit",
   );
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page.screenshot({ path: `${shots}/04-arbitrage.png`, fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("04-arbitrage.png"),
+    fullPage: true,
+  });
   await goToWorkspace(page, "Transactions");
   await expect(
     page.getByRole("cell", { name: "Atomic arbitrage", exact: true }),
   ).toBeVisible();
   await page.screenshot({
-    path: `${shots}/05-transactions.png`,
+    path: testInfo.outputPath("05-transactions.png"),
     fullPage: true,
   });
   expect(consoleErrors).toEqual([]);

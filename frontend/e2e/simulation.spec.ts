@@ -7,7 +7,7 @@ const endpoint = `${origin}/api/simulation`;
 test("a presenter can run, inspect, download and safely stop the market simulation from the website", async ({
   page,
   request,
-}) => {
+}, testInfo) => {
   test.setTimeout(120_000);
   await page.goto("/");
   await goToWorkspace(page, "Simulation");
@@ -72,7 +72,7 @@ test("a presenter can run, inspect, download and safely stop the market simulati
   expect(report.rollback.status).toBe(0);
   expect(report.rollback.reservesAndTokenBalancesUnchanged).toBe(true);
   await page.screenshot({
-    path: "../docs/screenshots/06-simulation.png",
+    path: testInfo.outputPath("06-simulation.png"),
     fullPage: true,
   });
 

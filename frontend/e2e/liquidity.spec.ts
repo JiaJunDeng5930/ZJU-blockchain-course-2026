@@ -30,7 +30,7 @@ function positionCard(page: Page, id: bigint): Locator {
 
 test("a provider can review, cancel, transfer and redeem an NFT with a retained liquidity history", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 581, height: 900 });
   const accounts: string[] = await provider.send("eth_accounts", []);
   const providerAddress = accounts[18];
@@ -215,7 +215,7 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
   await expect(review).toContainText("Minimum received");
   await expect(review.getByLabel("Redemption slippage (%)")).toHaveValue("0.5");
   await page.screenshot({
-    path: "../docs/screenshots/07-liquidity-review.png",
+    path: testInfo.outputPath("07-liquidity-review.png"),
     fullPage: false,
   });
   await review.getByRole("button", { name: "Cancel", exact: true }).click();
