@@ -181,9 +181,13 @@ async function submitSwap(page: Page, amount: string) {
   await page.getByLabel("Swap amount").fill(amount);
   const button = page
     .getByRole("form", { name: "Swap tokens", exact: true })
-    .getByRole("button", { name: "Swap", exact: true });
+    .getByRole("button", { name: "Review swap", exact: true });
   await expect(button).toBeEnabled();
   await button.click();
+  await page
+    .getByRole("dialog", { name: "Review swap", exact: true })
+    .getByRole("button", { name: "Confirm swap", exact: true })
+    .click();
 }
 
 test("invalid swap amounts never request a signature or send a transaction", async ({
