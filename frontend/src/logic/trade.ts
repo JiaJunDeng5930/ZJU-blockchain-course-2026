@@ -8,14 +8,12 @@ type RawController = {
 };
 type TradeRuntime = {
   create(token0: string): RawController;
-  createRouted(token0: string): RawController;
   makeParameters(request: string): string;
   parameterError: string;
 };
 declare global {
   var DEXTrade: TradeRuntime;
 }
-export { contextJSON as serializeSwapContext, decode as decodeSwapView };
 
 type WireEffect =
   | null
@@ -25,6 +23,7 @@ type WireEffect =
       inputToken: string;
       input: string;
       quoted: string;
+      minimum: string;
       slippage: string;
     };
 type WireView = {
@@ -74,6 +73,7 @@ export type SwapEffect =
       inputToken: string;
       input: bigint;
       quoted: bigint;
+      minimum: bigint;
       slippage: bigint;
     };
 const integer = (value: string | null) =>
@@ -102,13 +102,13 @@ const contextJSON = ({
     balance0:
       Object.entries(balances ?? {})
         .find(
-          ([address]) => getAddress(address) === getAddress(pool.token0)
+          ([address]) => getAddress(address) === getAddress(pool.token0),
         )?.[1]
         .toString() ?? null,
     balance1:
       Object.entries(balances ?? {})
         .find(
-          ([address]) => getAddress(address) === getAddress(pool.token1)
+          ([address]) => getAddress(address) === getAddress(pool.token1),
         )?.[1]
         .toString() ?? null,
     connected,
@@ -124,6 +124,7 @@ function decode(serialized: string) {
           inputToken: value.effect.inputToken,
           input: BigInt(value.effect.input),
           quoted: BigInt(value.effect.quoted),
+          minimum: BigInt(value.effect.minimum),
           slippage: BigInt(value.effect.slippage),
         };
   return {
@@ -138,6 +139,8 @@ function decode(serialized: string) {
     effect,
   };
 }
+export type SwapView = ReturnType<typeof decode>;
+
 export function createSwapController(token0: string) {
   const controller = globalThis.DEXTrade.create(getAddress(token0));
   return {
@@ -149,10 +152,10 @@ export function createSwapController(token0: string) {
           JSON.stringify(
             event.kind === "pay" || event.kind === "receive"
               ? { ...event, value: getAddress(event.value) }
-              : event
+              : event,
           ),
-          contextJSON(context)
-        )
+          contextJSON(context),
+        ),
       ),
   };
 }
@@ -160,7 +163,7 @@ export function makeSwapParameters(
   input: bigint,
   quoted: bigint,
   slippage: bigint,
-  now: bigint
+  now: bigint,
 ) {
   const result = JSON.parse(
     globalThis.DEXTrade.makeParameters(
@@ -169,8 +172,8 @@ export function makeSwapParameters(
         quoted: quoted.toString(),
         slippage: slippage.toString(),
         now: now.toString(),
-      })
-    )
+      }),
+    ),
   ) as { input: string; minimum: string; deadline: string } | null;
   if (result === null) throw new Error(globalThis.DEXTrade.parameterError);
   return {

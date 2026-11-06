@@ -76,6 +76,7 @@ let effect_json = function
   | AMM.RequestSwapEffect (token, input, quoted, slippage) -> `Assoc [
       "kind", `String "swap"; "inputToken", `String token;
       "input", `String (Z.to_string input); "quoted", `String (Z.to_string quoted);
+      "minimum", `String (Z.to_string (AMM.minimum_received quoted slippage));
       "slippage", `String (Z.to_string slippage)
     ]
 
@@ -106,121 +107,9 @@ let create token0 =
       render environment !state effect))
   |]
 
-let route_pool json =
-  let exchange = member "exchange" json in
-  {
-    Routing.exchange = text exchange "address";
-    Routing.exchange_name = text exchange "name";
-    Routing.pool_id = integer json "id";
-    Routing.token0 = text json "token0";
-    Routing.token1 = text json "token1";
-    Routing.reserve0 = integer json "reserve0";
-    Routing.reserve1 = integer json "reserve1";
-    Routing.total_shares = integer json "totalShares";
-    Routing.created_at = integer json "createdAt"
-  }
-
-let route_pool_json pool = `Assoc [
-  "exchange", `Assoc ["address", `String pool.Routing.exchange;
-    "name", `String pool.Routing.exchange_name];
-  "id", `String (Z.to_string pool.Routing.pool_id);
-  "token0", `String pool.Routing.token0;
-  "token1", `String pool.Routing.token1;
-  "reserve0", `String (Z.to_string pool.Routing.reserve0);
-  "reserve1", `String (Z.to_string pool.Routing.reserve1);
-  "totalShares", `String (Z.to_string pool.Routing.total_shares);
-  "createdAt", `String (Z.to_string pool.Routing.created_at)
-]
-
-let routing_environment json = {
-  Routing.base = environment json;
-  Routing.pools = json |> member "pools" |> to_list |> List.map route_pool;
-  Routing.exchanges = json |> member "exchanges" |> to_list |> List.map to_string;
-  Routing.metadata = json |> member "metadata" |> to_list |> List.map (fun item ->
-    text item "address", integer item "decimals");
-  Routing.block = integer json "block"
-}
-
-let routing_event json =
-  if text json "kind" = "route" then
-    Routing.ChooseRoute (if text json "value" = "auto" then Routing.BestQuote
-      else Routing.ManualPool (text json "value"))
-  else Routing.DraftEvent (event json)
-
-let routed_effect_json = function
-  | Routing.NoEffect -> `Null
-  | Routing.OpenWallet -> `Assoc ["kind", `String "wallet"]
-  | Routing.Execute plan -> `Assoc [
-      "kind", `String "swap";
-      "pool", route_pool_json plan.Routing.prepared_pool;
-      "inputToken", `String plan.Routing.prepared_token;
-      "input", `String (Z.to_string plan.Routing.prepared_input);
-      "quoted", `String (Z.to_string plan.Routing.prepared_output);
-      "slippage", `String (Z.to_string plan.Routing.prepared_slippage);
-      "minimum", `String (Z.to_string plan.Routing.prepared_minimum);
-      "block", `String (Z.to_string plan.Routing.prepared_block)
-    ]
-
-let replace_fields replacements fields =
-  List.filter (fun (key, _) -> not (List.mem_assoc key replacements)) fields @ replacements
-
-let render_routing context state effect =
-  let current = Routing.selected_environment context state in
-  let draft = state.Routing.draft in
-  let preview = Routing.current_preview context state in
-  let fields = preview_fields (AMM.draft_precision current draft)
-    (AMM.draft_output_precision current draft) (AMM.draft_orientation current draft)
-    (AMM.draft_balance current draft) draft.AMM.draft_amount
-    current.AMM.environment_connected current.AMM.environment_pending preview in
-  let mode = match state.Routing.choice with Routing.BestQuote -> "auto" | Routing.ManualPool _ -> "manual" in
-  let route = match Routing.selected_pool context state with
-    | None -> `Null | Some pool -> route_pool_json pool in
-  let routes = Routing.route_catalog context |> List.map (fun pool -> `Assoc [
-    "key", `String (Routing.pool_key pool); "pool", route_pool_json pool;
-    "quoted", optional_integer (Routing.route_quote context draft pool)
-  ]) in
-  let pairs = Routing.pairs context |> List.map (fun pool -> `Assoc [
-    "key", `String (Routing.pool_key pool); "token0", `String pool.Routing.token0;
-    "token1", `String pool.Routing.token1
-  ]) in
-  json_string (`Assoc (replace_fields [
-    "canSubmit", `Bool (Routing.can_submit context state);
-    "disabled", `Bool (Routing.disabled context state);
-    "actionLabel", `String (Routing.action context state);
-    "message", optional_text (Routing.message context state);
-    "amountText", `String draft.AMM.draft_amount;
-    "slippageText", `String draft.AMM.draft_slippage;
-    "inputToken", `String draft.AMM.draft_token;
-    "balance", optional_integer (AMM.draft_balance current draft);
-    "outputBalance", optional_integer (AMM.draft_output_balance current draft);
-    "mode", `String mode; "manualKey", optional_text (Routing.manual_key state);
-    "manualUnavailable", `Bool (Routing.manual_unavailable context state);
-    "route", route; "routes", `List routes; "pairs", `List pairs;
-    "pairKey", optional_text (Routing.pair_key context);
-    "block", `String (Z.to_string (Routing.view_block context state));
-    "effect", routed_effect_json effect
-  ] fields))
-
-let create_routed token0 =
-  let state = ref (Routing.initial (Js.to_string token0)) in
-  Js.Unsafe.obj [|
-    "view", Js.Unsafe.inject (Js.wrap_callback (fun context ->
-      let context = routing_environment (Yojson.Safe.from_string (Js.to_string context)) in
-      state := Routing.reconcile context !state;
-      render_routing context !state Routing.NoEffect));
-    "dispatch", Js.Unsafe.inject (Js.wrap_callback (fun input context ->
-      let context = routing_environment (Yojson.Safe.from_string (Js.to_string context)) in
-      let input = routing_event (Yojson.Safe.from_string (Js.to_string input)) in
-      state := Routing.reconcile context !state;
-      let effect = Routing.next_effect context !state input in
-      state := Routing.step context !state input;
-      render_routing context !state effect))
-  |]
-
 let () =
   Js.Unsafe.set Js.Unsafe.global "DEXTrade" (Js.Unsafe.obj [|
     "makeParameters", Js.Unsafe.inject (Js.wrap_callback parameters);
     "create", Js.Unsafe.inject (Js.wrap_callback create);
-    "createRouted", Js.Unsafe.inject (Js.wrap_callback create_routed);
     "parameterError", Js.Unsafe.inject (Js.string AMM.swap_parameters_error)
   |])

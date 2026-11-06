@@ -50,14 +50,12 @@ const sources = [
   "Spec/Units.v",
   "Spec/Assets.v",
   "Spec/AMM.v",
-  "Spec/Routing.v",
   "Contracts/SwapGenerated.v",
   "Contracts/SwapRefinement.v",
 ];
 const theorems = [
   "calculate_amount_out_runs",
   "frontend_swap_quote_matches_contract",
-  "routed_swap_quote_matches_contract",
 ];
 const snapshots = new Map(
   await Promise.all(

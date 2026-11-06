@@ -1,13 +1,13 @@
 import { useEffect, useReducer, useState } from "react";
-import { tokenLabel } from "../chain/amounts";
+import { poolKey, poolLabel, tokenLabel } from "../chain/amounts";
 import { formatUnits } from "../logic/units";
 import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
 import {
-  createRoutedSwapController,
-  type RoutedSwapEvent,
-  type RoutedSwapPlan,
-  type RoutedSwapView
-} from "../logic/routing";
+  createSwapController,
+  type SwapEffect,
+  type SwapEvent,
+  type SwapView,
+} from "../logic/trade";
 import { useDex } from "../chain/DexProvider";
 import type { Pool, SwapResult } from "../chain/types";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
@@ -19,54 +19,69 @@ type SwapPageProps = {
   onOpenWallet: () => void;
 };
 
-export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
-  const {
-    client,
-    snapshot,
-    symbol,
-    session,
-    pending,
-    run,
-    amount,
-    precision,
-    tokens
-  } = useDex();
-  const [controller] = useState(() => createRoutedSwapController(pool.token0));
+type SwapPlan = Extract<SwapEffect, { kind: "swap" }> & {
+  pool: Pool;
+  outputToken: string;
+  block?: number;
+};
+
+export function SwapPage(props: SwapPageProps) {
+  return (
+    <SwapForm key={`${props.pool.token0}:${props.pool.token1}`} {...props} />
+  );
+}
+
+function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
+  const { snapshot, symbol, session, pending, run, amount, precision, tokens } =
+    useDex();
+  const [controller] = useState(() => createSwapController(pool.token0));
   const [, render] = useReducer((value: boolean) => !value, false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [review, setReview] = useState<{
-    plan: RoutedSwapPlan;
-    view: RoutedSwapView;
+    plan: SwapPlan;
+    view: SwapView;
     caller: string;
     submit: typeof run;
   }>();
   const [settlement, setSettlement] = useState<SwapResult>();
-  useEffect(() => setReview(undefined), [
-    session?.kind,
-    session?.address,
-    session?.chainId,
-    session?.epoch
-  ]);
+  useEffect(
+    () => setReview(undefined),
+    [
+      session?.kind,
+      session?.address,
+      session?.chainId,
+      session?.epoch,
+      pool.exchange.address,
+      pool.id,
+    ],
+  );
   const context = {
     tokens,
     pool,
-    pools: snapshot.data?.pools ?? [],
-    exchanges: client.deployment.exchanges,
-    block: snapshot.data?.block,
     balances: snapshot.data?.balances,
     connected: !!session,
-    pending
+    pending,
   };
   const view = controller.view(context);
   const { inputToken, outputToken, balance, outputBalance } = view;
-  function dispatch(event: RoutedSwapEvent) {
+  function dispatch(event: SwapEvent) {
     const { effect } = controller.dispatch(event, context);
     render();
     if (effect?.kind === "wallet") onOpenWallet();
     if (effect?.kind === "swap" && session) {
       // The extracted effect is the reviewed intent. Live quotes may continue to
-      // change, but confirmation submits this same route, input and minimum.
-      setReview({ plan: effect, view, caller: session.address, submit: run });
+      // change, but confirmation submits this same pool, input and minimum.
+      setReview({
+        plan: {
+          ...effect,
+          pool,
+          outputToken: view.outputToken,
+          block: snapshot.data?.block,
+        },
+        view,
+        caller: session.address,
+        submit: run,
+      });
     }
   }
 
@@ -95,44 +110,18 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
 
         <div className="trade-market">
           <select
-            id="trade-market"
-            aria-label="Trading pair"
-            value={view.pairKey ?? ""}
+            aria-label="Active pool"
+            value={poolKey(pool)}
             disabled={pending}
             onChange={(event) => onPoolChange(event.target.value)}
           >
-            {view.pairKey === null && <option value="">Select a pair</option>}
-            {view.pairs.map((pair) => (
+            {snapshot.data?.pools.map((candidate) => (
               <option
-                key={pair.key}
-                value={pair.key}
-                title={`${pair.token0} / ${pair.token1}`}
+                key={poolKey(candidate)}
+                value={poolKey(candidate)}
+                title={`${candidate.exchange.address} · ${candidate.token0} / ${candidate.token1}`}
               >
-                {tokenLabel(pair.token0, symbol(pair.token0))} /{" "}
-                {tokenLabel(pair.token1, symbol(pair.token1))}
-              </option>
-            ))}
-          </select>
-          <select
-            aria-label="Exchange"
-            value={view.mode === "auto" ? "auto" : (view.manualKey ?? "")}
-            disabled={pending}
-            onChange={(event) =>
-              dispatch({ kind: "route", value: event.target.value })
-            }
-          >
-            <option value="auto">Best quote</option>
-            {view.manualUnavailable && (
-              <option value={view.manualKey ?? ""}>Unavailable pool</option>
-            )}
-            {view.routes.map((route) => (
-              <option key={route.key} value={route.key}>
-                {route.pool.exchange.name} #{String(route.pool.id)}
-                {route.quoted === undefined
-                  ? " · No quote"
-                  : ` · ${amount(route.quoted, view.outputToken)} ${symbol(
-                      view.outputToken
-                    )}`}
+                {poolLabel(candidate, symbol)}
               </option>
             ))}
           </select>
@@ -279,11 +268,9 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
 
         {view.amount !== undefined && (
           <div className="trade-summary">
-            {view.route && (
-              <span>
-                {view.route.exchange.name} #{String(view.route.id)}
-              </span>
-            )}
+            <span>
+              {pool.exchange.name} #{String(pool.id)}
+            </span>
             <span>{view.feePercent}% pool fee</span>
             <span>Slippage {view.slippageText}%</span>
           </div>
@@ -299,16 +286,16 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             <dl>
               <dt>Exchange</dt>
               <dd>
-                {view.route?.exchange.name} #{String(view.route?.id)}
+                {pool.exchange.name} #{String(pool.id)}
               </dd>
               <dt>Quote block</dt>
-              <dd>{view.block}</dd>
+              <dd>{snapshot.data?.block ?? "—"}</dd>
               <dt>Minimum received</dt>
               <dd>
                 {view.minimum === undefined
                   ? "—"
                   : `${amount(view.minimum, outputToken, 6)} ${symbol(
-                      outputToken
+                      outputToken,
                     )}`}
               </dd>
               <dt>Price impact, including fee</dt>
@@ -327,8 +314,8 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <dd>{view.deadlineText}</dd>
             </dl>
             <p>
-              Best quote compares direct pools in this deployment after pool
-              fees. Network gas is separate.
+              Quotes use the selected pool after pool fees. Network gas is
+              separate.
             </p>
             <p>
               Token approval may require a separate confirmation before the
@@ -349,33 +336,33 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             <dd>
               {formatUnits(
                 review.plan.input,
-                precision(review.plan.inputToken)
+                precision(review.plan.inputToken),
               )}{" "}
               {tokenLabel(
                 review.plan.inputToken,
-                symbol(review.plan.inputToken)
+                symbol(review.plan.inputToken),
               )}
             </dd>
             <dt>Estimated receive</dt>
             <dd>
               {formatUnits(
                 review.plan.quoted,
-                precision(review.plan.outputToken)
+                precision(review.plan.outputToken),
               )}{" "}
               {tokenLabel(
                 review.plan.outputToken,
-                symbol(review.plan.outputToken)
+                symbol(review.plan.outputToken),
               )}
             </dd>
             <dt>Minimum received</dt>
             <dd>
               {formatUnits(
                 review.plan.minimum,
-                precision(review.plan.outputToken)
+                precision(review.plan.outputToken),
               )}{" "}
               {tokenLabel(
                 review.plan.outputToken,
-                symbol(review.plan.outputToken)
+                symbol(review.plan.outputToken),
               )}
             </dd>
             <dt>Exchange</dt>
@@ -400,7 +387,7 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
                 ? "—"
                 : formatUnits(
                     review.view.fee,
-                    precision(review.plan.inputToken)
+                    precision(review.plan.inputToken),
                   )}{" "}
               {symbol(review.plan.inputToken)}
             </dd>
@@ -421,8 +408,16 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               review.submit(
                 `Swap on ${plan.pool.exchange.name} #${plan.pool.id}`,
                 async (writer) => {
-                  setSettlement(await writer.routedSwap(plan));
-                }
+                  setSettlement(
+                    await writer.swap(
+                      plan.pool,
+                      plan.inputToken,
+                      plan.input,
+                      plan.quoted,
+                      plan.slippage,
+                    ),
+                  );
+                },
               );
             }}
           >
@@ -430,7 +425,13 @@ export function SwapPage({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           </button>
         </ConfirmationDialog>
       )}
-      {settlement && <ConfirmedSwapAction execution={settlement} tokens={tokens} quote={settlement} />}
+      {settlement && (
+        <ConfirmedSwapAction
+          execution={settlement}
+          tokens={tokens}
+          quote={settlement}
+        />
+      )}
     </div>
   );
 }
@@ -440,7 +441,7 @@ function TokenSelector({
   value,
   addresses,
   disabled,
-  onChange
+  onChange,
 }: {
   label: string;
   value: string;
