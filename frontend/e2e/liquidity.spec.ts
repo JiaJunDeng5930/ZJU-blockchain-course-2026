@@ -95,6 +95,7 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
   await original
     .getByRole("button", { name: `Manage NFT #${positionId}`, exact: true })
     .click();
+  await original.getByText("Value comparison", { exact: true }).click();
   await expect(original).toContainText(
     "Compared with holding the initial deposit",
   );
@@ -185,7 +186,7 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
     .innerText();
   const displayedFees = await history
     .locator("dt")
-    .filter({ hasText: /^Pool trading fees generated$/ })
+    .filter({ hasText: /^Estimated nominal input fees$/ })
     .locator("xpath=following-sibling::dd[1]")
     .innerText();
   function amountPair(text: string) {

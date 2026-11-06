@@ -48,45 +48,14 @@ export function ConfirmedPoolCreation({
     >
       <h2>Pool created</h2>
       <p>
-        {result.exchange.name} · pool #{result.poolId.toString()} created.
-        Creating a pool does not deposit tokens.
+        {result.exchange.name} · pool #{result.poolId.toString()} ·{" "}
+        {tokenLabel(result.token0, symbol(result.token0))} /{" "}
+        {tokenLabel(result.token1, symbol(result.token1))}
       </p>
-      <dl className="creation-result-values">
-        <dt>Exchange</dt>
-        <dd>
-          <code>{result.exchange.address}</code>
-        </dd>
-        <dt>First asset</dt>
-        <dd>
-          {tokenLabel(result.token0, symbol(result.token0))}
-          <code>{result.token0}</code>
-        </dd>
-        <dt>Second asset</dt>
-        <dd>
-          {tokenLabel(result.token1, symbol(result.token1))}
-          <code>{result.token1}</code>
-        </dd>
-        <dt>Created by</dt>
-        <dd>
-          <code>{result.receipt.from}</code>
-        </dd>
-        <dt>Chain</dt>
-        <dd>{client.deployment.chainId}</dd>
-        <dt>Confirmed block</dt>
-        <dd>{result.receipt.blockNumber.toString()}</dd>
-        <dt>Execution fee</dt>
-        <dd>{formatUnits(executionFeeWei(result.receipt), 18)} ETH</dd>
-        <dt>Transaction</dt>
-        <dd>
-          <code>{result.receipt.transactionHash}</code>
-        </dd>
-      </dl>
+      <p>Add the first liquidity deposit to open this pool for trading.</p>
       {continuation.kind === "read-state" ? (
         <>
-          <p role="status">
-            Creation is confirmed. Read this pool's current state before
-            preparing a deposit.
-          </p>
+          <p role="status">Load the pool before preparing its first deposit.</p>
           <button
             type="button"
             disabled={snapshot.isFetching}
@@ -97,24 +66,49 @@ export function ConfirmedPoolCreation({
               : "Read created pool"}
           </button>
         </>
+      ) : continuation.kind === "ready" ? (
+        <button
+          type="button"
+          onClick={() => onProvideLiquidity(continuation.pool)}
+        >
+          Add liquidity to this pool
+        </button>
       ) : (
-        <>
-          <p>
-            Pool state observed at block {snapshot.data!.block}. Add liquidity
-            using this observed state.
-          </p>
-          {continuation.kind === "ready" ? (
-            <button
-              type="button"
-              onClick={() => onProvideLiquidity(continuation.pool)}
-            >
-              Add liquidity to this pool
-            </button>
-          ) : (
-            <p role="status">{blocked[continuation.kind]}</p>
-          )}
-        </>
+        <p role="status">{blocked[continuation.kind]}</p>
       )}
+      <details className="creation-receipt-details">
+        <summary>Transaction details</summary>
+        <dl className="creation-result-values">
+          <dt>Exchange</dt>
+          <dd>
+            <code>{result.exchange.address}</code>
+          </dd>
+          <dt>First asset</dt>
+          <dd>
+            {tokenLabel(result.token0, symbol(result.token0))}
+            <code>{result.token0}</code>
+          </dd>
+          <dt>Second asset</dt>
+          <dd>
+            {tokenLabel(result.token1, symbol(result.token1))}
+            <code>{result.token1}</code>
+          </dd>
+          <dt>Created by</dt>
+          <dd>
+            <code>{result.receipt.from}</code>
+          </dd>
+          <dt>Chain</dt>
+          <dd>{client.deployment.chainId}</dd>
+          <dt>Confirmed block</dt>
+          <dd>{result.receipt.blockNumber.toString()}</dd>
+          <dt>Execution fee</dt>
+          <dd>{formatUnits(executionFeeWei(result.receipt), 18)} ETH</dd>
+          <dt>Transaction</dt>
+          <dd>
+            <code>{result.receipt.transactionHash}</code>
+          </dd>
+        </dl>
+      </details>
     </section>
   );
 }

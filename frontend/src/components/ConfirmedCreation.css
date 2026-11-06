@@ -25,6 +25,15 @@
 .creation-address {
   display: block;
 }
+.creation-receipt-details {
+  margin-top: 1rem;
+}
+.creation-receipt-details summary,
+.available-tokens > summary,
+.token-import > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
 @media (max-width: 640px) {
   .creation-result-values {
     grid-template-columns: minmax(0, 1fr);

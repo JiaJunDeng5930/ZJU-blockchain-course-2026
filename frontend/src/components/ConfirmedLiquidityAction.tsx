@@ -34,10 +34,6 @@ export function ConfirmedLiquidityAction({
         </dd>
         <dt>Pool</dt>
         <dd>{poolLabel(pool, symbol)}</dd>
-        <dt>Exchange contract</dt>
-        <dd>
-          <code>{pool.exchange.address}</code>
-        </dd>
         <dt>NFT</dt>
         <dd>#{String(result.positionId)}</dd>
         {result.kind === "transfer" ? (
@@ -54,12 +50,6 @@ export function ConfirmedLiquidityAction({
         ) : (
           <>
             <dt>
-              {result.kind === "deposit" ? "Minted to" : "Asset recipient"}
-            </dt>
-            <dd>
-              <code>{result.owner}</code>
-            </dd>
-            <dt>
               {tokenLabel(pool.token0, symbol(pool.token0))}{" "}
               {result.kind === "deposit" ? "deposited" : "received"}
             </dt>
@@ -69,40 +59,45 @@ export function ConfirmedLiquidityAction({
               {result.kind === "deposit" ? "deposited" : "received"}
             </dt>
             <dd>{formatUnits(result.amount1, precision(pool.token1))}</dd>
-            <dt>Position shares</dt>
-            <dd>{String(result.shares)}</dd>
           </>
         )}
-        <dt>Executed by</dt>
-        <dd>
-          <code>{receipt.from}</code>
-        </dd>
-        <dt>Execution fee</dt>
-        <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
-        <dt>Confirmed block</dt>
-        <dd>{String(receipt.blockNumber)}</dd>
-        <dt>Transaction</dt>
-        <dd>
-          <code>{receipt.transactionHash}</code>
-        </dd>
       </dl>
-      <p>
-        The executing account pays the ETH fee for this transaction. Any earlier
-        ERC20 approvals have separate fees. Token quantities and ETH fees are
-        reported separately.
-      </p>
-      {result.kind === "deposit" && (
-        <p>
-          Token amounts come from this receipt; unused budget stayed in your
-          wallet.
-        </p>
-      )}
       {result.kind === "redeem" && (
-        <p>
-          Received tokens include this position's share of retained pool fees.
-          Changes from the initial deposit also reflect market prices.
-        </p>
+        <p>Received amounts include this NFT's share of pool fees.</p>
       )}
+      <details className="liquidity-receipt-details">
+        <summary>Transaction details</summary>
+        <dl>
+          <dt>Exchange contract</dt>
+          <dd>
+            <code>{pool.exchange.address}</code>
+          </dd>
+          {result.kind !== "transfer" && (
+            <>
+              <dt>
+                {result.kind === "deposit" ? "Minted to" : "Asset recipient"}
+              </dt>
+              <dd>
+                <code>{result.owner}</code>
+              </dd>
+              <dt>Position shares</dt>
+              <dd>{String(result.shares)}</dd>
+            </>
+          )}
+          <dt>Executed by</dt>
+          <dd>
+            <code>{receipt.from}</code>
+          </dd>
+          <dt>Execution fee</dt>
+          <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
+          <dt>Confirmed block</dt>
+          <dd>{String(receipt.blockNumber)}</dd>
+          <dt>Transaction</dt>
+          <dd>
+            <code>{receipt.transactionHash}</code>
+          </dd>
+        </dl>
+      </details>
     </section>
   );
 }

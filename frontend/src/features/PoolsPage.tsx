@@ -110,6 +110,10 @@ export function PoolsPage({
           onProvideLiquidity={onProvideLiquidity}
         />
       )}
+      <div className="workspace">
+        <CreatePool view={forms} dispatch={dispatch} formRef={poolForm} />
+        <TokenRegistry view={forms} dispatch={dispatch} />
+      </div>
       <section className="card">
         <h2>Exchange pools</h2>
         {snapshot.data?.pools.length === 0 && (
@@ -150,9 +154,6 @@ export function PoolsPage({
               ) : (
                 <p>{unsupportedPoolError}</p>
               )}
-              {pool.totalShares === 0n && (
-                <p>The first deposit sets the starting price.</p>
-              )}
               <button
                 className="text"
                 disabled={
@@ -175,10 +176,6 @@ export function PoolsPage({
           ))}
         </div>
       </section>
-      <div className="workspace">
-        <CreatePool view={forms} dispatch={dispatch} formRef={poolForm} />
-        <TokenRegistry view={forms} dispatch={dispatch} />
-      </div>
       <AvailableTokens onUseToken={useToken} />
       <WrapAssets />
     </>
@@ -206,15 +203,30 @@ function createdTokenQuery(
   };
 }
 
-function ConfirmedCreation({ result, onUseToken, onReadToken, onProvideLiquidity }: {
+function ConfirmedCreation({
+  result,
+  onUseToken,
+  onReadToken,
+  onProvideLiquidity,
+}: {
   result: AssetCreationConfirmation;
   onUseToken: (token: Token) => void;
   onReadToken: (result: TokenCreationConfirmation) => Promise<void>;
   onProvideLiquidity: (pool: Pool) => void;
 }) {
-  return result.kind === "pool"
-    ? <ConfirmedPoolCreation result={result} onProvideLiquidity={onProvideLiquidity} focusOnReceipt />
-    : <ConfirmedTokenCreation result={result} onUseToken={onUseToken} onReadToken={onReadToken} />;
+  return result.kind === "pool" ? (
+    <ConfirmedPoolCreation
+      result={result}
+      onProvideLiquidity={onProvideLiquidity}
+      focusOnReceipt
+    />
+  ) : (
+    <ConfirmedTokenCreation
+      result={result}
+      onUseToken={onUseToken}
+      onReadToken={onReadToken}
+    />
+  );
 }
 
 function ConfirmedTokenCreation({
@@ -240,21 +252,32 @@ function ConfirmedTokenCreation({
       aria-label="Confirmed creation"
     >
       <h2>Confirmed creation</h2>
-      <CreatedToken result={result} onUseToken={onUseToken} onReadToken={onReadToken} />
-      <dl className="creation-result-values">
-        <dt>Created by</dt>
-        <dd>
-          <code>{result.receipt.from}</code>
-        </dd>
-        <dt>Chain</dt>
-        <dd>{client.deployment.chainId}</dd>
-        <dt>Confirmed block</dt>
-        <dd>{result.receipt.blockNumber.toString()}</dd>
-        <dt>Transaction</dt>
-        <dd>
-          <code>{result.receipt.transactionHash}</code>
-        </dd>
-      </dl>
+      <CreatedToken
+        result={result}
+        onUseToken={onUseToken}
+        onReadToken={onReadToken}
+      />
+      <details className="creation-receipt-details">
+        <summary>Transaction details</summary>
+        <dl className="creation-result-values">
+          <dt>Token contract</dt>
+          <dd>
+            <code>{result.address}</code>
+          </dd>
+          <dt>Created by</dt>
+          <dd>
+            <code>{result.receipt.from}</code>
+          </dd>
+          <dt>Chain</dt>
+          <dd>{client.deployment.chainId}</dd>
+          <dt>Confirmed block</dt>
+          <dd>{result.receipt.blockNumber.toString()}</dd>
+          <dt>Transaction</dt>
+          <dd>
+            <code>{result.receipt.transactionHash}</code>
+          </dd>
+        </dl>
+      </details>
     </section>
   );
 }
@@ -278,11 +301,10 @@ function CreatedToken({
       <p>
         ERC20 deployed: {result.name} ({result.symbol}).
       </p>
-      <code className="creation-address">{result.address}</code>
-      <p>
-        New test tokens start with zero supply. Once metadata is read, claim
-        test tokens in the wallet before providing liquidity.
-      </p>
+      <code className="creation-address" title={result.address}>
+        {shorten(result.address)}
+      </code>
+      <p>Claim {result.symbol} in the wallet, then select it for a new pool.</p>
       {metadata.isFetching ? (
         <p role="status">Reading the created token's metadata…</p>
       ) : metadata.error ? (
@@ -290,7 +312,7 @@ function CreatedToken({
           Creation is confirmed. Metadata read failed: {metadata.error.message}
         </p>
       ) : metadata.data ? (
-        <p>Verified token metadata · {metadata.data.decimals} decimals.</p>
+        <p>{metadata.data.decimals} decimals · ready to use.</p>
       ) : (
         <p>Token metadata has not been read.</p>
       )}
@@ -365,13 +387,9 @@ function CreatePool({
         value={draft.second}
         onChange={(value) => dispatch({ kind: "edit", field: "second", value })}
       />
-      <FormError message={view.poolError ?? undefined} />
+      {view.poolError && <p className="pool-form-hint">{view.poolError}</p>}
       <SubmitButton disabled={!view.canCreatePool}>Create pool</SubmitButton>
-      <p>
-        Creating a pool does not deposit tokens or mint a position NFT. Add its
-        first liquidity deposit to set the initial price and open it for
-        trading. Use WETH for a market against ETH.
-      </p>
+      <p>Create the pair, then add liquidity to set its starting price.</p>
     </form>
   );
 }
@@ -419,44 +437,40 @@ function TokenRegistry({ view, dispatch }: FormProps) {
         <FormError message={view.deploymentError ?? undefined} />
         <SubmitButton disabled={!view.canDeploy}>Deploy ERC20</SubmitButton>
         <p>
-          New test tokens use 18 decimal places and start with zero supply.
-          Deployment does not fund your wallet. Open the wallet panel to claim
-          10,000 units, then select the token for a new pool below.
-        </p>
-      </form>
-      <form
-        className="form token-import"
-        onSubmit={(event) => {
-          event.preventDefault();
-          dispatch({ kind: "import" });
-        }}
-      >
-        <h3>Import an existing ERC20</h3>
-        <label>
-          ERC20 address
-          <input
-            placeholder="0x…"
-            value={draft.address}
-            disabled={view.importing}
-            onChange={(event) =>
-              dispatch({
-                kind: "edit",
-                field: "address",
-                value: event.target.value,
-              })
-            }
-          />
-        </label>
-        <FormError message={view.importError ?? undefined} />
-        <button className="secondary" disabled={!view.canImport}>
-          {view.importing ? "Reading token…" : "Import token"}
-        </button>
-        <p>
-          This exchange supports standard ERC20 tokens with readable decimal
-          metadata (0–255 places). Their addresses are saved for this
+          Creates an 18-decimal test token. Claim it in the wallet after
           deployment.
         </p>
       </form>
+      <details className="token-import">
+        <summary>Import an existing ERC20</summary>
+        <form
+          className="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            dispatch({ kind: "import" });
+          }}
+        >
+          <label>
+            ERC20 address
+            <input
+              placeholder="0x…"
+              value={draft.address}
+              disabled={view.importing}
+              onChange={(event) =>
+                dispatch({
+                  kind: "edit",
+                  field: "address",
+                  value: event.target.value,
+                })
+              }
+            />
+          </label>
+          <FormError message={view.importError ?? undefined} />
+          <button className="secondary" disabled={!view.canImport}>
+            {view.importing ? "Reading token…" : "Import token"}
+          </button>
+        </form>
+      </details>
       <FormError message={catalogError ?? undefined} />
     </section>
   );
@@ -469,13 +483,8 @@ function AvailableTokens({
 }) {
   const { tokens, session, snapshot } = useDex();
   return (
-    <section className="card available-tokens">
-      <h2>Available tokens ({tokens.length})</h2>
-      <p>
-        Created and imported tokens appear here. Select a token to use it as the
-        first asset in the new-pool form. Creating or importing a token does not
-        create a market for it.
-      </p>
+    <details className="card available-tokens">
+      <summary>Available tokens ({tokens.length})</summary>
       <div className="table-scroll">
         <table className="asset-table">
           <caption>
@@ -502,7 +511,7 @@ function AvailableTokens({
                     {token.name} ({token.symbol})
                   </td>
                   <td>
-                    <code>{token.address}</code>
+                    <code title={token.address}>{shorten(token.address)}</code>
                   </td>
                   <td>{token.decimals}</td>
                   <td className="asset-balance">
@@ -526,6 +535,6 @@ function AvailableTokens({
           </tbody>
         </table>
       </div>
-    </section>
+    </details>
   );
 }

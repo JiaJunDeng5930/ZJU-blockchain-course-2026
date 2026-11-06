@@ -49,16 +49,13 @@ export function WrapAssets() {
   const submit = () => {
     const request = controller.submit(withdraw, environment);
     render();
-    if (request && session) setReview({ request, owner: session.address, submit: run });
+    if (request && session)
+      setReview({ request, owner: session.address, submit: run });
   };
   return (
     <section className="card form wrapping" id="wrap-assets" ref={section}>
       <h2>ETH / WETH</h2>
-      <p>
-        Wrap ETH to use it in ERC20 pools, or unwrap WETH to receive ETH. The
-        conversion is 1:1. Both directions require ETH for network fees, so keep
-        some ETH unwrapped.
-      </p>
+      <p>Convert 1:1 between ETH and WETH for ERC20 pools. Keep ETH for gas.</p>
       <dl className="wrapping-balances">
         <dt>ETH available</dt>
         <dd>
@@ -153,11 +150,8 @@ export function WrapAssets() {
             </dd>
           </dl>
           <p>
-            This calls the WETH contract directly. No token approval is needed.
-            Gas is paid from the wallet's existing ETH. The ETH released by an
-            unwrap is shown before this fee; the wallet's net ETH change can be
-            negative for a small unwrap. The amount and account stay fixed when
-            you confirm.
+            No token approval is needed. Receive excludes gas, which is paid in
+            ETH.
           </p>
           <button
             type="button"
@@ -165,18 +159,21 @@ export function WrapAssets() {
             onClick={() => {
               const { request, submit } = review;
               setReview(undefined);
-              submit(request.withdraw ? "Unwrap WETH" : "Wrap ETH", async (writer) => {
-                setConfirmation(await writer.wrap(request.amount, request.withdraw));
-              });
+              submit(
+                request.withdraw ? "Unwrap WETH" : "Wrap ETH",
+                async (writer) => {
+                  setConfirmation(
+                    await writer.wrap(request.amount, request.withdraw),
+                  );
+                },
+              );
             }}
           >
             {review.request.withdraw ? "Confirm unwrap" : "Confirm wrap"}
           </button>
         </ConfirmationDialog>
       )}
-      {confirmation && (
-        <ConfirmedWrappingAction result={confirmation} />
-      )}
+      {confirmation && <ConfirmedWrappingAction result={confirmation} />}
     </section>
   );
 }

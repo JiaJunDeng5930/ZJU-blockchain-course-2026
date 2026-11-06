@@ -1,7 +1,7 @@
 import { poolAssetsSupported, unsupportedPoolError } from "../logic/assets";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { poolKey, tokenLabel } from "../chain/amounts";
+import { poolKey, shorten, tokenLabel } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
 import { poolPositions, positionView } from "../logic/liquidity";
 import type { Pool } from "../chain/types";
@@ -17,8 +17,13 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
   const { client, snapshot, symbol, amount, precision } = useDex();
   const exactAmount = (value: bigint, address: string) =>
     amount(value, address, precision(address));
-  const token0 = tokenLabel(pool.token0, symbol(pool.token0));
-  const token1 = tokenLabel(pool.token1, symbol(pool.token1));
+  const matchingSymbols = symbol(pool.token0) === symbol(pool.token1);
+  const token0 = matchingSymbols
+    ? tokenLabel(pool.token0, symbol(pool.token0))
+    : symbol(pool.token0);
+  const token1 = matchingSymbols
+    ? tokenLabel(pool.token1, symbol(pool.token1))
+    : symbol(pool.token1);
   const [open, setOpen] = useState(false);
   const [expanded, setExpanded] = useState(false);
   const [page, setPage] = useState(0);
@@ -48,19 +53,6 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
       </summary>
       <div className="liquidity-pool-content">
         <dl className="liquidity-detail-list">
-          <dt>DEX pool</dt>
-          <dd>
-            {pool.exchange.name} #{String(pool.id)} ·{" "}
-            <code>{pool.exchange.address}</code>
-          </dd>
-          <dt>{symbol(pool.token0)} contract</dt>
-          <dd>
-            <code>{pool.token0}</code>
-          </dd>
-          <dt>{symbol(pool.token1)} contract</dt>
-          <dd>
-            <code>{pool.token1}</code>
-          </dd>
           <dt>{symbol(pool.token0)} reserve</dt>
           <dd>{exactAmount(pool.reserve0, pool.token0)}</dd>
           <dt>{symbol(pool.token1)} reserve</dt>
@@ -68,16 +60,27 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
           <dt>Trading fee</dt>
           <dd>0.30% retained by liquidity providers</dd>
         </dl>
+        <details className="liquidity-calculation">
+          <summary>Contract addresses</summary>
+          <dl className="liquidity-detail-list">
+            <dt>DEX pool</dt>
+            <dd>
+              {pool.exchange.name} #{String(pool.id)} ·{" "}
+              <code>{pool.exchange.address}</code>
+            </dd>
+            <dt>{symbol(pool.token0)} contract</dt>
+            <dd>
+              <code>{pool.token0}</code>
+            </dd>
+            <dt>{symbol(pool.token1)} contract</dt>
+            <dd>
+              <code>{pool.token1}</code>
+            </dd>
+          </dl>
+        </details>
         <h3>Position NFTs</h3>
         {snapshot.data && (
-          <p>
-            Active positions at block {snapshot.data.block}. Each current owner
-            can redeem the NFT's share of reserves. Original deposits record
-            what entered the pool; the current redeem quote includes retained
-            fees, price changes and whole-unit rounding, and is not a measure of
-            profit. Transfers change the owner, not the original deposit. The
-            total shares include the pool's permanently locked liquidity.
-          </p>
+          <p>Active positions at block {snapshot.data.block}.</p>
         )}
         <div className="liquidity-table-scroll">
           <table>
@@ -91,7 +94,7 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                 <th>
                   Current redeem quote ({token0} / {token1})
                 </th>
-                <th>Pool shares (position / total)</th>
+                <th>Pool ownership</th>
                 <th>Created</th>
               </tr>
             </thead>
@@ -105,12 +108,14 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                 </tr>
               )}
               {sources.map((position) => {
-                const { amounts } = positionView(pool, position);
+                const { amounts, sharePercent } = positionView(pool, position);
                 return (
                   <tr key={String(position.id)}>
                     <td>#{String(position.id)}</td>
                     <td>
-                      <code>{position.owner}</code>
+                      <code title={position.owner}>
+                        {shorten(position.owner)}
+                      </code>
                     </td>
                     <td>
                       {exactAmount(position.amount0, pool.token0)} /{" "}
@@ -121,8 +126,9 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                       {exactAmount(amounts[1], pool.token1)}
                     </td>
                     <td>
-                      {position.shares.toString()} /{" "}
-                      {pool.totalShares.toString()}
+                      <span title={`${position.shares} / ${pool.totalShares}`}>
+                        {sharePercent}%
+                      </span>
                     </td>
                     <td>
                       {new Date(
@@ -187,11 +193,8 @@ function SupportedPoolActivity({ pool }: { pool: Pool }) {
                   </dd>
                 </dl>
                 <p>
-                  This estimate adds 0.30% of each swap's input, rounded down to
-                  that token's smallest unit per swap. A displayed zero can omit
-                  fractional-unit fees. Fees stay in reserves and move with pool
-                  ownership; this history is not a separate claimable balance or
-                  an individual position's earnings.
+                  Estimates use 0.30% of each swap's input, rounded down. Fees
+                  stay in reserves, not a separate claimable balance.
                 </p>
                 <div className="liquidity-table-scroll">
                   <table>

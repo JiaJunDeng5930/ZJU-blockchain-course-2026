@@ -60,7 +60,8 @@
   align-items: center;
   min-width: 0;
 }
-.liquidity-position-identity strong {
+.liquidity-position-identity h3 {
+  margin: 0;
   font-size: 17px;
   font-weight: 600;
 }
@@ -397,7 +398,7 @@
   .liquidity-position-identity {
     gap: 10px;
   }
-  .liquidity-position-identity strong {
+  .liquidity-position-identity h3 {
     font-size: 15px;
   }
   .liquidity-position-assets {
@@ -452,4 +453,31 @@
   margin: 0;
   line-height: 1.5;
   overflow-wrap: anywhere;
+}
+.liquidity-review-budget {
+  width: 100%;
+  border-collapse: collapse;
+  margin-block: 16px;
+}
+.liquidity-review-budget th,
+.liquidity-review-budget td {
+  padding: 8px 6px;
+  border-bottom: 1px solid var(--line);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+.liquidity-review-budget th:first-child {
+  text-align: left;
+}
+.liquidity-calculation {
+  margin-block: 16px;
+}
+.liquidity-calculation summary {
+  cursor: pointer;
+}
+
+.liquidity-review-budget caption {
+  text-align: left;
+  margin-bottom: 8px;
+  color: var(--muted);
 }

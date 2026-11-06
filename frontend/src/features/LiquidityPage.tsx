@@ -5,7 +5,7 @@ import {
   unsupportedPoolError,
 } from "../logic/assets";
 import { formatUnits } from "../logic/units";
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ConfirmationDialog } from "../components/ConfirmationDialog";
 import { AmountField, FormError, toleranceError } from "../components/Forms";
@@ -76,7 +76,9 @@ export function LiquidityPage({
           New position
         </button>
       </header>
-      {confirmation && <ConfirmedLiquidityAction result={confirmation} tokens={tokens} />}
+      {confirmation && (
+        <ConfirmedLiquidityAction result={confirmation} tokens={tokens} />
+      )}
       <section className="liquidity-positions" aria-label="My positions">
         {!session ? (
           <div className="liquidity-empty">
@@ -179,7 +181,7 @@ function CreatePosition({
   pools: Pool[];
   onClose: () => void;
 }) {
-  const { snapshot, symbol, pending, session, run, precision, tokens } =
+  const { snapshot, symbol, pending, session, run, precision, tokens, amount } =
     useDex();
   const [selection, setSelection] = useState(poolKey(initialPool));
   const [amount0, setAmount0] = useState("");
@@ -194,28 +196,40 @@ function CreatePosition({
     block: number;
     submit: typeof run;
   }>();
-  useEffect(() => setReview(undefined), [
-    session?.kind,
-    session?.address,
-    session?.chainId,
-    session?.epoch,
-  ]);
+  useEffect(
+    () => setReview(undefined),
+    [session?.kind, session?.address, session?.chainId, session?.epoch],
+  );
   if (!open) return null;
-  const pool = review?.pool ?? pools.find((candidate) => poolKey(candidate) === selection)!;
+  const pool =
+    review?.pool ??
+    pools.find((candidate) => poolKey(candidate) === selection)!;
   const balance0 = snapshot.data?.balances[pool.token0];
   const balance1 = snapshot.data?.balances[pool.token1];
-  const balanceDecision = depositBalancePreview(pool, slippage, balance0, balance1);
+  const balanceDecision = depositBalancePreview(
+    pool,
+    slippage,
+    balance0,
+    balance1,
+  );
   // DEFENSE: anonymous/loading observations do not supply wallet balances.
-  const decision = review || balance0 === undefined || balance1 === undefined
-    ? undefined
-    : depositPreview(pool, amount0, amount1, slippage, balance0, balance1, tokens);
+  const decision =
+    review || balance0 === undefined || balance1 === undefined
+      ? undefined
+      : depositPreview(
+          pool,
+          amount0,
+          amount1,
+          slippage,
+          balance0,
+          balance1,
+          tokens,
+        );
   const exactAmount = (value: bigint, token: string) =>
     formatUnits(value, precision(token));
   const invalid = decision?.ok ? undefined : (decision?.error ?? undefined);
   const plan = review?.plan ?? (decision?.ok ? decision : undefined);
-  const used = plan
-    ? ([plan.used0, plan.used1] as const)
-    : undefined;
+  const used = plan ? ([plan.used0, plan.used1] as const) : undefined;
   function changeAmount(value: string, index: 0 | 1) {
     if (index === 0) setAmount0(value);
     else setAmount1(value);
@@ -236,26 +250,70 @@ function CreatePosition({
       {review && used ? (
         <div className="liquidity-create-review">
           <p className="liquidity-market-name">{poolLabel(pool, symbol)}</p>
-          <dl className="liquidity-review-amounts">
-            <dt title={pool.token0}>
-              {tokenLabel(pool.token0, symbol(pool.token0))}
-            </dt>
-            <dd>{exactAmount(used[0], pool.token0)}</dd>
-            <dt title={pool.token1}>
-              {tokenLabel(pool.token1, symbol(pool.token1))}
-            </dt>
-            <dd>{exactAmount(used[1], pool.token1)}</dd>
-          </dl>
-          <p>
-            You receive an ERC721 position NFT. Its share of both pool assets,
-            including retained trading fees, can be redeemed later.
-          </p>
-          {pool.totalShares === 0n && (
-            <p>
-              Your deposit sets the starting price. Part of it backs permanently
-              locked shares and does not belong to your NFT. This can be a
-              substantial part of a small or low-decimal deposit; compare your
-              immediate redeem quote below with the amount deposited.
+          <p>You receive an ERC721 position NFT.</p>
+          <table className="liquidity-review-budget">
+            <caption>Approximate amounts</caption>
+            <thead>
+              <tr>
+                <th>Asset</th>
+                <th>Deposit</th>
+                <th>Spending limit</th>
+                <th>Minimum deposited</th>
+              </tr>
+            </thead>
+            <tbody>
+              {([0, 1] as const).map((index) => {
+                const token = index === 0 ? pool.token0 : pool.token1;
+                return (
+                  <tr key={token}>
+                    <th scope="row" title={token}>
+                      {symbol(pool.token0) === symbol(pool.token1)
+                        ? tokenLabel(token, symbol(token))
+                        : symbol(token)}
+                    </th>
+                    <td title={exactAmount(used[index], token)}>
+                      {amount(used[index], token, 6)}
+                    </td>
+                    <td
+                      title={exactAmount(
+                        index === 0
+                          ? review.plan.desired0
+                          : review.plan.desired1,
+                        token,
+                      )}
+                    >
+                      {amount(
+                        index === 0
+                          ? review.plan.desired0
+                          : review.plan.desired1,
+                        token,
+                        6,
+                      )}
+                    </td>
+                    <td
+                      title={exactAmount(
+                        index === 0
+                          ? review.plan.minimum0
+                          : review.plan.minimum1,
+                        token,
+                      )}
+                    >
+                      {amount(
+                        index === 0
+                          ? review.plan.minimum0
+                          : review.plan.minimum1,
+                        token,
+                        6,
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {(review.plan.unused0 > 0n || review.plan.unused1 > 0n) && (
+            <p className="liquidity-small">
+              Unused budget stays in your wallet.
             </p>
           )}
           <dl className="liquidity-detail-list">
@@ -272,71 +330,80 @@ function CreatePosition({
                 symbol(pool.token1),
               )}
             </dd>
-            <dt>NFT shares / pool shares after deposit</dt>
-            <dd>
-              {review.plan.shares.toString()} / {review.plan.totalSharesAfter.toString()}
-            </dd>
-            {pool.totalShares === 0n && (
-              <>
-                <dt>New permanently locked shares</dt>
-                <dd>{review.plan.newLockedShares.toString()}</dd>
-              </>
-            )}
-            <dt>Immediate redeem quote · {tokenLabel(pool.token0, symbol(pool.token0))}</dt>
-            <dd>{exactAmount(review.plan.redeemable0, pool.token0)}</dd>
-            <dt>Immediate redeem quote · {tokenLabel(pool.token1, symbol(pool.token1))}</dt>
-            <dd>{exactAmount(review.plan.redeemable1, pool.token1)}</dd>
-            <dt title={pool.token0}>
-              Spending limit {tokenLabel(pool.token0, symbol(pool.token0))}
-            </dt>
-            <dd>{exactAmount(review.plan.desired0, pool.token0)}</dd>
-            <dt title={pool.token1}>
-              Spending limit {tokenLabel(pool.token1, symbol(pool.token1))}
-            </dt>
-            <dd>{exactAmount(review.plan.desired1, pool.token1)}</dd>
-            <dt title={pool.token0}>
-              Unspent {tokenLabel(pool.token0, symbol(pool.token0))}
-            </dt>
-            <dd>{exactAmount(review.plan.unused0, pool.token0)}</dd>
-            <dt title={pool.token1}>
-              Unspent {tokenLabel(pool.token1, symbol(pool.token1))}
-            </dt>
-            <dd>{exactAmount(review.plan.unused1, pool.token1)}</dd>
-            <dt title={pool.token0}>
-              Minimum {tokenLabel(pool.token0, symbol(pool.token0))} deposited
-            </dt>
-            <dd>
-              {exactAmount(
-                review.plan.minimum0,
-                pool.token0,
-              )}
-            </dd>
-            <dt title={pool.token1}>
-              Minimum {tokenLabel(pool.token1, symbol(pool.token1))} deposited
-            </dt>
-            <dd>
-              {exactAmount(
-                review.plan.minimum1,
-                pool.token1,
-              )}
-            </dd>
             <dt>Slippage tolerance</dt>
             <dd>{review.tolerance}%</dd>
-            <dt>Quote block</dt>
-            <dd>{review.block}</dd>
             <dt>Recipient</dt>
             <dd>
               <code>{review.caller}</code>
             </dd>
           </dl>
-          <p className="liquidity-small">
-            New token approvals cover the spending limits shown above. Confirm
-            the deposit after any required approvals. Unused tokens stay in your
-            wallet and remaining allowance stays active. The immediate redeem quote assumes this
-            pool state and whole-unit rounding; intervening pool changes can
-            change the NFT's resulting claim. Deposit minima do not guarantee a
-            future redemption value.
-          </p>
+          {pool.totalShares === 0n && (
+            <>
+              <p className="liquidity-small">
+                The first deposit sets the price. Permanently locked shares are
+                excluded from your NFT; compare the deposit with its immediate
+                redeem quote.
+              </p>
+              <dl className="liquidity-detail-list">
+                <dt>Immediate redeem quote · {symbol(pool.token0)}</dt>
+                <dd>{exactAmount(review.plan.redeemable0, pool.token0)}</dd>
+                <dt>Immediate redeem quote · {symbol(pool.token1)}</dt>
+                <dd>{exactAmount(review.plan.redeemable1, pool.token1)}</dd>
+              </dl>
+            </>
+          )}
+          <details className="liquidity-calculation">
+            <summary>Exact amounts and pool shares</summary>
+            <dl className="liquidity-detail-list">
+              {([0, 1] as const).map((index) => {
+                const token = index === 0 ? pool.token0 : pool.token1;
+                return (
+                  <Fragment key={token}>
+                    <dt>Deposit {tokenLabel(token, symbol(token))}</dt>
+                    <dd>{exactAmount(used[index], token)}</dd>
+                    <dt>Spending limit {symbol(token)}</dt>
+                    <dd>
+                      {exactAmount(
+                        index === 0
+                          ? review.plan.desired0
+                          : review.plan.desired1,
+                        token,
+                      )}
+                    </dd>
+                    <dt>Minimum deposited {symbol(token)}</dt>
+                    <dd>
+                      {exactAmount(
+                        index === 0
+                          ? review.plan.minimum0
+                          : review.plan.minimum1,
+                        token,
+                      )}
+                    </dd>
+                    <dt>Unspent {symbol(token)}</dt>
+                    <dd>
+                      {exactAmount(
+                        index === 0 ? review.plan.unused0 : review.plan.unused1,
+                        token,
+                      )}
+                    </dd>
+                  </Fragment>
+                );
+              })}
+              <dt>NFT shares / pool shares after deposit</dt>
+              <dd>
+                {review.plan.shares.toString()} /{" "}
+                {review.plan.totalSharesAfter.toString()}
+              </dd>
+              <dt>New permanently locked shares</dt>
+              <dd>{review.plan.newLockedShares.toString()}</dd>
+              <dt>Quote block</dt>
+              <dd>{review.block}</dd>
+            </dl>
+            <p className="liquidity-small">
+              Redeem quotes use this pool state and whole-unit rounding. Later
+              pool changes can change your claim.
+            </p>
+          </details>
           <div className="liquidity-dialog-actions">
             <button className="secondary" onClick={() => setReview(undefined)}>
               Back
@@ -406,7 +473,11 @@ function CreatePosition({
             className="secondary"
             type="button"
             disabled={pending || !balanceDecision.ok}
-            title={balanceDecision.ok ? undefined : balanceDecision.error ?? undefined}
+            title={
+              balanceDecision.ok
+                ? undefined
+                : (balanceDecision.error ?? undefined)
+            }
             onClick={() => {
               if (balanceDecision.ok) {
                 // Keep both spending limits: feeding ratio-rounded used amounts
@@ -433,7 +504,9 @@ function CreatePosition({
             />
             <small>
               Balance{" "}
-              {balance0 === undefined ? "—" : exactAmount(balance0, pool.token0)}{" "}
+              {balance0 === undefined
+                ? "—"
+                : exactAmount(balance0, pool.token0)}{" "}
               {symbol(pool.token0)}
             </small>
           </div>
@@ -446,7 +519,9 @@ function CreatePosition({
             />
             <small>
               Balance{" "}
-              {balance1 === undefined ? "—" : exactAmount(balance1, pool.token1)}{" "}
+              {balance1 === undefined
+                ? "—"
+                : exactAmount(balance1, pool.token1)}{" "}
               {symbol(pool.token1)}
             </small>
           </div>
@@ -459,11 +534,15 @@ function CreatePosition({
           )}
           {decision?.ok && (
             <p className="liquidity-deposit-estimate" role="status">
-              Expected deposit: {exactAmount(decision.used0, pool.token0)} {symbol(pool.token0)}
-              {" + "}{exactAmount(decision.used1, pool.token1)} {symbol(pool.token1)}.
-              {" "}Unused: {exactAmount(decision.unused0, pool.token0)} {symbol(pool.token0)}
-              {" + "}{exactAmount(decision.unused1, pool.token1)} {symbol(pool.token1)}
-              {" "}stay in your wallet.
+              Expected deposit: {exactAmount(decision.used0, pool.token0)}{" "}
+              {symbol(pool.token0)}
+              {" + "}
+              {exactAmount(decision.used1, pool.token1)} {symbol(pool.token1)}.{" "}
+              Unused: {exactAmount(decision.unused0, pool.token0)}{" "}
+              {symbol(pool.token0)}
+              {" + "}
+              {exactAmount(decision.unused1, pool.token1)} {symbol(pool.token1)}{" "}
+              stay in your wallet.
             </p>
           )}
           <FormError message={amount0 || amount1 ? invalid : undefined} />
@@ -548,18 +627,17 @@ function SupportedPositionCard({
   recipient,
   onRecipientChange,
 }: PositionCardProps & { pool: Pool } & TransferDraft) {
-  const { client, symbol, pending, session, run, snapshot, precision } = useDex();
+  const { client, symbol, pending, session, run, snapshot, precision } =
+    useDex();
   const [showMetadata, setShowMetadata] = useState(false);
   const [review, setReview] = useState<
     PositionRedemptionReview | PositionTransferReview
   >();
   const [slippage, setSlippage] = useState("0.5");
-  useEffect(() => setReview(undefined), [
-    session?.kind,
-    session?.address,
-    session?.chainId,
-    session?.epoch,
-  ]);
+  useEffect(
+    () => setReview(undefined),
+    [session?.kind, session?.address, session?.chainId, session?.epoch],
+  );
   const view = positionView(pool, position);
   const { amounts, currentValue, valueChange } = view;
   const exactAmount = (value: bigint, token: string) =>
@@ -580,10 +658,10 @@ function SupportedPositionCard({
     <article className="liquidity-position">
       <div className="liquidity-position-summary">
         <div className="liquidity-position-identity">
-          <strong title={position.exchange.address}>
+          <h3 title={position.exchange.address}>
             {position.exchange.name} · pool #{String(pool.id)} · NFT #
             {String(position.id)}
-          </strong>
+          </h3>
         </div>
         <div className="liquidity-position-assets">
           <span>
@@ -607,28 +685,20 @@ function SupportedPositionCard({
       {expanded && (
         <div className="liquidity-position-detail">
           <dl className="liquidity-detail-list">
-            <dt>Pool shares (position / total)</dt>
-            <dd>
-              {position.shares.toString()} / {pool.totalShares.toString()}
+            <dt>Shares / pool ownership</dt>
+            <dd title={`${position.shares} / ${pool.totalShares}`}>
+              {view.sharePercent}%
             </dd>
             <dt>Initial deposit</dt>
             <dd>
-              {exactAmount(position.amount0, pool.token0)} {symbol(pool.token0)} /{" "}
-              {exactAmount(position.amount1, pool.token1)} {symbol(pool.token1)}
+              {exactAmount(position.amount0, pool.token0)} {symbol(pool.token0)}{" "}
+              / {exactAmount(position.amount1, pool.token1)}{" "}
+              {symbol(pool.token1)}
             </dd>
             <dt>Redeem quote</dt>
             <dd>
               {exactAmount(amounts[0], pool.token0)} {symbol(pool.token0)} /{" "}
               {exactAmount(amounts[1], pool.token1)} {symbol(pool.token1)}
-            </dd>
-            <dt>Current value at pool price</dt>
-            <dd>
-              {exactAmount(currentValue, pool.token1)} {symbol(pool.token1)}
-            </dd>
-            <dt>Compared with holding the initial deposit</dt>
-            <dd>
-              {view.valueSign}
-              {exactAmount(valueChange, pool.token1)} {symbol(pool.token1)}
             </dd>
             <dt>Created</dt>
             <dd>
@@ -636,11 +706,26 @@ function SupportedPositionCard({
             </dd>
           </dl>
           <p className="liquidity-small">
-            Total shares include permanently locked liquidity. Fees are included
-            in the redeem quote. The value comparison also
-            reflects price changes and impermanent loss; it is not a separate
-            fee balance or a guaranteed return.
+            Redeem amounts include retained pool fees.
           </p>
+          <details className="liquidity-calculation">
+            <summary>Value comparison</summary>
+            <dl className="liquidity-detail-list">
+              <dt>Current value at pool price</dt>
+              <dd>
+                {exactAmount(currentValue, pool.token1)} {symbol(pool.token1)}
+              </dd>
+              <dt>Compared with holding the initial deposit</dt>
+              <dd>
+                {view.valueSign}
+                {exactAmount(valueChange, pool.token1)} {symbol(pool.token1)}
+              </dd>
+            </dl>
+            <p className="liquidity-small">
+              The comparison includes price changes and impermanent loss, not a
+              separate fee balance.
+            </p>
+          </details>
           <div className="liquidity-position-actions">
             <button
               className="button-primary"
@@ -719,16 +804,11 @@ function SupportedPositionCard({
             {review.position.exchange.name} (
             {shorten(review.position.exchange.address)}), pool #
             {String(review.position.poolId)}: NFT #{String(review.position.id)}{" "}
-            will be permanently burned. Both assets, including your share of
-            fees, are sent by the contract to the owner at execution. The owner
-            observed for this quote is:
+            will be permanently burned. Assets and retained fees go to the
+            owner:
           </p>
           <code className="liquidity-recipient">{review.position.owner}</code>
           <dl className="liquidity-detail-list">
-            <dt>Trader</dt>
-            <dd className="liquidity-recipient">{review.caller}</dd>
-            <dt>Quote block</dt>
-            <dd>{review.block}</dd>
             <dt title={review.pool.token0}>
               Expected{" "}
               {tokenLabel(review.pool.token0, symbol(review.pool.token0))}
@@ -750,8 +830,7 @@ function SupportedPositionCard({
             onChange={setSlippage}
           />
           <p className="liquidity-small">
-            Slippage edits apply to this fixed quote. Later pool changes do not
-            replace these amounts or minima.
+            Minima apply to this quote; later pool changes can cause a revert.
           </p>
           <FormError message={invalidTolerance} />
           {!invalidTolerance && (
@@ -816,12 +895,10 @@ function UnsupportedPositionCard({
 } & TransferDraft) {
   const { pending, session, run } = useDex();
   const [review, setReview] = useState<PositionTransferReview>();
-  useEffect(() => setReview(undefined), [
-    session?.kind,
-    session?.address,
-    session?.chainId,
-    session?.epoch,
-  ]);
+  useEffect(
+    () => setReview(undefined),
+    [session?.kind, session?.address, session?.chainId, session?.epoch],
+  );
   return (
     <article className="liquidity-position">
       <h3>
@@ -870,25 +947,16 @@ function TransferPositionDialog({
 } & TransferDraft) {
   const { pending, symbol } = useDex();
   const { pool, position, caller, submit } = review;
-  const plan = prepareTransfer(
-    position.owner,
-    caller,
-    recipient,
-  );
+  const plan = prepareTransfer(position.owner, caller, recipient);
   return (
     <ConfirmationDialog title="Transfer liquidity position" onClose={onClose}>
       <p>
         Transfer {poolLabel(pool, symbol)} position NFT #{String(position.id)}{" "}
-        and all redemption rights to the recipient. You will no longer be able
-        to redeem this position.
+        and its redemption rights to the recipient.
       </p>
       <dl className="liquidity-detail-list">
-        <dt>Trader</dt>
-        <dd className="liquidity-recipient">{caller}</dd>
-        <dt>Owner observed at review</dt>
+        <dt>Current owner</dt>
         <dd className="liquidity-recipient">{position.owner}</dd>
-        <dt>NFT contract</dt>
-        <dd className="liquidity-recipient">{position.exchange.address}</dd>
       </dl>
       <label>
         Recipient address
@@ -907,7 +975,11 @@ function TransferPositionDialog({
             onClose();
             submit("Transfer position", async (writer) => {
               onConfirmed(
-                await writer.transferPosition(pool, position.id, plan.recipient),
+                await writer.transferPosition(
+                  pool,
+                  position.id,
+                  plan.recipient,
+                ),
               );
             });
           }

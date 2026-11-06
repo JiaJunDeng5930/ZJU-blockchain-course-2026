@@ -34,3 +34,12 @@
   font-size: 14px;
   line-height: 1.6;
 }
+.liquidity-receipt-details {
+  margin-top: 1rem;
+}
+.liquidity-receipt-details summary {
+  cursor: pointer;
+}
+.liquidity-receipt-details dl {
+  margin-top: 1rem;
+}
