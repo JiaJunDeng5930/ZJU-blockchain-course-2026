@@ -16,4 +16,4 @@ If browser storage is unavailable, the current transaction can still run and the
 npm run test:pending
 ```
 
-It uses a real isolated chain and verifies pending observation after reload, confirmation, absence of automatic resubmission, and the retained failure behavior. Full cross-tab history merge, legacy archive migration and historical business-result rereading were removed under [ADR 024](../docs/adr/024-course-delivery-scope.md).
+It uses a real isolated chain and verifies pending observation after reload, confirmation, absence of automatic resubmission, and the retained failure behavior. The scope is deliberately limited to pending observation; see [ADR 024](../docs/adr/024-course-delivery-scope.md).

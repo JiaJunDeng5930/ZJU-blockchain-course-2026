@@ -71,8 +71,8 @@ node scripts/bootstrap-formal.mjs --reuse
 
 The selected opam switch must provide the pinned OCaml packages. The Coq source must contain its `_build/install/default` prefix; Hammer/coqutil/semantics must already have been compiled with that Coq version. Reuse checks source revisions, the compiler patch, semantics source hashes, package versions, actual Coq imports and a native BMC solver probe. Existing binaries remain trusted build inputs; checking a version string and source checkout does not prove how a binary was produced.
 
-## Executed preparation and boundary
+## Interpret bootstrap results
 
-The reuse workflow above was executed successfully on the development host, including rerunning from its recorded manifest without path overrides. It imported the official semantics with Coq 8.20.1, checked a closed proof, loaded the OCaml packages and obtained safe native BMC results. The fresh-install branch reproduces the commands used to build those components; a second installation from an empty opam root was not executed during this migration.
+Bootstrap records input provenance and tool/solver probes in `.local/toolchain/manifest.json`, `bootstrap.log` and `solver-probe.json`; it does not establish DEX invariants. The existing-build reuse path has been executed, including reuse from its manifest. The fresh-install recipe has not been repeated from an empty opam root.
 
-Generated evidence is local: `.local/toolchain/manifest.json`, `bootstrap.log`, and `solver-probe.json`. Preparation checks tool availability and input provenance; it does not establish any DEX invariant. Actual project proof and Solidity verification commands produce their own reports. Coq, solc, extraction, js_of_ocaml and their host runtimes remain in the declared trusted toolchain.
+Coq, solc, the translator, extraction, OCaml/js_of_ocaml and their host runtimes remain trusted build inputs. Project verification produces separate reports for the properties it checks.

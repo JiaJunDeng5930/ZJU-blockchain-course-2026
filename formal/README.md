@@ -1,12 +1,10 @@
-# Formal development
+# Reproduce and interpret the formal checks
 
-Rocq is the executable source of frontend business decisions. Solidity remains the on-chain implementation. Frontend extraction, Solidity verification and implementation refinement are separate checks.
+Rocq is the executable source of frontend business decisions; Solidity implements the on-chain behavior. Extraction, translation matching and implementation refinement establish different results.
 
-## Build and reproduce
+## Build the executable models and run verification
 
-Prepare the pinned tools using [TOOLCHAIN.md](TOOLCHAIN.md). The pipeline uses Coq 8.20.1, the pre-rename Rocq release required by the upstream Solidity semantics, for shared specifications, extraction and contract refinement.
-
-From the repository root:
+Prepare the pinned tools using [TOOLCHAIN.md](TOOLCHAIN.md), then run from the repository root:
 
 ```bash
 npm run setup
@@ -16,9 +14,12 @@ npm run formal:verify
 npm test
 ```
 
-`formal:build` snapshots the sources, orders dependencies, checks them with `coqc` and `coqchk`, extracts the selected definitions, compiles the OCaml bridges and produces the frontend JavaScript. Generated JavaScript, proof build products, logs and reports are ignored. The checked-in `*Generated.v` files are pinned Solidity-to-Rocq translation inputs to handwritten refinement proofs; verification regenerates and compares them.
+`formal:build` snapshots and dependency-orders the Rocq sources, checks them with `coqc` and `coqchk`, extracts selected definitions, then compiles the OCaml bridges to frontend JavaScript. It uses Coq 8.20.1, the pre-rename Rocq release required by the upstream Solidity semantics. Generated outputs and reports are ignored; checked-in `*Generated.v` files are pinned translation inputs that verification regenerates and compares.
 
-`formal:verify` runs frontend extraction, the three arithmetic SMT harnesses and the swap, reserve, share-supply and arbitrage refinement runners. Individual commands can be run after sourcing the bootstrap environment:
+`formal:verify` runs extraction, three arithmetic SMT harnesses and the swap, reserve, share-supply and arbitrage refinement gates. Each runner records sources, tools, premises, assumptions and outcome. A matching translation alone is not a refinement proof.
+
+<details>
+<summary>Run a single Solidity or refinement target</summary>
 
 ```bash
 . .local/toolchain/env.sh
@@ -34,26 +35,15 @@ node contracts/scripts/verify-arbitrage.generate.cjs --check
 node contracts/scripts/verify-arbitrage.rocq.cjs
 ```
 
-A matching translation is not itself a refinement proof. Each proof runner records its premises, checked sources, tool versions, assumptions and outcome. Read the generated report before attributing a proof result.
+</details>
 
-## Executable frontend
+## Change business rules in their executable source
 
-Shared specifications describe exact integer amounts, AMM quotes, liquidity shares and atomic arbitrage. Frontend models use those definitions for form decisions, call parameters, wallet identity, asynchronous requests and transaction outcomes. OCaml bridges expose the extracted decisions to JavaScript. React renders the resulting state; viem handles ABI, wallet and RPC effects.
+[Shared specifications](theories/Spec) define integer amounts, AMM quotes, liquidity shares, ownership and atomic arbitrage. [Frontend models](theories/Frontend) use them for form decisions, call parameters, wallet identity and asynchronous outcomes. OCaml bridges expose these decisions; React renders the state and viem supplies wallet, ABI and RPC effects.
 
-| Retained behavior | Source area or explanation |
-| --- | --- |
-| Amount parsing, formatting and ERC20 precision | `theories/Spec/Units.v`; [token precision](TOKEN-PRECISION.md) |
-| Explicit-pool swap quote and parameters | `theories/Spec/AMM.v`; `theories/Frontend/ExtractTrade.v` |
-| Liquidity supply, reserve updates, NFT ownership and balances | `theories/Spec/Liquidity.v`, `Ledger.v`; frontend liquidity models |
-| Atomic arbitrage and realized settlement | `theories/Spec/Arbitrage.v`; frontend capital and receipt models |
-| Wallet identity, active transactions and pending observation after refresh | Frontend wallet/transaction models; [pending transactions](PENDING-TRANSACTIONS.md) |
-| Active transaction repricing and cancellation | [replacement observation](TRANSACTION-REPLACEMENTS.md) |
-| Funding, token creation, wrapping and real confirmed results | Frontend funding, asset, wrapping and receipt models |
-| Twenty-account simulation control | [simulation](SIMULATION.md) |
+The detailed contracts cover [token precision](TOKEN-PRECISION.md), [pending observation](PENDING-TRANSACTIONS.md), [active replacements](TRANSACTION-REPLACEMENTS.md) and [simulation control](SIMULATION.md). These are the entry points for changing the corresponding behavior without duplicating its rules in TypeScript.
 
-The activity view shows transactions known to the current page. Only known pending transactions are checkpointed in the same tab's `sessionStorage`. Restoring them resumes observation, not signing or later workflow steps. Completed transactions are not archived across refreshes; there is no cross-tab history merge, old-archive compatibility, generic historical business-result reader, standalone allowance-management page or cross-pool Best quote mode. The scope decision is recorded in [ADR 024](../docs/adr/024-course-delivery-scope.md).
-
-## Solidity proof boundary
+## Interpret Solidity proof results
 
 The SMT harnesses import production code. The Rocq refinement proofs use the upstream generated Solidity semantics and its `Run.t` execution relation.
 
