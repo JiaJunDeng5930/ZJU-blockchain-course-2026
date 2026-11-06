@@ -24,7 +24,6 @@ import { aggregateActivity } from "../logic/liquidity";
 import { executionFeeWei } from "../logic/receipts";
 import { approvalNeeded } from "../logic/units";
 import { makeSwapParameters } from "../logic/trade";
-import type { RoutedSwapPlan } from "../logic/routing";
 import { runtimeCodeMatches } from "../logic/assets";
 import {
   importAsset,
@@ -32,13 +31,10 @@ import {
   createAssetPool,
   claimAsset,
 } from "./assets";
-import { addLiquidity, removeLiquidity, transferPosition, readLiquidityReceipt } from "./liquidity";
-import { revokeAllowance, type RevokePlan } from "./allowances";
-import type { RawAllowances } from "../wallet/kernel";
-import { executeWrap, readWrappingReceipt } from "./wrapping";
-import { readPoolCreationReceipt } from "./poolCreationReceipt";
-import { readSwapReceipt, readTransactionResult, swapExecutionFromEvent } from "./swapReceipt";
-import { opportunities, quoteArbitrage, executeArbitrage, readArbitrageReceipt } from "./arbitrage";
+import { addLiquidity, removeLiquidity, transferPosition } from "./liquidity";
+import { executeWrap } from "./wrapping";
+import { swapExecutionFromEvent } from "./swapReceipt";
+import { opportunities, quoteArbitrage, executeArbitrage } from "./arbitrage";
 import type {
   ArbitrageResult,
   SwapResult,
@@ -52,8 +48,6 @@ import type {
 import type { WalletSession } from "../wallet/session";
 import { planNativeFunding } from "../wallet/kernel";
 import { nativeFundingConfirmation } from "./fundingConfirmation";
-import { readFundingReceipt } from "./fundingReceipt";
-import type { FundingRecoveryContext } from "./types";
 
 export type SendTransaction = (
   label: string,
@@ -259,12 +253,6 @@ export class ExchangeClient {
   importToken(address: string): Promise<Token> {
     return importAsset(this, address);
   }
-  arbitrageReceipt(hash: Hex) {
-    return readArbitrageReceipt(this, hash);
-  }
-  liquidityReceipt(hash: Hex) {
-    return readLiquidityReceipt(this, hash);
-  }
   async liquidityActivity(
     pool: Pool,
     block: number
@@ -361,11 +349,6 @@ export class ExchangeClient {
   ): Promise<Opportunity[]> {
     return quoteArbitrage(this, pool, tokenIn, amount, supportedTokens);
   }
-  swapReceipt(hash: Hex) { return readSwapReceipt(this, hash); }
-  wrappingReceipt(hash: Hex) { return readWrappingReceipt(this, hash); }
-  poolCreationReceipt(hash: Hex) { return readPoolCreationReceipt(this, hash); }
-  transactionResult(hash: Hex, context?: FundingRecoveryContext) { return readTransactionResult(this, hash, context); }
-  fundingReceipt(hash: Hex, context?: FundingRecoveryContext) { return readFundingReceipt(this, hash, context); }
   writer(session: WalletSession, send: SendTransaction) {
     return new ExchangeWriter(this, session, send);
   }
@@ -392,9 +375,6 @@ class ExchangeWriter {
           args: [getAddress(spender), amount],
         })
       );
-  }
-  revokeAllowance(plan: RevokePlan, runtime: RawAllowances) {
-    return revokeAllowance(this.context(), plan, runtime);
   }
   faucet(token: Token) {
     return claimAsset(this.context(), token);
@@ -425,59 +405,21 @@ class ExchangeWriter {
     );
     return nativeFundingConfirmation(receipt, this.session.address, funding.amountWei);
   }
-  async routedSwap(plan: RoutedSwapPlan): Promise<SwapResult> {
-    const receipt = await this.executeSwap(
-      plan.pool,
-      plan.inputToken,
-      plan.input,
-      plan.quoted,
-      plan.slippage
-    );
-    const event = parseEventLogs({
-      abi: miniDexAbi,
-      eventName: "Swap",
-      logs: receipt.logs,
-      strict: true
-    }).find(
-      (event) =>
-        getAddress(event.address) === getAddress(plan.pool.exchange.address) &&
-        event.args.poolId === plan.pool.id
-    );
-    // DEFENSE: a successful swap must provide its settlement event; incomplete RPC
-    // receipt logs cannot be presented as an actual received amount.
-    if (!event)
-      throw new Error("Confirmed swap is missing its settlement event.");
-    return {
-      ...swapExecutionFromEvent(plan.pool, receipt, event),
-      quoted: plan.quoted,
-      minimum: plan.minimum,
-    };
-  }
-
   async swap(
     pool: Pool,
     tokenIn: string,
     amount: bigint,
     quote: bigint,
-    slippage: bigint
-  ) {
-    await this.executeSwap(pool, tokenIn, amount, quote, slippage);
-  }
-  private async executeSwap(
-    pool: Pool,
-    tokenIn: string,
-    amount: bigint,
-    quote: bigint,
-    slippage: bigint
-  ) {
+    slippage: bigint,
+  ): Promise<SwapResult> {
     await this.approve(tokenIn, pool.exchange.address, amount);
     const plan = makeSwapParameters(
       amount,
       quote,
       slippage,
-      await this.client.transactionTimestamp()
+      await this.client.transactionTimestamp(),
     );
-    return this.send("Swap tokens", () =>
+    const receipt = await this.send("Swap tokens", () =>
       this.session.walletClient.writeContract({
         account: this.session.address,
         chain: this.client.chain,
@@ -490,10 +432,28 @@ class ExchangeWriter {
           plan.input,
           plan.minimum,
           this.session.address,
-          plan.deadline
-        ]
-      })
+          plan.deadline,
+        ],
+      }),
     );
+    const event = parseEventLogs({
+      abi: miniDexAbi,
+      eventName: "Swap",
+      logs: receipt.logs,
+      strict: true,
+    }).find(
+      (event) =>
+        getAddress(event.address) === getAddress(pool.exchange.address) &&
+        event.args.poolId === pool.id,
+    );
+    // DEFENSE: incomplete RPC receipt logs cannot stand in for a swap's actual received amount.
+    if (!event)
+      throw new Error("Confirmed swap is missing its settlement event.");
+    return {
+      ...swapExecutionFromEvent(pool, receipt, event),
+      quoted: quote,
+      minimum: plan.minimum,
+    };
   }
   async addLiquidity(
     pool: Pool,

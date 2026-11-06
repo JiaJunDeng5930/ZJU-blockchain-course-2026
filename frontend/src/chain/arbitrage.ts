@@ -1,10 +1,9 @@
 import {
   getAddress,
   parseEventLogs,
-  type Hex,
   type TransactionReceipt,
 } from "viem";
-import { arbitrageAbi, miniDexAbi, testTokenAbi } from "../generated/abis";
+import { arbitrageAbi, testTokenAbi } from "../generated/abis";
 import {
   prepareArbitrage,
   arbitrageCapitalInput,
@@ -20,7 +19,6 @@ import type { WalletSession } from "../wallet/session";
 import type { ExchangeClient, SendTransaction } from "./client";
 import type {
   ArbitrageResult,
-  ArbitrageReceiptDetails,
   ArbitrageReserveSnapshot,
   Opportunity,
   Pool,
@@ -203,7 +201,7 @@ function decodeArbitrageEvents(
     case "none":
       return null;
     case "reverted":
-      // DEFENSE: a saved or supplied hash can refer to an actually reverted execution.
+      // DEFENSE: a reverted execution receipt must not produce successful arbitrage evidence.
       throw new Error(
         "The transaction reverted and has no confirmed arbitrage result.",
       );
@@ -268,48 +266,4 @@ function resultFromEvidence(
     before: snapshots.map((snapshot) => snapshot.before),
     after: snapshots.map((snapshot) => snapshot.after),
   };
-}
-
-export async function readArbitrageReceipt(
-  client: ExchangeClient,
-  hash: Hex,
-): Promise<ArbitrageReceiptDetails | null> {
-  return arbitrageReceiptFromReceipt(
-    client,
-    await client.rpc.getTransactionReceipt({ hash }),
-  );
-}
-
-export async function arbitrageReceiptFromReceipt(
-  client: ExchangeClient,
-  receipt: TransactionReceipt,
-): Promise<ArbitrageReceiptDetails | null> {
-  const evidence = decodeArbitrageEvents(client, receipt);
-  if (evidence === null) return null;
-  const blockNumber = receipt.blockNumber;
-  const readIdentity = async (
-    event: Evidence["buy"],
-  ): Promise<PoolIdentity> => {
-    const address = getAddress(event.args.exchange);
-    const exchange = client.deployment.exchanges.find(
-      (item) => getAddress(item.address) === address,
-    )!;
-    const [token0, token1] = await client.rpc.readContract({
-      address,
-      abi: miniDexAbi,
-      functionName: "pools",
-      args: [event.args.poolId],
-      blockNumber,
-    });
-    return { exchange, id: event.args.poolId, token0, token1 };
-  };
-  const pools = await Promise.all([
-    readIdentity(evidence.buy),
-    readIdentity(evidence.sell),
-  ]);
-  const tokens = await Promise.all([
-    importAsset(client, pools[0].token0, blockNumber),
-    importAsset(client, pools[0].token1, blockNumber),
-  ]);
-  return { result: resultFromEvidence(receipt, evidence, pools), tokens };
 }

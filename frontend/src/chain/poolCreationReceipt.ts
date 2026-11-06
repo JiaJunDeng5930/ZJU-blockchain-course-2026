@@ -2,7 +2,6 @@ import {
   getAddress,
   parseEventLogs,
   zeroAddress,
-  type Hex,
   type TransactionReceipt,
 } from "viem";
 import { miniDexAbi } from "../generated/abis";
@@ -10,8 +9,8 @@ import {
   selectPoolCreationReceipt,
   type ReceiptFact,
 } from "../logic/swapReceipt";
-import type { ExchangeClient } from "./client";
 import type { PoolCreationConfirmation } from "./types";
+import type { ExchangeClient } from "./client";
 
 function poolCreationEvents(receipt: TransactionReceipt) {
   return parseEventLogs({
@@ -22,7 +21,7 @@ function poolCreationEvents(receipt: TransactionReceipt) {
   });
 }
 
-export function poolCreationReceiptFacts(
+function poolCreationReceiptFacts(
   receipt: TransactionReceipt,
 ): ReceiptFact[] {
   return poolCreationEvents(receipt).map((event, index) => ({
@@ -49,7 +48,7 @@ export function poolCreationReceiptFromReceipt(
     case "none":
       return null;
     case "reverted":
-      // DEFENSE: a supplied hash can refer to a mined, reverted createPool call.
+      // DEFENSE: an unsuccessful createPool receipt must not produce a confirmed pool identity.
       throw new Error(
         "The transaction reverted and has no confirmed pool creation.",
       );
@@ -71,14 +70,4 @@ export function poolCreationReceiptFromReceipt(
     token1: getAddress(event.args.token1),
     receipt,
   };
-}
-
-export async function readPoolCreationReceipt(
-  client: ExchangeClient,
-  hash: Hex,
-) {
-  return poolCreationReceiptFromReceipt(
-    client,
-    await client.rpc.getTransactionReceipt({ hash }),
-  );
 }

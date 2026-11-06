@@ -1,4 +1,4 @@
-import { getAddress, parseEventLogs, type Hex, type TransactionReceipt } from "viem";
+import { getAddress, parseEventLogs, type TransactionReceipt } from "viem";
 import { wrappedEtherAbi } from "../generated/abis";
 import { prepareWrapping, requireWrappedAddress } from "../logic/wrapping";
 import type { ExchangeClient, SendTransaction } from "./client";
@@ -12,7 +12,7 @@ function wrappingEvents(receipt: TransactionReceipt) {
   return parseEventLogs({ abi: wrappedEtherAbi, eventName: "Transfer", logs: receipt.logs, strict: true });
 }
 
-export function wrappingReceiptFacts(receipt: TransactionReceipt): ReceiptFact[] {
+function wrappingReceiptFacts(receipt: TransactionReceipt): ReceiptFact[] {
   return wrappingEvents(receipt).map((event, index) => ({
     index, source: event.address.toLowerCase(), kind: "wrapping",
     from: event.args.from.toLowerCase(), to: event.args.to.toLowerCase(),
@@ -32,7 +32,7 @@ export function wrappingReceiptFromReceipt(
   switch (selection.kind) {
     case "none": return null;
     case "reverted":
-      // DEFENSE: a supplied history hash can refer to an on-chain reverted withdrawal.
+      // DEFENSE: a reverted withdrawal receipt must not produce a successful conversion.
       throw new Error("The transaction reverted and has no confirmed wrapping result.");
     case "multiple":
       // DEFENSE: a delegated account can perform another conversion while receiving withdrawal ETH.
@@ -46,10 +46,6 @@ export function wrappingReceiptFromReceipt(
     amount: event.args.value, gasCostWei,
     ...wrappingSettlement(event.args.value, selection.withdraw, gasCostWei), receipt,
   };
-}
-
-export async function readWrappingReceipt(client: ExchangeClient, hash: Hex) {
-  return wrappingReceiptFromReceipt(client, await client.rpc.getTransactionReceipt({ hash }));
 }
 
 export async function executeWrap(

@@ -3,7 +3,6 @@ import type {
   TransactionReplacement,
 } from "../wallet/kernel";
 import type { TransactionReceipt } from "viem";
-
 export type Token = {
   address: string;
   name: string;
@@ -25,10 +24,6 @@ export type AssetFundingConfirmation = {
   gasCostWei: bigint;
   receipt: TransactionReceipt;
 } & ({ kind: "native" } | { kind: "token"; token: Token });
-export type FundingRecoveryContext = {
-  authority: "wallet" | "dev-faucet";
-  beneficiary: string;
-};
 export type PoolCreationConfirmation = {
   kind: "pool";
   exchange: Exchange;
@@ -102,10 +97,6 @@ export type ArbitrageResult = {
   before: ArbitrageReserveSnapshot[];
   after: ArbitrageReserveSnapshot[];
 };
-export type ArbitrageReceiptDetails = {
-  result: ArbitrageResult;
-  tokens: readonly [Token, Token];
-};
 export type PoolIdentity = Pick<Pool, "exchange" | "id" | "token0" | "token1">;
 export type SwapExecution = {
   gasCostWei: bigint;
@@ -122,18 +113,7 @@ export type SwapResult = SwapExecution & {
   quoted: bigint;
   minimum: bigint;
 };
-export type SwapReceiptDetails = {
-  execution: SwapExecution;
-  tokens: readonly [Token, Token];
-};
-export type RecoveredTransactionResult =
-  | { kind: "funding"; details: AssetFundingConfirmation }
-  | { kind: "pool-creation"; details: PoolCreationConfirmation }
-  | { kind: "swap"; details: SwapReceiptDetails }
-  | { kind: "liquidity"; details: LiquidityReceiptDetails }
-  | { kind: "arbitrage"; details: ArbitrageReceiptDetails }
-  | { kind: "wrapping"; details: WrappingConfirmation }
-  | { kind: "creation"; address: string; receipt: TransactionReceipt };
+
 export type WrappingConfirmation = {
   kind: "wrap" | "unwrap";
   token: string;
@@ -160,10 +140,6 @@ export type LiquidityConfirmation = {
   | { kind: "transfer"; from: string; to: string }
 );
 
-export type LiquidityReceiptDetails = {
-  confirmation: LiquidityConfirmation;
-  tokens: readonly [Token, Token];
-};
 
 export type JournalEntry = {
   descriptor: TransactionDescriptor | null;
@@ -194,7 +170,6 @@ export type JournalEntry = {
       gas?: bigint;
     }
 );
-
 export type LiquidityActivity = {
   block: number;
   volume0: bigint;

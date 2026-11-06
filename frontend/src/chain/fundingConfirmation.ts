@@ -15,7 +15,7 @@ export function tokenFundingEvent(
   switch (selection.kind) {
     case "none": return null;
     case "reverted":
-      // DEFENSE: the public history reader can receive a hash that reverted.
+      // DEFENSE: a reverted faucet receipt must not produce a successful token grant.
       throw new Error("The transaction reverted and has no confirmed funding result.");
     case "multiple":
       // DEFENSE: an external contract can emit several mint-shaped Transfer logs.
