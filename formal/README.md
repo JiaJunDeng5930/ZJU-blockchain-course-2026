@@ -14,7 +14,7 @@ npm run formal:verify
 npm test
 ```
 
-`formal:build` snapshots and dependency-orders the Rocq sources, checks them with `coqc` and `coqchk`, extracts selected definitions, then compiles the OCaml bridges to frontend JavaScript. It uses Coq 8.20.1, the pre-rename Rocq release required by the upstream Solidity semantics. Generated outputs and reports are ignored; checked-in `*Generated.v` files are pinned translation inputs that verification regenerates and compares.
+`formal:build` snapshots and dependency-orders the Rocq sources, checks them with `coqc` and `coqchk`, extracts selected definitions, then compiles the OCaml bridges to frontend JavaScript. It uses Coq 8.20.1, the pre-rename Rocq release required by the upstream Solidity semantics. Generated reports are ignored; checked-in `*Generated.v` files are pinned translation inputs that verification regenerates and compares.
 
 `formal:verify` runs extraction, three arithmetic SMT harnesses and the swap, reserve, share-supply and arbitrage refinement gates. Each runner records sources, tools, premises, assumptions and outcome. A matching translation alone is not a refinement proof.
 
