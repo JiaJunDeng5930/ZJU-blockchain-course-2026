@@ -2,13 +2,19 @@ import hardhatToolboxMochaEthers from "@nomicfoundation/hardhat-toolbox-mocha-et
 import { defineConfig } from "hardhat/config";
 import { fileURLToPath } from "node:url";
 
+const solidityCompiler = process.env.DEX_SOLC
+  ? { version: "0.8.36", path: process.env.DEX_SOLC }
+  : {
+      version: "0.8.20",
+      path: fileURLToPath(
+        new URL("./node_modules/solc/soljson.js", import.meta.url),
+      ),
+    };
+
 export default defineConfig({
   plugins: [hardhatToolboxMochaEthers],
   solidity: {
-    version: "0.8.36",
-    path:
-      process.env.DEX_SOLC ??
-      fileURLToPath(new URL("../.local/toolchain/solc", import.meta.url)),
+    ...solidityCompiler,
     settings: {
       // 兼容教学中使用的 Ganache 节点。
       evmVersion: "paris",
