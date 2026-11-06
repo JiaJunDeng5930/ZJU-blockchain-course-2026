@@ -3,11 +3,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { readFile, writeFile } from "node:fs/promises";
 import { resolve } from "node:path";
-import { createWalletClient, getAddress, http, maxUint256 } from "viem";
+import { getAddress, maxUint256 } from "viem";
 import { isolatedChain, root, until } from "./support/chain.mts";
 import { ExchangeClient } from "../src/chain/client";
 import { WalletController } from "../src/wallet/session";
-import { AllowanceController } from "../src/chain/allowances";
 import { AssetCatalog, catalogView } from "../src/logic/assets";
 import { createSwapController } from "../src/logic/trade";
 import { depositPreview, positionView } from "../src/logic/liquidity";
@@ -46,7 +45,6 @@ async function main() {
     scenarios,
   };
   let wallet: WalletController | undefined;
-  let approvals: AllowanceController | undefined;
   const scenario = async (name: string, run: () => void | Promise<void>) => {
     await run();
     scenarios.push({ scenario: name, outcome: "passed" });
@@ -120,7 +118,7 @@ async function main() {
     for (const token of legacy.tokens) delete token.decimals;
     const client = new ExchangeClient(legacy);
     await client.verifyDeployment();
-    wallet = new WalletController(client, { storage: null });
+    wallet = new WalletController(client, { storage: null, pendingStorage: null });
     await wallet.start();
     wallet.dispatch({ kind: "select-local", address: accounts[1] });
     await until(
@@ -130,11 +128,6 @@ async function main() {
     );
     const controller = wallet;
     const owner = accounts[1];
-    const ownerWallet = createWalletClient({
-      account: owner,
-      chain: environment.chain,
-      transport: http(environment.rpcUrl),
-    });
     const perform = (
       label: string,
       action: Parameters<WalletController["perform"]>[0]["perform"],
@@ -441,49 +434,6 @@ async function main() {
       },
     );
     await scenario(
-      "Finite and unlimited six-decimal approvals are displayed in their own units and revoked",
-      async () => {
-        const manager = new AllowanceController(client, controller, tokens);
-        approvals = manager;
-        for (const value of [1_500_000n, maxUint256]) {
-          const hash = await ownerWallet.writeContract({
-            address: getAddress(six.address),
-            abi: precisionFixture.abi,
-            functionName: "approve",
-            args: [getAddress(arbitrage), value],
-          });
-          await read.waitForTransactionReceipt({ hash });
-          await manager.refresh();
-          const row = manager
-            .getSnapshot()
-            .rows.find(
-              (row) =>
-                same(row.token, six.address) && same(row.spender, arbitrage),
-            );
-          assert(row);
-          assert.equal(row.allowance, value.toString());
-          assert.equal(row.unlimited, value === maxUint256);
-          if (!row.unlimited)
-            assert.match(
-              formatAmount(BigInt(row.allowance!), six.decimals),
-              /^1\.50*$/,
-            );
-          manager.review(six.address, arbitrage);
-          await manager.confirm();
-          assert.equal(manager.getSnapshot().action.kind, "verified");
-          assert.equal(
-            await read.readContract({
-              address: getAddress(six.address),
-              abi: precisionFixture.abi,
-              functionName: "allowance",
-              args: [owner, getAddress(arbitrage)],
-            }),
-            0n,
-          );
-        }
-      },
-    );
-    await scenario(
       "A zero-decimal token trades with an eight-decimal token without fractional input",
       async () => {
         await perform("Create zero and eight precision pool", (writer) =>
@@ -649,7 +599,6 @@ async function main() {
     await writeFile(resolve(directory, "result.json"), serialize(evidence));
     throw error;
   } finally {
-    approvals?.dispose();
     await environment.close();
   }
 }

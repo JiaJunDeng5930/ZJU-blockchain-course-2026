@@ -34,7 +34,11 @@ test("complete browser workflow uses real local blockchain transactions", async 
   await page.getByLabel("Swap amount").fill("12");
   await page
     .getByRole("form", { name: "Swap tokens", exact: true })
-    .getByRole("button", { name: "Swap", exact: true })
+    .getByRole("button", { name: "Review swap", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Review swap", exact: true })
+    .getByRole("button", { name: "Confirm swap", exact: true })
     .click();
   await expectStatus(page, "Swap tokens confirmed");
   await expect(page.getByRole("alert")).toHaveCount(0);

@@ -185,11 +185,15 @@ test("a new zero-asset wallet can add the local network, recover from rejection 
     await expect(
       page
         .getByRole("form", { name: "Swap tokens", exact: true })
-        .getByRole("button", { name: "Swap", exact: true }),
+        .getByRole("button", { name: "Review swap", exact: true }),
     ).toBeEnabled();
     await page
       .getByRole("form", { name: "Swap tokens", exact: true })
-      .getByRole("button", { name: "Swap", exact: true })
+      .getByRole("button", { name: "Review swap", exact: true })
+      .click();
+    await page
+      .getByRole("dialog", { name: "Review swap", exact: true })
+      .getByRole("button", { name: "Confirm swap", exact: true })
       .click();
     await expectStatus(page, "Swap tokens confirmed");
     await expect(page.getByRole("alert")).toHaveCount(0);

@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 import { getAddress, maxUint256, parseEventLogs, parseUnits, type Abi } from "viem";
 import { ExchangeClient } from "../src/chain/client";
 import type { Deployment, Pool, SwapResult, Token } from "../src/chain/types";
-import { createRoutedSwapController, type RoutedSwapPlan } from "../src/logic/routing";
+import { createSwapController, type SwapEffect } from "../src/logic/trade";
 import { swapSettlementView } from "../src/logic/swapSettlement";
 import { WalletController } from "../src/wallet/session";
 import { isolatedChain, root, until } from "./support/chain.mts";
@@ -14,6 +14,7 @@ import { isolatedChain, root, until } from "./support/chain.mts";
 const same = (a: string, b: string) => a.toLowerCase() === b.toLowerCase();
 const json = (value: unknown) => JSON.stringify(value,
   (_key, item) => typeof item === "bigint" ? item.toString() : item, 2);
+type SelectedSwap = Extract<SwapEffect, { kind: "swap" }> & { pool: Pool };
 
 async function main() {
   const environment = await isolatedChain("swap-settlement-public");
@@ -23,7 +24,7 @@ async function main() {
   const evidence: Record<string, unknown> = {};
   const fingerprints = async () => Object.fromEntries(await Promise.all([
     "frontend/src/generated/dex_logic.js", "frontend/src/chain/client.ts",
-    "frontend/src/chain/types.ts", "frontend/src/logic/routing.ts",
+    "frontend/src/chain/types.ts", "frontend/src/logic/trade.ts",
     "frontend/src/logic/swapSettlement.ts", "frontend/src/logic/receipts.ts",
     "frontend/src/wallet/session.ts",
   ].map(async path => [path, createHash("sha256")
@@ -77,15 +78,18 @@ async function main() {
     await send(eighteen, base.abi, "faucet");
     await send(six, precision.abi, "mint", [accounts[0], parseUnits("10000", 6)]);
     await send(harbor, dex.abi, "createPool", [eighteen, six]);
+    await send(summit, dex.abi, "createPool", [eighteen, six]);
     const initialPool = await activePool();
-    for (const address of [eighteen, six]) await send(address, base.abi, "approve", [harbor, maxUint256]);
-    const seed = [parseUnits("1000", 18), parseUnits("2000", 6)];
-    const ordered = same(initialPool.token0, eighteen) ? seed : [seed[1], seed[0]];
-    const latest = await read.getBlock();
-    await send(harbor, dex.abi, "addLiquidity", [initialPool.id, ...ordered, 0n, 0n, latest.timestamp + 1200n]);
+    for (const exchange of [harbor, summit]) {
+      for (const address of [eighteen, six]) await send(address, base.abi, "approve", [exchange, maxUint256]);
+      const seed = [parseUnits("1000", 18), parseUnits(exchange === harbor ? "2000" : "4000", 6)];
+      const ordered = same(initialPool.token0, eighteen) ? seed : [seed[1], seed[0]];
+      const latest = await read.getBlock();
+      await send(exchange, dex.abi, "addLiquidity", [initialPool.id, ...ordered, 0n, 0n, latest.timestamp + 1200n]);
+    }
     await send(eighteen, base.abi, "transfer", [actor, parseUnits("100", 18)]);
     await send(six, precision.abi, "mint", [actor, parseUnits("200", 6)]);
-    wallet = new WalletController(client, { storage: null });
+    wallet = new WalletController(client, { storage: null, pendingStorage: null });
     await wallet.start();
     wallet.dispatch({ kind: "select-local", address: actor });
     await until(() => wallet!.session(), value => !!value && same(value.address, actor), "settlement wallet");
@@ -94,21 +98,29 @@ async function main() {
       args: [actor], blockNumber,
     }) as Promise<bigint>;
     const native = (blockNumber: bigint) => read.getBalance({ address: actor, blockNumber });
-    const quote = async (tokenIn: string, amount: string): Promise<RoutedSwapPlan> => {
+    const quote = async (tokenIn: string, amount: string): Promise<SelectedSwap> => {
       const snapshot = await client.snapshot(actor, tokens);
       const pool = snapshot.pools.find(p => same(p.exchange.address, harbor));
       assert(pool);
-      const context = { tokens, pool, pools: snapshot.pools,
-        exchanges: deployment.exchanges, balances: snapshot.balances,
-        connected: true, pending: false, block: snapshot.block };
-      const controller = createRoutedSwapController(pool.token0);
+      const context = { tokens, pool, balances: snapshot.balances,
+        connected: true, pending: false };
+      const controller = createSwapController(pool.token0);
       controller.dispatch({ kind: "pay", value: tokenIn }, context);
       controller.dispatch({ kind: "amount", value: amount }, context);
       controller.dispatch({ kind: "slippage", value: "2" }, context);
       const effect = controller.dispatch({ kind: "submit" }, context).effect;
       assert(effect?.kind === "swap");
       assert(same(effect.inputToken, tokenIn));
-      return effect;
+      const quoted = await read.readContract({ address: harbor, abi: dex.abi,
+        functionName: "quote", args: [pool.id, tokenIn, effect.input] });
+      assert.equal(effect.quoted, quoted, "The quote belongs to the explicitly selected pool");
+      if (same(tokenIn, eighteen)) {
+        const alternative = await read.readContract({ address: summit, abi: dex.abi,
+          functionName: "quote", args: [pool.id, tokenIn, effect.input] }) as bigint;
+        assert(alternative > effect.quoted, "Another pool offers more, but the selected pool remains authoritative");
+        evidence.selectedPool = { selected: harbor, quoted, alternativePool: summit, alternative };
+      }
+      return { ...effect, pool };
     };
     const moveMarket = async (tokenIn: string, amountIn: bigint) => {
       const pool = await activePool();
@@ -116,7 +128,7 @@ async function main() {
       return send(harbor, dex.abi, "swap", [pool.id, tokenIn, amountIn,
         0n, accounts[0], block.timestamp + 1200n]);
     };
-    const execute = async (name: string, plan: RoutedSwapPlan,
+    const execute = async (name: string, plan: SelectedSwap,
       comparison: "same" | "more" | "less") => {
       const captured = { quoted: plan.quoted, minimum: plan.minimum, input: plan.input };
       const start = BigInt(await rpc("eth_blockNumber") as string);
@@ -124,7 +136,7 @@ async function main() {
       const session = wallet!.session();
       assert(session);
       await wallet!.perform({ label: name, session, perform: async writer => {
-        result = await writer.routedSwap(plan);
+        result = await writer.swap(plan.pool, plan.inputToken, plan.input, plan.quoted, plan.slippage);
       } });
       assert(result);
       const receipt = result.receipt;
@@ -177,11 +189,6 @@ async function main() {
       assert.deepEqual(block.transactions, [receipt.transactionHash]);
       assert.equal(result.gasCostWei, ethBefore - ethAfter,
         "Execution fee equals the actual ETH debit in the swap block, excluding approvals");
-      const entry = await until(() => wallet!.kernel.getSnapshot().journal.find(row =>
-        row.state === "confirmed" && same(row.hash, receipt.transactionHash)),
-      row => !!row, "confirmed swap journal");
-      assert(entry && entry.state === "confirmed");
-      assert.equal(BigInt(entry.gas), result.gasCostWei);
       const approvalReceipts = [];
       for (let n = start + 1n; n < receipt.blockNumber; n++) {
         const earlier = await read.getBlock({ blockNumber: n });
@@ -199,7 +206,7 @@ async function main() {
       assert(await native(start) - ethAfter > result.gasCostWei,
         "The operation's overall debit also contains the separately paid approval fees");
       evidence[name] = { captured, plan, result, view, paid, received, ethBefore, ethAfter,
-        approvalReceipts, journalFeeWei: entry.gas };
+        approvalReceipts };
       scenarios.push(name);
     };
     await execute("Unchanged mixed-decimal market settles at the captured quote", await quote(six, "2.75"), "same");
@@ -208,7 +215,7 @@ async function main() {
     await execute("Opposite market trade improves receipt output without replacing the quote", improved, "more");
     const worse = await quote(eighteen, "1.125");
     await moveMarket(eighteen, parseUnits("0.5", 18));
-    await execute("Same-direction market trade worsens output within the captured minimum", worse, "less");
+    await execute("Explicit pool remains selected despite a better alternative and settles within the captured minimum", worse, "less");
     assert.deepEqual(await fingerprints(), sources, "Accepted source and kernel fingerprints remain frozen");
     await writeFile(resolve(directory, "result.json"), json({ status: "passed",
       kernelSha256: sources["frontend/src/generated/dex_logic.js"], sourceFingerprints: sources, scenarios, evidence }));

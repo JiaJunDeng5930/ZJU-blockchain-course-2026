@@ -82,7 +82,11 @@ test("a provider can review, cancel, transfer and redeem an NFT with a retained 
   await page.getByLabel("Swap amount").fill("500");
   await page
     .getByRole("form", { name: "Swap tokens", exact: true })
-    .getByRole("button", { name: "Swap", exact: true })
+    .getByRole("button", { name: "Review swap", exact: true })
+    .click();
+  await page
+    .getByRole("dialog", { name: "Review swap", exact: true })
+    .getByRole("button", { name: "Confirm swap", exact: true })
     .click();
   await expectStatus(page, "Swap tokens confirmed");
   await goToWorkspace(page, "Liquidity");

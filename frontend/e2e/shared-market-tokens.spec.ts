@@ -1,6 +1,6 @@
 import { test, expect } from "@playwright/test";
 import { readFileSync } from "node:fs";
-import { Contract, JsonRpcProvider } from "ethers";
+import { Contract, JsonRpcProvider, parseUnits } from "ethers";
 import {
   closeWallet,
   expectStatus,
@@ -41,18 +41,18 @@ test("another browser can recognize and trade a newly created shared market", as
       .getByRole("button", { name: "Deploy ERC20", exact: true })
       .click();
     await expectStatus(creator, "Deploy ERC20 confirmed");
-    await openWallet(creator);
-    await creator
-      .getByRole("button", { name: `Claim 10,000 ${symbol}`, exact: true })
-      .click();
-    await expectStatus(creator, `Claim ${symbol} confirmed`);
-    await closeWallet(creator);
     const token = await creator
       .getByLabel("Second token")
       .locator("option")
       .filter({ hasText: symbol })
       .getAttribute("value");
     expect(token).toBeTruthy();
+    await openWallet(creator);
+    await creator
+      .getByRole("button", { name: `Claim 10,000 ${symbol} (${token})`, exact: true })
+      .click();
+    await expectStatus(creator, `Claim ${symbol} confirmed`);
+    await closeWallet(creator);
     await creator.getByLabel("Second token").selectOption(token!);
     await creator
       .getByRole("button", { name: "Create pool", exact: true })
@@ -103,7 +103,11 @@ test("another browser can recognize and trade a newly created shared market", as
     await trader.getByLabel("Swap amount").fill("10");
     await trader
       .getByRole("form", { name: "Swap tokens", exact: true })
-      .getByRole("button", { name: "Swap", exact: true })
+      .getByRole("button", { name: "Review swap", exact: true })
+      .click();
+    await trader
+      .getByRole("dialog", { name: "Review swap", exact: true })
+      .getByRole("button", { name: "Confirm swap", exact: true })
       .click();
     await expectStatus(trader, "Swap tokens confirmed");
     await expect
@@ -116,17 +120,18 @@ test("another browser can recognize and trade a newly created shared market", as
         exact: true,
       }),
     ).toContainText(symbol);
-    await expect(
-      trader.getByRole("button", {
-        name: `Claim 10,000 ${symbol}`,
-        exact: true,
-      }),
-    ).toHaveCount(0);
+    const beforeClaim: bigint = await contract.balanceOf(traderAddress);
+    await trader.getByRole("button", {
+      name: `Claim 10,000 ${symbol} (${token})`,
+      exact: true,
+    }).click();
+    await expectStatus(trader, `Claim ${symbol} confirmed`);
+    expect(await contract.balanceOf(traderAddress)).toEqual(beforeClaim + parseUnits("10000", 18));
     await creator.reload();
     await openWallet(creator);
     await expect(
       creator.getByRole("button", {
-        name: `Claim 10,000 ${symbol}`,
+        name: `Claim 10,000 ${symbol} (${token})`,
         exact: true,
       }),
     ).toBeVisible();
