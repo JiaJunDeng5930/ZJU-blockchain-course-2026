@@ -1,10 +1,10 @@
 # TwoPool DEX：AMM、NFT 流动性凭证与原子套利
 
-基于以太坊本地链的去中心化交易所课程项目。用户可以领取或创建 ERC20 测试代币、创建交易池、交易、添加流动性并获得 ERC721 NFT，最后销毁 NFT 赎回资产。两个独立交易所 Harbor 和 Summit 为相同代币提供不同的池子；模拟器让 20 个地址持续交易，套利合约在一笔交易中完成两次交换并检查利润。
+基于以太坊本地链的课程项目。用户可以创建和领取 ERC20 测试代币、创建 AMM 交易池、兑换代币，并通过 ERC721 NFT 提供或撤销流动性。Harbor 与 Summit 是两个独立交易所；20 个模拟用户持续改变两池价格，套利合约在一笔交易中完成买入、卖出及利润检查。
 
 ## 环境与运行
 
-需要 **Node.js 22.13+（22.x）、24.x 或 26+**、npm，以及[形式化工具链](formal/TOOLCHAIN.md)中的 Coq 8.20.1、OCaml、js_of_ocaml 和 rocq-of-solidity。Coq 是 Rocq 改名前的名称；本项目固定 8.20.1，以使用上游已有 Solidity 语义，不自行移植语义。建议使用 Node.js 24。浏览器无需钱包扩展即可通过本地节点的测试账户操作；也支持 MetaMask 等 EIP-1193 浏览器钱包。
+需要 Node.js 22.13+（22.x）、24.x 或 26+、npm，以及[形式化工具链](formal/TOOLCHAIN.md)中的 Coq 8.20.1、OCaml、js_of_ocaml 和 rocq-of-solidity。建议使用 Node.js 24。所有资产和账户均用于本地测试链。
 
 在仓库根目录执行：
 
@@ -14,336 +14,170 @@ npm run formal:bootstrap
 npm run dev
 ```
 
-`npm run dev` 启动本地开发环境。合约 ABI 由实际编译产物生成；前端业务内核由 Rocq 提取并编译为 JavaScript。启动器按需启动本地链、部署合约、启动模拟控制服务和网页。已有的本地链及有效部署会被复用；不会为了启动界面而重置账户或资产。命令会输出网页地址；`Ctrl+C` 只停止本次命令启动的服务。日志位于 `.local/logs/`（不提交仓库）。浏览器测试截图保存在 `frontend/test-results/`；临时截图和本地验收记录放入 `.local/`。
+启动器编译合约、生成 ABI、检查并提取 Rocq 业务内核，按需启动本地链、部署合约、启动模拟服务和网页。已有的本地链与有效部署会被复用；不会为了启动网页而重置资产。打开终端输出的地址，默认是 [http://127.0.0.1:3000](http://127.0.0.1:3000)。
 
-如果节点由该命令创建，退出也会停止这条 Hardhat 内存测试链；再次启动会建立新链并重新部署。需要在重启网页时保留链上状态，应按下述方式单独运行节点并保持它运行。
+部署创建 TKA、TKB、WETH、Harbor、Summit 和 AtomicArbitrage，为 20 个本地账户领取测试币，并建立两组 10000 TKA / 10000 TKB 的初始池。链 ID 为 `31337`，RPC 为 `http://127.0.0.1:8545`。
 
-如果需要分别运行各个服务，先生成编译产物与前端内核：
+`Ctrl+C` 停止本次启动的服务。由启动器创建的 Hardhat 链保存在内存中，退出后链状态会消失。若需在重启网页时保留链状态，可先构建，再分别运行：
 
 ```bash
 npm run build
-```
-
-再在不同终端执行：
-
-```bash
 npm --prefix contracts run node
+# 以下命令在其他终端执行，节点保持运行。
 npm --prefix contracts run deploy
 npm --prefix contracts run simulation:server
 npm --prefix frontend run dev
 ```
 
-先启动节点，再部署；节点、模拟服务和前端保持运行。
-
-部署自动创建 TKA、TKB、WETH、Harbor、Summit 和 AtomicArbitrage；为节点提供的 20 个账户分别领取 TKA/TKB，并创建两个 10000 TKA / 10000 TKB 的初始池。Hardhat 已为这些账户提供测试 ETH。部署者持有两个初始流动性 NFT。
-
-打开 [http://127.0.0.1:3000](http://127.0.0.1:3000)。首次打开使用本地 RPC 的第一个演示账户，点击顶栏钱包按钮，在 Demo wallet 中切换 20 个账户；余额与领取入口也在钱包窗口内。链 ID 为 `31337`，RPC 为 `http://127.0.0.1:8545`。不要把这些公开测试账户用于真实资产。
-
-刷新网页会保留工作区、所选池及钱包选择。浏览器钱包锁定或网络不匹配时，页面等待恢复连接；刷新通过现有权限恢复账户，不会重新弹出授权。
-
-链接中明确指定的池不属于当前部署或尚不存在时，页面显示缺失目标，依赖该池的操作不会换成另一池。可重新选择，或显式点击 Use default pool 清除失效目标；主动切换池保留浏览器返回历史。该参数选择池与交易对上下文，Swap 的 Best quote 仍可比较同一交易对的其他池，实际成交池以审阅为准。
-
-`shared/deployment.json` 根据实际部署生成，不提交仓库。重新启动节点会清空链状态，必须重新部署并刷新网页。部署可重复执行，但会部署一套新合约并覆盖该文件；先前合约仍在当前链中。
-
-### 使用浏览器钱包
-
-1. 点击右上角钱包按钮，选择 **Connect browser wallet** 并批准连接。
-2. 网络不匹配时，在钱包窗口点击 **Add / switch local network**，按钱包提示添加并切到链 `31337`。
-3. 新钱包没有资产时，在该窗口点击 **Prepare test assets**。本地节点先转入 ETH，随后钱包分别确认领取 TKA/TKB。
-4. 关闭钱包窗口，在兑换卡片输入数量。钱包会在需要时请求精确额度批准，再请求实际交换。
-5. 钱包账户变化会同步身份；错误网络下的兑换动作会打开恢复入口，禁止签名交易；切回后恢复。
-
-连接与首笔交易步骤见[钱包使用指南](docs/wallet-guide.md)。ETH faucet 由本地开发节点提供，仅用于测试资产。
-
-每次领取确认会记录资产、数量、收款地址、区块和交易哈希。ETH 由本地出资账户转入并支付执行费；ERC20 由当前钱包调用 faucet，当前钱包支付执行费。组合准备的后续步骤取消或失败时，已经确认的步骤仍保留。若余额快照尚未追上确认区块，自动准备会等待刷新，避免把旧余额当成未领取；单独的领取按钮仍可用于主动再次领取。详情与验证边界见 [ADR 016](docs/adr/016-keep-funding-confirmation-separate-from-balance-refresh.md)。
-
-运行 `npm run test:funding-confirmation` 可验收实际领取量、不同费用付款人、确认后读取失败、部分取消后的补领，以及旧快照和钱包切换。确认区块协调由 6 个闭合 Rocq 定理约束，真实 RPC 和签名故障场景另行核对外部绑定。
+部署信息 `shared/deployment.json`、模拟报告、工具链、日志及编译产物不提交仓库。浏览器测试截图写入 `frontend/test-results/`，临时演示记录放入 `.local/`。
 
 ## 操作流程
 
-- **链上数据**：Chain data 标明已读区块及余额所属地址。首次读取失败会给出错误；后台刷新失败则保留已有数据并说明来源。状态栏的刷新按钮重新读取当前查询。本机 RPC 按实际请求结果反馈，电脑的外网离线提示不会将本地调用暂停排队，设计原因见 [ADR 012](docs/adr/012-observe-local-chain-availability.md)。
-- **资产准备**：钱包内可按需领取测试 ETH 和测试 ERC20。WETH 通过 ETH 按 1:1 包装获得，钱包中的准备入口可直达包装表单；包装和解包都需要保留 ETH 支付 gas。转换前先审阅方向、数量和执行账户。
-- **Swap**：首页直接显示兑换卡。选择交易对、输入卖出数量，默认用 Best quote 比较本部署的直接池，选择实际收到数量最多的池子；也可手动指定成交池。可反转方向、用 Max 填入余额，在 Settings 中调整滑点。点击 **Review swap** 审阅，再 **Confirm swap**，按需完成批准与交换。
-- **Liquidity**：先查看自己的头寸，点击 **New position** 选择池和投入量，再 Review 后确认铸造 NFT。已有池可用 **Use available balances** 将双币余额作为投入上限，按当前比例计算实际投入，未使用部分留在钱包；新池由首次提供者明确输入两币数量，设定初始比例。
-- **持仓管理**：Liquidity 按交易对列出头寸。Manage 中可查看所有权比例、当前双币资产、估值、相对原始存币的价值变化和元数据；价值变化包含费用与无常损失，不是独立的手续费余额。可转让 NFT，或在确认预计/最低收到数量后烧毁赎回；取消不会发交易，转让后由新持有者赎回。
-- **Pool information**：并列查看每个 NFT 的原始投入、当前可赎回双币数量、当前持有人及精确份额；总份额包含永久锁定的流动性。历史添加/撤销保留原提供人和实际赎回人，退出头寸后仍可查。统计标明交易所、池与观测区块；累计名义输入费按每笔交易向下舍入估算，显示零可能省略不足一个最小单位的费用，不代表个人收益或独立可领取余额。历史读取失败可手动重新读取。
-- **Tools → Pools & tokens**：可部署自定义名称/符号的 18 位测试 ERC20，也可导入具有可读标准元数据的其他精度 ERC20。新建测试币初始供应为零，先从钱包面板领取；资产表显示完整地址、精度和当前钱包余额，尚未读到余额时显示“—”。用 **Use as first token** 选择建池资产，再选择另一代币与目标交易所；空池创建后通过 **Add liquidity** 首次注资。ETH 对应的 ERC20 池使用 WETH。
-- **Tools → Arbitrage**：选定池和本金代币后点击 **Find profitable route**，扫描两个方向、1/5/10/25/50/100/200/500 的输入量，并按同一本金币种的利润排序。存在机会时设置最低利润，点击 **Review atomic arbitrage**，审阅执行账户、本金、双池路径、报价数量、最低利润与报价区块，再确认提交。扫描失败不会把旧缓存当作本次成功报价；没有机会时不能提交。结果显示实际利润及两池储备和价格的前后变化，ETH gas 费另列。
+资产与流动性流程图、模拟与套利结果图来自两次独立的本地部署，均使用同一精简后的应用。
 
-套利确认结果展示实际买入并卖出的中间代币数量、资产接收者及支付 ETH 手续费的执行账户。刷新或重新打开页面后，在 Tools → Transactions 的对应已确认记录中点击 Read transaction result，可按已保存的交易哈希恢复实际本金、两腿数量、利润和两池储备及价格的前后变化。储备取自该次执行的事件，其他交易即使在同一区块改变池子，也不会替换这些数值；池身份和代币精度按回执区块读取。读取失败可手动重试，原确认状态保持不变。原始页面报价未持久化，历史结果展示实际执行数据。
-- **Tools → Token approvals**：查看当前账户的已知代币对本部署交易所及套利合约的剩余授权，选择一项并确认后将额度设为零。已确认的授权不会随取消兑换而消失；撤销也不会撤回过去的转账。读取失败时显示未知，只有链上额度读为零才显示撤销完成。
-- **Tools → Transactions**：按 RPC 端点、链和部署隔离保存本浏览器的操作记录，批准与执行分别记录。可按当前账户和交易状态查找，每页显示 20 条；发送者和实际领取者均可查到领取测试币的记录。刷新后继续查询已知哈希的确认状态，不恢复签名权限或重发交易；各标签页的记录互不覆盖。浏览器无法保存时会明确提示仅保留在内存中，兑换和赎回仍可执行。
+### 1. 选择钱包并领取测试资产
 
-兑换、套利及流动性操作的审阅绑定当时的钱包会话和目标，后台刷新不会替换已审阅的池报价。切换钱包来源、账户、链或重新连接（即使地址相同）都会撤销尚未提交的审阅；确认仍受钱包内核的会话检查约束。取消或失败后可重新审阅。
+点击右上角钱包按钮。**Demo wallet** 可选择本地节点的 20 个已解锁账户；无需安装扩展。也可用 **Connect browser wallet** 连接 MetaMask 等 EIP-1193 钱包，按 **Add / switch local network** 切到本地链，再用 **Prepare test assets** 领取 ETH 与测试币。
 
-自定义代币列表按部署地址保存在当前浏览器中，刷新后继续可用。链上的代币、池和 NFT 数据由合约维护。
+授权、领取和业务交易各自等待真实链上确认。拒签或后续步骤失败不会撤销此前已确认的交易；账户或网络改变后，旧请求不能继续签名。详细步骤见[钱包使用指南](docs/wallet-guide.md)。
 
-创建结果按真实回执展示新合约地址，或交易所、池编号和实际代币对，并保留执行账户、区块与交易哈希。代币元数据发现独立进行；读取失败可重读同一地址，已确认的部署不会被标成失败或重新发送。新池的注资入口只使用后续快照中匹配交易所和编号的真实池状态。离开或刷新后，可在 Transactions 的已确认合约创建记录中按需读取部署地址，再使用已有 Import 入口。设计原因见 [ADR 014](docs/adr/014-separate-creation-confirmation-and-discovery.md)。
+![本地演示钱包与测试资产](docs/screenshots/01-wallet-assets.jpg)
 
-SDK 的 `createToken` 现在返回 `TokenCreationConfirmation`，调用方需用 `client.importToken(result.address)` 独立取得已验证元数据。`createPool` 返回包含交易所和池编号的 `PoolCreationConfirmation`，不把创建回执当成当前储备快照；网页已集成这些步骤。
+### 2. 创建代币和交易池
 
-运行 `npm run test:asset-setup`，可在隔离链上通过公开钱包接口验收从无资金账户领取测试资产、创建并领取新代币、在指定交易所建空池，以及真实包装和解包的连续流程。验收使用实际部署回执、代币元数据、交易和余额变化；夹具通过开发 RPC 设定起始余额时不伪造交易回执；实际领取 ETH 由本地出资账户发送交易。无法支付 gas 的转换会在发送前拒绝。
+在 **Tools → Pools & tokens** 创建自定义名称、符号的 18 位测试 ERC20，或导入已有标准 ERC20。新建代币的初始供应量为零，可从钱包领取。列表以合约地址区分资产，并读取真实精度与余额。
 
-领取测试代币和 ETH 后，也可在 Tools → Transactions 的已确认记录中点击 Read transaction result，恢复原始领取数量、接收人、发送人、执行费和区块。代币数量来自真实 TestToken 合约向直接调用者铸币的 `Transfer` 事件，ETH 本金来自原交易的 `value`；后续花掉资产、切换账户或余额读取失败不会改变领取结果。读取故障保留记录的 confirmed 状态，可手动重读。ETH 转账本身不记录用途，因此恢复本地 ETH 领取还需要交易记录中保存的 `dev-faucet` 身份和接收人；缺少或不匹配的上下文不会把普通转账解释为领取。SDK 使用 `client.fundingReceipt(hash, context?)`，统一入口为 `client.transactionResult(hash, context?)`；`context` 是记录中的 `{ authority, beneficiary }`。见 [ADR 022](docs/adr/022-recover-funding-with-chain-values-and-journal-purpose.md)。
+选择两种资产和目标交易所后创建池。创建只确定代币对，不注入资金或铸造 NFT；使用 **Add liquidity** 进行首次注资。A/ETH 类池使用 WETH：先将 ETH 按 1:1 包装为 WETH，赎回后可解包为 ETH。
 
-运行 `npm run test:funding-receipt`，可通过公开钱包和 SDK 接口验收代币/ETH 领取恢复、领取后花费、记录重建、错误上下文及 RPC 故障后的手动重读。
+![前端创建测试 ERC20 的链上结果](docs/screenshots/02-token-created.jpg)
 
-运行 `npm run test:wrapping-callback`，可在隔离链验收合约持有人部分提现、接收方拒收后的整笔回滚与恢复重试，以及储备充足时的回调重复支出防护。验收绑定真实部署字节码及其 build-info；这些公开入口场景与上述存储证明分别记录。
+![前端创建交易池并继续添加流动性](docs/screenshots/03-pool-created.jpg)
 
-运行 `npm run test:liquidity-callback`，可验收流动性 NFT 合约接收方的安全铸造与转发、拒收后的资金和授权回滚、批准操作者重试，以及回调期间的他人仓位保护。成功路径核对事件与实际 NFT、储备和份额记录；范围见[流动性回调验收](formal/LIQUIDITY-CALLBACKS.md)。
+### 3. 添加流动性并查看 NFT 与来源
 
-包装和解包成功后，确认结果分别展示实际本金、WETH 变化、该笔交易的 ETH 变化及执行费。包装会支付 ETH 本金和 gas；解包释放的 ETH 本金仍需扣除 gas，因此微小解包的 ETH 净变化可能为负。本金来自 WETH 合约的铸造/销毁事件，费用来自同一收据；结果不依赖确认后的余额读取。
+进入 **Liquidity → New position**，选择池与双币投入量，审阅后确认。首次提供者设定两币比例；已有池按储备比例计算投入，未使用的代币留在钱包。每次添加流动性得到一个 ERC721 NFT，记录交易所、池、份额、初始双币数量和时间。
 
-刷新后，在 Tools → Transactions 的已确认记录中点击 Read transaction result，也可恢复包装和解包结果，包括直接向配置 WETH 合约发送 ETH 的 `receive` 路径。恢复只读取原回执，不需要当前余额或历史状态查询；普通 WETH 转账与授权、其他代币的铸造都不会被当成包装。本项目的 WrappedEther 协议固定使用 18 位精度，历史结果复用实时确认的本金与手续费结算规则。
+持仓中可以查看自己的 NFT、当前可赎回数量及元数据。**Pool information** 展示池的流动性来源，包括原始提供者、当前持有人、投入、份额及已赎回记录。NFT 可以转让，由当前持有者赎回。
 
-创建 A/WETH 池前可先包装 ETH；从该池赎回得到的是 ERC20 WETH，再通过解包转回 ETH。运行 `npm run test:wrapping-settlement` 可验收立即连续包装/解包，以及 A/WETH 建池、NFT 注资、赎回和解包的完整路径。转换账务关系由 2 个闭合 Rocq 定理约束；实际合约、事件和余额另行验收，不据此声称完整 WETH 合约已经得到 EVM 证明。
+![真实添加流动性后的 NFT 与链上回执](docs/screenshots/04-liquidity-nft.jpg)
 
-运行 `npm run test:creation-results`，可验收创建确认与后续元数据故障恢复、两交易所的池身份，以及并发重复建池导致的真实链上回滚。
+![池级流动性来源及已赎回 NFT 记录](docs/screenshots/05-liquidity-sources.jpg)
 
-## 功能与实现分析
+### 4. 在指定池兑换
 
-### AMM 定价和手续费
+在 **Swap** 明确选择 **Active pool**，输入卖出数量。支持 Max、反向兑换和滑点设置；点击 **Review swap** 核对资产地址、池、预计输出和最低收到数量，再 **Confirm swap**。按需先批准代币额度，再执行交换。
 
-每个 MiniDEX 维护多个按地址排序的代币对，同一交易所禁止重复建同一代币对。输入数量为 `dx`，输入储备为 `x`、输出储备为 `y` 时：
+成功结果展示实际支付、收到数量、平均成交价、执行费和交易哈希。金额使用代币最小单位计算，不使用浮点数进行交易计算。
 
-```text
-amountInWithFee = dx × 9970
-amountOut = floor(amountInWithFee × y / (x × 10000 + amountInWithFee))
-```
+![兑换成功后的实际数量与链上回执](docs/screenshots/06-swap-confirmed.jpg)
 
-交易收取 0.3% 手续费，全部留在池中，不单独建立奖励账户；流动性提供者通过份额共享增加的储备。价格显示为储备比，实际成交还受手续费和价格冲击影响。
+### 5. 销毁 NFT 赎回流动性
 
-兑换先进入 Review swap，审阅资产、池、报价区块、预计收到、最低收到和滑点等条件，再确认授权与提交。审阅期间保留该笔交易的条件。成交后 Last confirmed swap 按实际事件展示支付与收到数量，并列出原报价、最低收到和执行账户、区块、交易哈希；继续修改草稿不会将旧报价冒充实际成交结果。
+在头寸的 **Manage** 中审阅预计和最低收到数量，再销毁 NFT。资产转给执行时的 NFT 持有者；确认结果保留实际赎回数量及交易哈希。手续费保留在池储备中，随份额一起赎回，无需另行领取。
 
-成交核对还展示实际平均成交价、相对原报价多收或少收的输出代币数量，以及单独以 ETH 计价的执行费。平均价使用该笔实际收付和各币精度，报价差额不表示利润；执行费仅对应这笔交换，排除此前单独的授权交易。运行 `npm run test:swap-settlement` 可在真实隔离链核对市场不变及报价后行情改善、变差时的结果。
+![销毁 NFT 后的实际赎回结果](docs/screenshots/07-liquidity-redeemed.jpg)
 
-刷新后，在 Tools → Transactions 的已确认记录中点击 Read transaction result，可恢复单池交换的实际支付、收到、成交均价、交易者、资产接收者与 ETH 付款者。Best 所选交易池由实际回执确定。原始报价未持久化，历史成交不展示报价差额或最低收到数量；当前池价格不会替代那笔交易的实际收付。资产精度按回执区块读取，读取失败可手动重试，原交易仍保持确认状态。相同入口也恢复流动性、套利和已部署合约地址，不另存一份成交记录。
+### 6. 运行多用户模拟与原子套利
 
-运行 `npm run test:swap-receipt` 可验证混合精度交换、同一区块前后其他交易、刷新恢复、统一结果派发及真实 RPC 故障；实现选择见 [ADR 019](docs/adr/019-recover-swap-executions-through-one-receipt-entry.md)。
+在 **Tools → Simulation** 设置最少轮数、最短运行时间、间隔和种子，点击 **Start simulation**。20 个地址轮流随机兑换、添加和撤销流动性；每笔操作等待真实回执。页面展示两个市场、参与账户、操作数量和逐币利润。
 
-### 创建交易池后的继续操作
+**Stop simulation** 等待当前交易确认，再赎回本轮创建的头寸。完成、主动停止和失败分别显示 `Completed`、`Stopped`、`Failed`。运行报告可下载，包含交易哈希、套利前后储备和实际失败套利的回滚检查。
 
-创建交易池只确定代币对，不注入代币。刷新后可在 Tools → Transactions 中点击 Read transaction result，按原回执恢复交易所、池编号、两种资产、创建账户和实际手续费；恢复不依赖当前池状态或代币元数据读取。其他交易所的同号池不会替代目标。
+![20 个用户持续运行后的模拟结果](docs/screenshots/08-simulation-completed.jpg)
 
-结果中的 Add liquidity to this pool 使用当前观测的目标池。若另一账户已先注资，将按当前非空池比例准备存入；原创建回执不表示池子现在仍为空。目标尚未读到时可点击 Read created pool；需要连接钱包、等待当前操作或导入资产时会给出相应提示。进入表单不会自动授权或提交交易。
+## 功能和实现分析
 
-运行 `npm run test:pool-creation-receipt` 可通过公开入口验收刷新恢复、同号池隔离、真实旧快照、首笔及后续流动性、事件过滤和 RPC 故障恢复。选择依据见 [ADR 021](docs/adr/021-continue-from-pool-creation-with-observed-state.md)。
+### AMM 与手续费
 
-### ERC721 流动性与分红
-
-已有池按[当前池比例](https://developers.uniswap.org/docs/protocols/v2/guides/providing-liquidity)计算双币投入。用余额准备时，表单保留两侧的原始余额上限，展示预计实际投入及未用余额；Review 后确认实际代币数量与 NFT 份额。原始上限会传到合约调用，不把已经向下舍入的使用量当成新上限再次计算。余额尚未读到、余额不足以铸造份额或滑点无效时，该入口给出原因。需要自行限制投入时，也可手动填写数量。空池需要用户确定初始价格，因此不会从钱包余额自动推导首次投入比例。
-
-授权按两侧原始支出上限准备，预计实际投入可能更少。未使用的代币继续留在钱包，未使用的 ERC20 授权额度也会保留；可在钱包的授权管理中查看或撤销。审阅同时展示预计投入与支出上限，避免将两者混为同一数量。
-
-`npm run test:liquidity-balances` 通过公开业务入口和真实隔离链验收余额上限、混合精度、整数舍入、铸造与赎回，以及实际授权和剩余额度。余额准备规则有 6 个闭合 Rocq 定理，外部验收另行核对调用绑定。既有首次流动性可运行 `npm run test:initial-liquidity`。
-
-添加、转移和赎回成功后，确认结果单独展示该笔交易实际支付的 ETH 执行费，付款人是交易发送者。此费用来自对应收据，不包含此前单独提交的 ERC20 授权费用，也不从收到的代币数量中直接相减。`npm run test:liquidity-fees` 使用真实链上发送者的 ETH 扣款核对结果；共享费用计算和验证边界见 [ADR 015](docs/adr/015-share-confirmed-execution-fees.md)。
-
-首次加入产生的总原始份额为 `floor(sqrt(amount0 × amount1))`，两币数量均使用最小单位。其中 1000 份永久锁定，NFT 获得剩余份额；总份额不足以超过锁定量时拒绝投入。锁定比例取决于存入规模，不能假定总是很小：例如两个零精度代币各投入 1001，新 NFT 只有 1 份；没有其他操作时立即赎回只能取回各 1 个代币，池中各 1000 个对应永久锁定部分。后续提供者按储备比例获得份额，不再次新增这 1000 份锁定。每次添加流动性铸造一个独立 NFT，记录池 ID、份额、初始投入与时间戳；`tokenURI` 返回自包含的 Base64 JSON。
+交易使用恒定乘积公式和 0.3% 输入手续费。输入储备为 `x`、输出储备为 `y`、输入量为 `a` 时：
 
 ```text
-redeem0 = floor(positionShares × reserve0 / totalShares)
-redeem1 = floor(positionShares × reserve1 / totalShares)
+amountOut = floor(997 × a × y / (1000 × x + 997 × a))
 ```
 
-赎回烧毁整个 NFT。手续费已反映在当前储备中，无需另行领取。ERC721 所有者或被授权的操作者可赎回，但资产始终转给当前所有者。NFT 不保证原始两种代币数量：价格变化可能带来无常损失。
+完整输入进入池储备，手续费留在池中；交易改变储备比例和后续报价。合约检查最小收到数量与期限。只支持普通、无转账税且不 rebasing 的 ERC20，收到数量不符时整笔回滚。
 
-池信息中的头寸表展示当前 NFT 持有人和初始存入数量；历史表按 NFT 编号记录原始提供者与赎回时的所有者。没有活动 NFT 时会标明所读区块；已初始化的池子仍保留永久锁定的最小份额与相应储备。
+首次流动性的总份额为 `floor(sqrt(amount0 × amount1))`，其中 1000 份永久锁定，其余分给 NFT。后续按储备比例增加份额。赎回数量为 `floor(positionShares × reserve / totalShares)`，因此包含累积手续费，也受价格变化和整数舍入影响；它不保证等于最初存入的两币数量。
 
-池列表的 Add liquidity 直接打开所选池的投入表单，空池必须先注入流动性才能交易。首次投入确定初始价格；投入审阅展示资产比例、NFT 份额、投入后总份额、本次新增锁定份额、预计立即赎回数量及未使用而留在钱包的数量。赎回预估使用同一报价状态，不是交易确认后的保证。投入与赎回确认保留代币的精确最小单位，池和 NFT 均按所属交易所及编号识别，避免在两个交易所的同编号池或 NFT 之间混淆。
+### Bonus：双交易所和原子套利
 
-投入、转让和赎回后，Confirmed liquidity action 保留最近一次成功回执的实际结果：投入与赎回的双币数量、份额、NFT 编号与所有者，或该 NFT 转让事件的发送方与接收方，以及执行账户、区块和交易哈希。新铸造的 NFT 会直接展开；转让或烧毁使原卡片离开持仓列表后，确认结果仍可查看。赎回数量包含储备中累积的手续费及市场变化，不能把相对初始存币的差额单独称为手续费收益。
+Harbor、Summit 对相同代币对维护独立储备。模拟器在两所随机交易形成价差，自动扫描两个方向，找到扣除两次池手续费后盈利的路线。
 
-刷新或重新打开页面后，在 Tools → Transactions 的对应已确认记录中点击 Read transaction result，可按保存的交易哈希恢复投入、转让或赎回结果。NFT 后续已经转让或烧毁也不影响原回执的查看；数量、原始接收者和手续费来自那笔交易，代币精度与池信息按回执区块读取。读取失败时可再次点击，已确认交易不会因此变为失败。此功能只解释当前部署交易所的单次流动性操作，不把历史事件中的接收者当作当前 NFT 持有人。
+`AtomicArbitrage.execute` 用调用者本金执行 `本金代币 → 中间代币 → 本金代币`，两次交换和最低利润检查在同一交易内完成。任一步失败或利润不足，EVM 回滚整笔交易；此前单独确认的 approve 不属于这笔交易。失败交易仍支付 gas。
 
-同一页面、同一目标池的投入草稿在关闭窗口或钱包拒签后保留，可再次打开 New position 审阅；选择其他池时重新建立草稿。
+手动入口位于 **Tools → Arbitrage**，可输入本金并审阅路线。页面及模拟报告展示实际本金、买卖数量、利润和两池前后储备、价格。利润以本金代币计价，ETH 执行费另列，不进行跨币种相减。本项目使用自有本金，不使用闪电贷，也不声称扫描得到全局最优套利量。
 
-持仓摘要与 Manage 保留完整代币精度，并以 NFT 原始份额 / 池总原始份额显示比例，避免小份额被百分比截断为零。赎回审阅标明报价区块和当时观测的所有者；可显式调整滑点，但最低收到数量始终从固定报价计算。实际接收者仍由执行时的合约所有权决定。NFT 元数据读取失败时，可直接重新读取同一查询。
+![成功套利的本金、实际利润与两池前后储备](docs/screenshots/09-arbitrage-result.jpg)
 
-运行 `npm run test:liquidity-evidence` 可通过公开钱包入口核对真实事件、NFT 权属和余额变化；运行 `npm run test:liquidity-receipt` 可核对历史哈希恢复、混合代币精度、同块转让后烧毁与回执读取故障；运行 `npm run test:chain-read` 可在真实 RPC 故障与恢复、浏览器离线提示情景下验证生产查询客户端的读取与手动操作行为。
+![同一笔套利向右滚动后的储备和价格列，行顺序与上图一致](docs/screenshots/10-arbitrage-prices.jpg)
 
-### Bonus：双交易所与原子套利
+2026-11-06，在新的独立本地链通过模拟服务公开入口完成了一次持续运行：种子 `20261106`、最少 20 轮、最短 60 秒、轮间隔 150 ms。最终报告记录：
 
-Harbor 和 Summit 是两个独立部署的交易所，具有独立储备。模拟器在两个市场分别执行随机交易，产生价格差，再自动寻找扣除两次交易手续费后的有利路径。
+| 项目 | 实际结果 |
+| --- | --- |
+| 持续时间 / 实际轮数 | 63.077 秒 / 150 轮 |
+| 活跃地址 / 链上回执 | 20 / 265 |
+| 兑换 / 添加 / 撤销流动性 | 87 / 44 / 44 |
+| 成功原子套利 | 12 次 |
+| 代币套利利润 | 45.490483964136775863 TKA；TKB 为 0 |
+| 真实失败套利 | 收据状态 `0`，两池储备和代币余额前后相同 |
 
-`AtomicArbitrage.execute` 从调用者领取本金，执行 `本金代币 → 中间代币 → 本金代币`，要求最终收回数量大于本金且利润达到 `minProfit`。任何一步失败或利润不足，EVM 回滚整笔交易，包括两池储备、ERC20 余额及该笔交易内的 allowance 变化。提交前单独执行的 approve 不属于套利交易，不会随它回滚；失败交易仍消耗 gas。
+图中一笔成功套利使用 500 TKA 本金，实际利润为 44.326295632524166828 TKA；两池的 Before/After 对应同一笔原子交易。
 
-这是**自有本金套利**，不使用闪电贷。报价和利润以本金代币计价，**未扣 ETH gas 成本**，不代表法币净利润。手动界面比较用户指定本金下的路线；模拟器仍扫描有限输入量，两者都不声称找到数学上的最优套利量。合约只支持两交易所之间相同代币对的两跳路径。
+<details>
+<summary>本轮 20 个参与地址</summary>
 
-手动操作时先选择本金代币并输入数量，再查询路线。报价使用该代币的实际精度，不替换为预设投入量；余额不足时可以查看报价，但不能执行。修改本金或币种后须取得对应报价。审阅中核对投入、预计收回、最低代币利润和报价区块，确认后按该笔请求完成授权及原子交易。没有盈利路线时应调整本金或等待市场变化；极小投入还可能因整数舍入而无法产生有效交换。
-
-路线按相同的[定额输入](https://developers.uniswap.org/docs/sdks/v2/guides/pricing)比较，不能把不同投入量的绝对利润直接当成该笔本金的报价。
-
-运行 `npm run test:arbitrage-capital` 可通过公开 SDK 和真实隔离链验证非预设本金、精度与无盈利处理、余额不足时禁止授权/执行，以及本金与最终事件、余额、储备的对应关系。定额本金的解析、候选来源与最佳候选等性质由新增的 7 个 Rocq 定理保证；公开链验收另行检验外部调用绑定。
-
-手动套利成功后，页面根据该笔交易的事件和回执展示实际投入、收回数量、代币利润，以及单独以 ETH 计价的执行费。执行费仅包含原子套利交易，不包含此前单独提交的 ERC20 授权；界面不会将 ETH 费用直接从 ERC20 利润中相减。两池的交易前后储备和价格标明资产及方向，并关联同一交易哈希。运行 `npm run test:arbitrage-evidence` 可在隔离链上通过公开钱包流程验证这些数值与真实事件、回执、余额变化的对应关系，包括 18 位与 6 位本金代币。
-
-### 输入和资产边界
-
-使用 OpenZeppelin 的 ERC20、ERC721、SafeERC20、ReentrancyGuard 和 Math。交易、增减流动性都有期限与最小收到数量检查。代币必须是标准、不重定基准且不收转账税的 ERC20；合约拒绝收到金额不足的入账。前端从链上读取代币精度，支持 `decimals()` 的 uint8 范围；缺少所需元数据时明确拒绝导入，不默认成 18 位。测试 faucet 无限制发币，适用于教学链。
-
-单池每种代币的储备上限为 `2^112−1` 个最小单位，和 Uniswap V2 的储备范围一致；ERC20 余额与 LP 份额仍使用 uint256。这个范围使手续费计算的乘法能建立明确的机器整数边界。有关资产与份额选择见 [ADR 001](docs/adr/001-amm-liquidity-and-local-demo.md)，形式化方法与工具链选择见 [ADR 005](docs/adr/005-rocq-and-solidity-verification.md)。前端使用编译产物生成的 ABI，由 viem 编码和发送调用。
-
-## 网页中的 20 地址模拟
-
-打开 **Tools → Simulation**，设置最少轮数、最短时间、间隔和种子，然后点击 Start simulation。界面实时显示两个市场的价格轨迹、储备、20 个账户的参与情况、已确认操作与逐币套利利润；选中某笔套利可查看前后价格/储备、交易哈希和 gas。
-
-Stop simulation 不会把尚未结束的交易当作取消：它等待当前交易确认，再赎回本轮创建的头寸，最终明确标为 Stopped。完整运行标为 Completed；故障标为 Failed。运行报告可下载，包含实际失败套利的 `status=0` 和储备/余额回滚证据。刷新后可重新进入 Simulation 继续查看当前任务。
-
-结果区标明该次运行的 ID、实际参数与 UTC 起止时间；修改下一次运行的草稿不会改变这些信息。账户表列出各地址的已确认操作，趋势图横轴表示观测顺序。逐币利润与 ETH 执行费分别展示，选中套利可按明确资产顺序查看两池的精确前后数量与价格；**Download run report** 也适用于已停止的部分运行。
-
-启动准备阶段会检查 20 个发送账户有无 ETH，以及固定种子兑换和套利扫描所需的代币。已知准备调用无法执行时，任务在任何写操作前失败，并提示需补足的账户和资产；可通过钱包面板领取测试资产后重新开始，不自动补款。
-
-Failed 不会撤回此前已确认的交易。**Download transaction journal** 可下载该任务已记录的全量回执，不受页面最近 100 笔进度窗口限制。NFT 证据默认收起，展开后列出所属交易所、编号、铸造账户和是否已记录赎回；长表保留局部滚动和固定列头，也可聚焦后用键盘滚动。没有赎回记录不等于 NFT 当前仍归原账户，应按这些标识到 Liquidity 核对。未完成清理的故障运行不会冒充完整报告。日志只保证 worker 已收到并传出的确认记录，进程未知提交与服务进程丢失不在此保证内；交接方式和边界见 [ADR 013](docs/adr/013-preserve-simulation-receipt-evidence.md)。
-
-控制服务只监听本机，接收有界的固定参数并运行已有模拟器，不接受 shell 命令。dev 与 preview 都代理该服务；网站生产构建本身不能代替本地控制服务。参见 [ADR 004](docs/adr/004-local-simulation-control.md)。
-
-运行 `npm run test:simulation`，在隔离链和独立控制服务上验证前端控制器到真实 HTTP/worker 的完整流程，包括新页面恢复同一任务、持续轮询、完成后立即再次开始、旧任务停止和报告请求被拒绝，以及待挖交易确认后的头寸清理与报告。纯状态转换由 Rocq 证明，这条命令验证外部接口之间的连接。
-
-运行 `npm run test:simulation-failure`，可通过真实 RPC 中断、准备资金不足和实际上链回滚验收故障证据。运行 `npm run test:initial-liquidity`，可验证首存锁定投影与实际 NFT 铸造、赎回和余额变化，包括零精度 `1001/1001` 情形；两条命令均使用隔离链。
-
-### 命令行模拟
-
-保持节点运行并完成部署后执行：
-
-```bash
-cd contracts
-npm run simulate
+```text
+0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+0x70997970C51812dc3A010C7d01b50e0d17dc79C8
+0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC
+0x90F79bf6EB2c4f870365E785982E1f101E93b906
+0x15d34AAf54267DB7D7c367839AAf71A00a2C6A65
+0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc
+0x976EA74026E726554dB657fA54763abd0C3a0aa9
+0x14dC79964da2C08b23698B3D3cc7Ca32193d9955
+0x23618e81E3f5cdF7f54C3d65f7FBc0aBf5B21E8f
+0xa0Ee7A142d267C1f36714E4a8F75612F20a79720
+0xBcd4042DE499D14e55001CcbB24a551F3b954096
+0x71bE63f3384f5fb98995898A86B02Fb2426c5788
+0xFABB0ac9d68B0B445fB7357272Ff202C5651694a
+0x1CBd3b2770909D4e10f157cABC84C7264073C9Ec
+0xdF3e18d64BC6A983f673Ab319CCaE4f1a57C7097
+0xcd3B766CCDd6AE721141F452C550Ca635964ce71
+0x2546BcD3c84621e976D8185a91A922aE77ECEc30
+0xbDA5747bFD65F08deb54cb465eB87D40e51B197E
+0xdD2FD4581271e230360230F9337D5c0430Bf44C0
+0x8626f6940E2eb28930eFb4CeF49B2d1F2C9C1199
 ```
 
-默认使用 20 个地址、60 轮、固定种子 2026。每个地址都会参与交易和流动性操作；随机阶段在两个交易所操作，并自动检测套利。每笔操作等待链上收据，报告包括交易哈希、成功次数、参与地址、套利前后价格/储备/利润，以及一次实际失败套利的回滚证明。
+</details>
 
-延长至至少 2 分钟的演示：
+结果来自该次运行的真实交易、事件和回执；具体收益随初始链状态和操作顺序变化。ETH gas 单独记录，不计入上述代币利润。完整运行报告由网页下载，开发记录留在忽略的 `.local/` 中。
 
-```bash
-SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
-```
-
-`SIM_ROUNDS` 至少 20；`SIM_SEED` 指定随机种子；`SIM_DURATION_SECONDS` 指定最短运行时间；`SIM_INTERVAL_MS` 控制操作间隔。节点区块时间会影响部分时间戳，但同一初始状态和种子决定操作选择。复现实验时不要在前端同时提交交易，以免报价竞争；行情变化引起的拒绝属于真实失败，不算成功。
-
-完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。
-
-交易期限使用公开 RPC 的 `pending` 区块时间。`ExchangeClient.transactionTimestamp()` 提供这个外部观测，Rocq 据此构造网页交易的 1200 秒期限；模拟 worker 同样读取 pending 时间，使用 300 秒期限。`latest` 只表示上一已挖区块，浏览器时钟也不代表下一次执行块；最终是否到期由合约按执行块时间检查。
 
 ## 形式化开发与验证
 
-共享规格位于 [`formal/theories/Spec`](formal/theories/Spec)，覆盖原始代币单位、AMM、余额转移、流动性份额与 NFT 所有权、合约调用和失败回滚的抽象行为。前端钱包、异步请求、交易日志、资产目录、表单、模拟控制及交易参数由 Rocq 定义，经过 `Extraction → OCaml → js_of_ocaml` 生成执行代码。React 渲染模型输出，viem 处理钱包、ABI 与 RPC；TypeScript 适配器不再重复金额、滑点、份额或审批判断。交易金额与参数使用精确整数，显示位数不影响实际金额；图表中的近似价格不用作交易参数。
+按 Solidity + Rocq 方法开发：Solidity 和 OpenZeppelin 实现链上合约；Rocq 定义共享规格、前端业务状态及决策，并通过 `Extraction → OCaml → js_of_ocaml` 生成 JavaScript。React 渲染界面，viem 处理钱包、RPC 和 ABI，不在 TypeScript 中复制业务判断。
 
-钱包会话与请求都有独立标识；过期响应不能覆盖当前会话。批准与交换是两笔交易，切换账户后旧流程不能继续提交。已确认的交易不会因后续读取失败而改写成失败；发送结果未知时保留“未知”状态，不声称未提交。模拟控制停止的是指定任务，旧页面不能停止后来启动的另一任务。
-
-添加流动性、兑换和套利的 ERC20 授权与业务调用分开确认。业务调用的期限按授权完成后读取的 pending 区块时间计算，等待期间保留已确认的金额、路线、滑点和最低利润。运行 `npm run test:deadlines` 可验证长时间授权后的真实链执行。
-
-| 范围 | 验证连接 | 保证边界 |
-| --- | --- | --- |
-| 前端业务内核 | Rocq 定理、`coqchk`、直接提取到实际加载的 JavaScript | JSON/OCaml 桥接、React 渲染、viem、钱包和 RPC 遵守接口约定 |
-| AMM 报价 | 共享模型、实际 `AMMMath` 的 SMT 检查，以及 `calculate_amount_out_runs`、单池与路由前端的 `Run.t` 连接 | 有效 uint112 储备和正输入下，前端提交报价对应既有 harness 继承的生成纯函数，且状态不变；不覆盖 MiniDEX 储备存储、ABI 或 EVM 字节码 |
-| 流动性会计 | 共享模型、实际 `LiquidityAccounting` 的 SMT 检查，以及储备加减和份额增减 helper 的 `Run.t` 证明 | 成功路径的有界储备与份额更新；不覆盖 NFT/储备存储组合、外部代币效果、OpenZeppelin `sqrt` / `mulDiv` 实现或完整 EVM |
-| 套利结算 | 实际 `ArbitrageSettlement.checkedProfit` 的 SMT 检查及生成 IR 的 `Run.t` 精化定理 | 结算 helper；外部两次 swap、ERC20 副作用及完整 EVM 回滚不在该精化定理内 |
-| WETH 与测试币 faucet | 前端本金/最高 gas 预算、转换账务与资产能力模型及提取逻辑 | 实际 OpenZeppelin 继承代码的 SMT 检查未闭合；不声称 WETH 或完整 faucet 已获得 EVM 认证 |
-
-`atomic_call_failed_preserves_state` 说明共享模型如何表示失败回滚，**没有因此证明 Solidity、EVM 或钱包实现**。合约公开入口验收另行检查失败交易的真实余额与储备。`rocq-of-solidity` 复用官方生成器和语义；实际 helper 的证明使用 `Run.t`，不用未证明的辅助引理替代目标。合约语义证明使用 `-impredicative-set` 和已核实的内核 Primitive；普通前端证明使用通常的逻辑模式。具体命令、文件和信任边界见[形式化说明](formal/README.md)。 另见[实际领取存储性质](formal/TEST-TOKEN-STATE.md)、[WETH 存储性质](formal/WRAPPED-ETHER-STATE.md)与[池存储目标](formal/MINIDEX-STATE.md)，其中分别列出前提、求解结果和未闭合边界。
-
-在仓库根目录，准备工具链后执行：
+形式化检查覆盖报价、整数边界、份额、参数构造、钱包身份、异步状态和部分合约 helper 的精化。实际 Solidity 的 SMT 检查、翻译一致性、Rocq 证明与前端提取分别记录结果；前端构建成功不表示完整 Solidity/EVM 已被证明。详细命令及证明边界见[形式化说明](formal/README.md)。
 
 ```bash
-npm run build
-npm run formal:verify
 npm test
-```
-
-`npm run formal:verify` 运行八项统一检查，包括前端提取构建、三组生产 helper 的 SMT 检查和四组 IR 精化检查。
-
-生成内核与 ABI 不提交仓库。提取构建记录输入哈希、编译器与输出哈希；完整日志和验证报告保存在 `.local/formal/`。Solidity SMT 与 IR 精化分别运行，不能把 JavaScript 构建通过当成 Solidity 证明通过。浏览器场景不作为此次错误发现或形式化结论的依据。既有公开合约入口验收覆盖领取、WETH、建池、NFT 转让和赎回、手续费/滑点/期限、20 地址操作，以及原子套利成功和失败回滚；测试通过只说明该运行覆盖的外部行为。
-
-### 交易记录恢复
-
-```bash
-npm run test:history
-npm run test:replacements
-```
-
-`test:history` 先构建当前程序，再用隔离链、真实 WebStorage 和独立进程验证：未挖出的交易先被新页面实例恢复，再自动跟踪至确认；两个页面的记录互不覆盖；无存储时仍可交易；无哈希的未完成操作保持未知，不自动重发；坏归档原文保留；不同 RPC 端点的记录隔离。验收不使用浏览器，也不改动主服务链状态。
-
-`test:replacements` 验证钱包加速、取消和刷新时的原交易确认。加速会保留原哈希与替换哈希，按相同调用的新收据更新状态；取消或改成其他调用则显示 Replaced，停止原流程的后续交易。刷新仍从已有记录恢复公开观察，不续签、不重发。缺少已保存 sender/nonce 等信息时，不把旧哈希查不到猜成交易失败，也不把替换收据的成功记到原操作上。设计原因见 [ADR 010](docs/adr/010-observe-transaction-replacements.md)，模型及外部接口约定见[确认与恢复说明](formal/TRANSACTION-REPLACEMENTS.md)。
-
-恢复模型的证明通过假设审计。归档只提供历史观测，不提供签名权限；任何无哈希的处理中快照都不表示“未广播”，因为后续存储失败可能使页面转入内存模式继续执行。浏览器接受保存不等于链上备份，清除浏览器数据会删除本地记录。设计原因见 [ADR 006](docs/adr/006-persistent-transaction-history.md)，模型与外部接口边界见[交易历史形式化说明](formal/TRANSACTION-HISTORY.md)，独立验收入口见[公开 SDK 验收](frontend/acceptance/README.md)。
-
-### 交易记录查找
-
-```bash
-npm run test:activity
-```
-
-账户筛选、状态分组和分页由现有交易内核的 Rocq 投影执行。切换账户或筛选条件回到第一页；收据更新保留当前页，记录不足时调整到有效页。查找不改变原始记录或发起钱包请求。模型、证明及公开接口的边界见[交易记录查找说明](formal/ACTIVITY.md)。
-
-该投影的 15 条证明通过假设审计。独立验收通过公开内核入口建立记录，覆盖完整翻页、状态分组、发送者与领取者、账户切换和掉线、空结果恢复、收据更新后的页码调整，以及归档恢复后的查找。该验收检查提取后的实际 JavaScript，不使用浏览器。
-
-### 授权额度管理
-
-```bash
-npm run test:allowances
-```
-
-额度观察绑定钱包身份、代币、支出合约和读取区块。列表同时显示代币符号和地址，审阅展示所属链、钱包来源与额度的观测区块；额度不是代币余额。切换账户后，旧请求不能覆盖新账户的额度或继续签名。撤销将指定支出合约的额度设为零，不转移代币，不撤回既有交易，仍需 ETH 支付 gas。交易确认后若读取失败，会保留确认记录并等待重新查询，不把未知额度当成零。该功能只查看当前部署的交易所和套利合约，未扫描其他应用的授权。
-
-设计取舍见 [ADR 007](docs/adr/007-explicit-allowance-revocation.md)，模型、公开接口和验证边界见[授权管理说明](formal/ALLOWANCES.md)。
-
-模型的 19 条证明通过假设审计。独立公开 SDK 验收在隔离链上通过 10 个场景，包括有限和无限额度撤销、取消与零额度不发交易、代币返回 `false`、读取故障后的恢复、账户切换和过期响应隔离，并核对其他授权、余额及池储备未被改变。验收不使用浏览器。
-
-### 不同精度的代币
-
-```bash
+npm run formal:verify
+npm run test:asset-setup
 npm run test:precision
+npm run test:deadlines
+npm run test:liquidity-evidence
+npm run test:simulation
+npm run test:arbitrage-evidence
+npm run test:pending
 ```
 
-导入代币时读取链上的小数位数。金额输入、Max、兑换报价、流动性双币金额、池价格、套利本金和利润、授权额度均使用各自代币的精度；合约仍处理原始整数。多余小数位或超出 uint256 的输入会被拒绝，不会为了提交交易而四舍五入。精确数值保留，极小非零量不会显示成真实零。
-
-默认测试币和 ETH/WETH 为 18 位。旧浏览器记录缺少精度时重新验证，读不到元数据时不会猜测；当前演示链可继续使用，无须重置。设计原因见 [ADR 008](docs/adr/008-token-specific-decimal-units.md)，模型、接口和验证范围见[代币精度说明](formal/TOKEN-PRECISION.md)。
-
-相关共享规格的 104 条证明通过假设审计，当前前端请求与实际 AMM 函数的精化连接以及流动性、套利 helper 精化检查通过。独立公开验收的 9 个真实链场景覆盖 0/6/8/255 位资产、混合精度价格与兑换、NFT 流动性赎回、授权额度和套利；其中一次 6 位本金原子套利实际盈利 `7.691062`。这些结果不扩大前述 EVM、元数据和外部接口的验证边界。
-
-### 多池兑换报价
-
-```bash
-npm run test:routing
-```
-
-Best quote 在同一交易对的已知直接池中比较给定输入的实际输出，包含池手续费和价格影响，不按储备中间价排序。输入量变化可能改变最佳池。它不搜索多跳路径、不拆单，也不把 gas 折算成输出币种。相同报价按快照中的确定池顺序选择。
-
-手动指定的池不可用时会明确拒绝，不静默改到其他交易所。点击提交后，池、金额、报价及最低收到数量作为同一请求固定；批准期间行情改变不会暗换支出合约。设计原因见 [ADR 009](docs/adr/009-select-swaps-by-executable-quotes.md)，模型、接口和验证边界见[兑换路由说明](formal/SWAP-ROUTING.md)。
-
-新增路由模型的 26 条证明通过假设审计，`routed_swap_quote_matches_contract` 将所选报价连接到实际 AMM helper。独立公开验收的 10 个真实链场景通过，覆盖金额改变最佳池、手动选择、匿名报价、精确 Max、候选过滤、同价规则，以及授权期间固定路由和换钱包后的停止执行。
-
-`npm run test:pool-location` 在隔离链验证 URL 池目标到公开 SDK 的绑定、用新快照恢复同一链接，以及拒绝当前部署之外的真实池。选择规则另有四个 Rocq 定理；该验收不把显式池 SDK 调用扩大为浏览器返回操作或 React Best quote 的端到端证明。
-
-## 界面示例
-
-以下图片展示本地演示链中的界面；具体地址、数量和运行结果随链状态变化。
-
-### 兑换审阅
-
-![兑换前审阅报价与最低收到数量](docs/screenshots/swap-review.jpg)
-
-### 流动性头寸审阅
-
-![实际投入、NFT 份额与赎回报价](docs/screenshots/liquidity-review.jpg)
-
-### 原子套利报价
-
-![定额本金与无盈利报价](docs/screenshots/arbitrage-quote.jpg)
-
-### 多用户模拟结果
-
-![运行状态、参与地址与逐币利润](docs/screenshots/simulation-overview.jpg)
+公开入口验收使用隔离链，不重置演示链。浏览器验收命令见[前端说明](frontend/README.md)。当前活动页面保留本页交易状态；同一标签页刷新后可继续观察已知待确认交易，不续签或重发。已完成交易不再长期归档，也不提供通用历史业务结果重读。
 
 ## 参考资料
 
-- [Uniswap 官方：AMM 与参与方](https://developers.uniswap.org/docs/get-started/concepts/how-uniswap-works)
-- [Uniswap 官方：V2/V3/V4 手续费](https://developers.uniswap.org/docs/get-started/concepts/fees)
+- [Uniswap V2：流动性](https://developers.uniswap.org/docs/protocols/v2/guides/providing-liquidity)、[交易集成](https://developers.uniswap.org/docs/protocols/v2/guides/swapping)
 - [Uniswap V2 Pair 源码](https://github.com/Uniswap/v2-core/blob/master/contracts/UniswapV2Pair.sol)
 - [OpenZeppelin ERC20](https://docs.openzeppelin.com/contracts/5.x/erc20)、[ERC721](https://docs.openzeppelin.com/contracts/5.x/erc721)
-- [Hardhat 文档](https://hardhat.org/docs)、[viem 文档](https://viem.sh/)
-- [Solidity SMTChecker](https://docs.soliditylang.org/en/latest/smtchecker.html)、[rocq-of-solidity](https://github.com/formal-land/rocq-of-solidity)、[Rocq 文档](https://rocq-prover.org/docs)
-- [课程参考 Demo](https://github.com/LBruyne/blockchain-course-demos)
-
-本项目借鉴 Uniswap V2 的恒定乘积与份额机制，用 ERC721 替代可互换的 LP Token，未复制 Uniswap V2 的工厂、路由与闪电交换体系。
+- [Solidity SMTChecker](https://docs.soliditylang.org/en/latest/smtchecker.html)、[rocq-of-solidity](https://github.com/formal-land/rocq-of-solidity)、[Rocq](https://rocq-prover.org/)

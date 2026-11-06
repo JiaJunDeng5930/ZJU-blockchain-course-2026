@@ -1,31 +1,29 @@
 # Wallet and first-trade guide
 
-The application offers two explicit ways to sign transactions:
+Open the wallet button in the top-right corner. The application offers two signing paths:
 
-- **Local demo account** uses an unlocked, pre-funded account on the development node. Select one of the twenty addresses in **Test account**. No extension or private-key import is needed.
-- **Browser wallet** uses an EIP-1193 wallet such as MetaMask. Click **Connect browser wallet** and approve access. The selected address appears under **Connected account**.
+- **Demo wallet** uses an unlocked, pre-funded account on the local development node. Choose one of its twenty test accounts; no extension or private-key import is required.
+- **Browser wallet** uses an EIP-1193 wallet such as MetaMask. Click **Connect browser wallet** and approve the site's connection request.
 
-## Connect a new wallet
+## Connect and prepare assets
 
-If the wallet is on another chain, click **Add / switch local network**. The application requests the network from the deployment file: chain 31337, local RPC `http://127.0.0.1:8545`, currency ETH. An unknown network is added before switching. Rejecting this request leaves a retry button; selecting a local test account also remains available.
+If the browser wallet is on another chain, use **Add / switch local network**. Review chain ID `31337`, RPC `http://127.0.0.1:8545` and currency ETH before confirming. Rejecting the request leaves a retry action.
 
-Never import a development account's publicly known private key into a wallet containing real funds. A newly created empty wallet can instead receive local test assets directly from the page.
+Use **Prepare test assets** in the wallet panel to receive local ETH for gas and claim missing TKA/TKB. The local node sends ETH; the selected wallet calls the ERC20 faucets. Each transaction has its own confirmation. Individual faucet controls can also claim a token created through **Pools & tokens**.
 
-## Prepare assets
-
-Open **Get ready for your first trade** and click **Prepare test assets**. It transfers 10 local ETH from the development node when the wallet has less than 0.01 ETH, then requests missing TKA and TKB faucet tokens. The browser wallet confirms each token claim. Existing balances are preserved, and unnecessary claims are skipped.
-
-ETH pays gas; TKA and TKB are the traded assets. The guide updates after transaction receipts and becomes **Ready to trade** when both test tokens and gas are available. Individual faucet controls remain available in the balance cards.
+The development accounts' private keys are publicly known test keys. Use a separate test wallet for browser-wallet demonstrations.
 
 ## Complete the first trade
 
-1. Open **Swap** and choose a pool and input token.
-2. Enter an amount and review the quoted output, minimum received, price impact and slippage tolerance.
-3. Click **Approve & swap**. When allowance is insufficient, approve the requested spending amount first. Confirm the swap next.
-4. Read the confirmation and inspect **Transactions** for the independent approval and swap receipts.
+1. Open **Swap** and select the intended **Active pool**.
+2. Choose the input direction and enter an amount. Review the output, minimum received and slippage setting.
+3. Click **Review swap**, then **Confirm swap**. If needed, approve the requested token spending first, and then confirm the swap.
+4. Read the actual confirmed result and transaction hash. **Transactions** shows the current page's independent approval and business-transaction states.
 
-Rejecting a later swap does not undo an already confirmed approval. Retrying can reuse that approval. Changing wallet account or network during an operation stops subsequent signing with the previous identity.
+Rejecting a later swap does not undo an already confirmed approval. A new review can reuse that approval. Changing account or network stops later signing under the old identity. A receipt-observation error does not mean that the transaction reverted.
 
-## Verification scope
+## Pending transactions after refresh
 
-The first-use browser acceptance starts from a newly generated, zero-asset local address, exercises rejected network switching followed by network addition, receives gas and tokens, then submits a real swap. An EIP-1193 adapter forwards transactions to the actual local chain. This validates the application's provider integration; it does not assert that a particular browser extension's confirmation UI has been tested.
+Known pending transactions are saved in the same tab's `sessionStorage`. Refreshing resumes their observation without requesting signatures or automatically submitting later workflow steps. Completed activity is kept only in the current page's memory; tabs do not merge archives.
+
+The public-entry acceptances `npm run test:asset-setup`, `npm run test:funding-confirmation` and `npm run test:pending` use real isolated chains to check the corresponding behaviors. Formal and external-interface boundaries are described in [the formal guide](../formal/README.md).

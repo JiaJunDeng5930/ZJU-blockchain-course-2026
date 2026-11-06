@@ -18,9 +18,4 @@ Its deposit action uses only the matching pool subsequently observed in the
 normal chain snapshot. Confirmation and a later unavailable state read are
 different facts.
 
-Recovery uses the existing scoped transaction history and a read of the actual
-creation receipt. It does not add a second persisted inventory of candidate
-assets. The kernel admits archives only from the matching genesis, deployment
-and RPC namespace and re-observes restored confirmations; the receipt view
-consumes those entries without introducing another scope policy.
-
+Creation results remain available in the current operation view, and verified assets join the ordinary catalog. The former generic historical creation-result reader and transaction archive were removed under [ADR 024](024-course-delivery-scope.md); they are not needed to preserve the distinction between confirmation and discovery.

@@ -58,5 +58,4 @@ These are public-contract acceptance scenarios, not a proof of all callback
 programs or all reachable MiniDEX storage states. Existing Rocq ownership replay
 and share-book proofs are not repeated here. In particular, this acceptance
 does not close the separate global MiniDEX SMT targets, establish browser
-behavior, or claim that a historical single-operation receipt reader supports
-every multi-operation callback transaction.
+behavior or prove every multi-operation callback transaction.

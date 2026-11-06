@@ -93,6 +93,6 @@ The independent runner deploys ordinary OpenZeppelin test assets with 0, 6, 8,
 and 255 decimals alongside the actual production exchange artifacts on an
 isolated chain. It covers metadata failures, least units and overprecision,
 legacy catalog restoration, mixed human prices, precise Max, real swaps and
-LP redemption, finite/unlimited authorization revocation, and atomic arbitrage
+LP redemption, exact authorization amounts, and atomic arbitrage
 with a 6-place principal. A 255-place asset is exercised with raw least units;
 it is not claimed to hold a whole human token beyond uint256 capacity.

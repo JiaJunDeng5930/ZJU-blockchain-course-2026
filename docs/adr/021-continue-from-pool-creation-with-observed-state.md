@@ -1,32 +1,7 @@
-# Continue from pool creation with observed state
+# 021: Continue from pool creation with observed state
 
-Status: Accepted
+Creating a pool confirms a transaction and a pool identity. It does not establish that the pool is still empty when the user next adds liquidity: another provider can act before the next observation.
 
-## Context
+The continuation therefore uses the confirmed exchange and pool identifier to select the matching currently observed pool. A loaded empty pool takes the first-deposit path; a funded pool takes proportional deposits. Missing observations ask for another read rather than substituting a same-numbered pool from another exchange or assuming zero reserves.
 
-Creating a pair and supplying its liquidity are separate operations, as in
-[Uniswap V2's factory](https://github.com/Uniswap/v2-core/blob/master/contracts/UniswapV2Factory.sol).
-A saved creation receipt identifies the pool but says nothing about its later
-reserves. Another account can initialize that pool before its creator continues.
-
-The existing creation panel already offered a deposit action. Reopening the page
-lost that panel, while the wallet retained the confirmed transaction hash.
-
-## Decision
-
-Recover the immutable identity from the configured DEX's `PoolCreated` event and
-share the creation presenter between immediate confirmation and transaction
-history. Keep creation recovery independent of metadata and current-state reads.
-
-Reuse explicit pool selection and the existing App deposit callback. The Rocq
-continuation selects the exact exchange/id from the current snapshot and applies
-connection, pending-operation and asset-support conditions. Only a ready result
-contains the observed pool used to open the deposit form.
-
-## Consequences
-
-An absent target requests another read without changing the confirmed creation.
-An initialized target uses the existing proportional deposit policy. Neither
-history recovery nor opening a form submits approvals or deposits. No duplicate
-pool state or result archive is introduced. Event decoding and RPC honesty remain
-external assumptions; the proofs cover selection and continuation policy.
+This keeps first-deposit price selection and later proportional deposits attached to the chain state used for preparation. The former generic historical creation-result reader was removed under [ADR 024](024-course-delivery-scope.md); the immediate creation continuation remains.

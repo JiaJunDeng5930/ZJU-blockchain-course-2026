@@ -1,20 +1,27 @@
 # TwoPool DEX 前端
 
-运行、钱包配置、模拟交易和截图说明见[项目 README](../README.md)。
+启动、操作流程、Bonus 结果和关键截图见[项目 README](../README.md)。先在仓库根目录安装依赖、引导形式化工具链并构建，再保持本地链、部署和模拟服务可用。
 
 ```bash
-npm ci
+# 在仓库根目录执行
+npm run setup
+npm run formal:bootstrap
+npm run build
 npm run dev
 ```
 
-先运行本地链和部署；Vite 从 `../shared/` 读取实际部署配置。生产构建也会复制该配置，因此换链或重新部署后应重新构建。
+前端使用实际部署生成的 ABI 和配置，以及从 Rocq 提取的业务内核。换链或重新部署后应重新生成构建产物。
+
+## 浏览器验收
+
+保持网页在 3000 端口、本地链在部署配置中的 RPC 端口运行，然后执行：
 
 ```bash
-npm run build
+cd frontend
 npx playwright install chromium
 npm test
 ```
 
-浏览器端到端测试通过真实 RPC 执行交易，要求本地节点已部署、前端已在 3000 端口运行。测试会改变链状态、创建测试代币，并生成 `docs/screenshots/` 中的截图。不要同时运行模拟脚本。
+浏览器验收通过真实 RPC 执行课程流程和钱包交互，会改变本地测试链状态；运行时不要同时启动模拟。截图保存在忽略的 `frontend/test-results/`，不会覆盖 README 的精选图片。
 
-前端使用合约编译生成的 TypeChain 类型，因此需先在 `contracts/` 完成编译和部署。钱包会话响应账户、网络和断开事件；交易日志与链上读取分别处理。运行 `npm test` 会执行完整业务流程及钱包故障恢复的七个黑盒场景。
+链上公开入口与提取内核的验收命令见[验收说明](acceptance/README.md)。交易活动保留当前页面记录，刷新只恢复同一标签页已知待确认交易的观察。钱包偏好与交易状态分别保存。

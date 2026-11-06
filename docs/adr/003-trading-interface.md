@@ -4,7 +4,7 @@ Status: accepted
 
 The previous layout treated every requirement as a permanent dashboard section. At a 581-pixel browser width the wallet and test balances consumed the whole first viewport, leaving the swap below the fold. Adding more instruction panels made that worse.
 
-The interface now follows user tasks: Swap and Liquidity are the primary navigation. A compact wallet control opens a modal for connection, account selection, balances and test funding. Pools/tokens, arbitrage, simulation and transaction history live under Tools. Network details and developer commands do not occupy the main trading surface.
+The interface now follows user tasks: Swap and Liquidity are the primary navigation. A compact wallet control opens a modal for connection, account selection, balances and test funding. Pools/tokens, arbitrage, simulation and current transaction activity live under Tools. Network details and developer commands do not occupy the main trading surface.
 
 Swap owns its market selection, input/output assets, amount, quote, settings and execution action in one compact card. Liquidity opens on positions and exposes adding a position as a deliberate action rather than a permanent competing form. Both retain real chain quotes, the same contracts, wallet identity checks and transaction outcomes. Test funding is accessible on demand and never replaces the primary task.
 
