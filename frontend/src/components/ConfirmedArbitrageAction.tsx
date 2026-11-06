@@ -37,10 +37,6 @@ export function ConfirmedArbitrageAction({
     >
       <h3>Confirmed arbitrage action</h3>
       <dl className="confirmed-arbitrage-values">
-        <dt>Asset recipient</dt>
-        <dd>
-          <code>{result.trader}</code>
-        </dd>
         <dt>Capital sent</dt>
         <dd>
           {amount(result.amountIn, result.tokenIn)} {label(result.tokenIn)}
@@ -51,81 +47,90 @@ export function ConfirmedArbitrageAction({
         </dd>
         <dt>Returned</dt>
         <dd>
-          {amount(result.amountOut, result.tokenIn)} {label(result.tokenIn)}
+          {amount(result.amountOut, result.tokenIn)} {symbol(result.tokenIn)}
         </dd>
         <dt>Realized token profit</dt>
         <dd>
-          {amount(result.profit, result.tokenIn)} {label(result.tokenIn)}
-        </dd>
-        <dt>Executed by</dt>
-        <dd>
-          <code>{result.receipt.from}</code>
-        </dd>
-        <dt>Execution fee</dt>
-        <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
-        <dt>Confirmed block</dt>
-        <dd>{result.receipt.blockNumber.toString()}</dd>
-        <dt>Transaction</dt>
-        <dd>
-          <code>{result.receipt.transactionHash}</code>
+          {amount(result.profit, result.tokenIn)} {symbol(result.tokenIn)}
         </dd>
       </dl>
-      <p>
-        Token profit is separate from the executing account's ETH fee. Earlier
-        ERC20 approvals have separate fees.
-      </p>
-      <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>Pool</th>
-              <th>State</th>
-              <th>Reserves</th>
-              <th>Price</th>
-            </tr>
-          </thead>
-          <tbody>
-            {result.before.map((before) => {
-              const after = result.after.find(
-                (pool) => poolKey(pool) === poolKey(before),
-              )!;
-              return (
-                <Fragment key={poolKey(before)}>
-                  {[
-                    { state: "Before", pool: before },
-                    { state: "After", pool: after },
-                  ].map(({ state, pool }) => (
-                    <tr key={state}>
-                      {state === "Before" && (
-                        <td rowSpan={2}>{poolLabel(before, symbol)}</td>
-                      )}
-                      <td>{state}</td>
-                      <td>
-                        {amount(pool.reserve0, pool.token0)}{" "}
-                        {label(pool.token0)} /{" "}
-                        {amount(pool.reserve1, pool.token1)}{" "}
-                        {label(pool.token1)}
-                      </td>
-                      <td>
-                        {formatPrice(
-                          pool.reserve1,
-                          tokenDecimals(tokens, pool.token1),
-                          pool.reserve0,
-                          tokenDecimals(tokens, pool.token0),
-                        )}{" "}
-                        {symbol(pool.token1)} per {symbol(pool.token0)}
-                      </td>
-                    </tr>
-                  ))}
-                </Fragment>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-      <p>
-        Before and after reserves come from this execution's contract events.
-      </p>
+      <p>Token profit excludes ETH gas.</p>
+      <details>
+        <summary>Transaction details</summary>
+        <dl className="confirmed-arbitrage-values">
+          <dt>Asset recipient</dt>
+          <dd>
+            <code>{result.trader}</code>
+          </dd>
+          <dt>Executed by</dt>
+          <dd>
+            <code>{result.receipt.from}</code>
+          </dd>
+          <dt>Execution fee</dt>
+          <dd>{formatUnits(result.gasCostWei, 18)} ETH</dd>
+          <dt>Confirmed block</dt>
+          <dd>{result.receipt.blockNumber.toString()}</dd>
+          <dt>Transaction</dt>
+          <dd>
+            <code>{result.receipt.transactionHash}</code>
+          </dd>
+        </dl>
+      </details>
+      <details>
+        <summary>Pool changes</summary>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>Pool</th>
+                <th>State</th>
+                <th>Reserves</th>
+                <th>Price</th>
+              </tr>
+            </thead>
+            <tbody>
+              {result.before.map((before) => {
+                const after = result.after.find(
+                  (pool) => poolKey(pool) === poolKey(before),
+                )!;
+                return (
+                  <Fragment key={poolKey(before)}>
+                    {[
+                      { state: "Before", pool: before },
+                      { state: "After", pool: after },
+                    ].map(({ state, pool }) => (
+                      <tr key={state}>
+                        {state === "Before" && (
+                          <td rowSpan={2}>{poolLabel(before, symbol)}</td>
+                        )}
+                        <td>{state}</td>
+                        <td>
+                          {amount(pool.reserve0, pool.token0)}{" "}
+                          {symbol(pool.token0)} /{" "}
+                          {amount(pool.reserve1, pool.token1)}{" "}
+                          {symbol(pool.token1)}
+                        </td>
+                        <td>
+                          {formatPrice(
+                            pool.reserve1,
+                            tokenDecimals(tokens, pool.token1),
+                            pool.reserve0,
+                            tokenDecimals(tokens, pool.token0),
+                          )}{" "}
+                          {symbol(pool.token1)} per {symbol(pool.token0)}
+                        </td>
+                      </tr>
+                    ))}
+                  </Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <p>
+          Before and after reserves come from this execution's contract events.
+        </p>
+      </details>
     </section>
   );
 }

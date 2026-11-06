@@ -17,3 +17,20 @@
   flex-wrap: wrap;
   overflow-wrap: anywhere;
 }
+.workspace.arbitrage-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.arbitrage-settings {
+  width: min(100%, 640px);
+  justify-self: center;
+}
+
+.arbitrage-settings > summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.arbitrage-settings[open] > summary {
+  margin-bottom: 1rem;
+}

@@ -17,8 +17,22 @@
   margin: 0;
 }
 
-.confirmed-arbitrage table {
-  font-size: 0.8rem;
+.confirmed-arbitrage details {
+  margin-top: 1rem;
+}
+
+.confirmed-arbitrage summary {
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.confirmed-arbitrage details[open] > summary {
+  margin-bottom: 1rem;
+}
+
+.confirmed-arbitrage th:nth-child(2),
+.confirmed-arbitrage td:nth-child(2) {
+  white-space: nowrap;
 }
 
 @media (max-width: 640px) {

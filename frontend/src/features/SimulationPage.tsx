@@ -98,267 +98,17 @@ export function SimulationPage() {
     <div className="simulation-page">
       <section className="card">
         <h2>20-account market simulation</h2>
-        <p>
-          Let 20 test accounts trade and add or remove liquidity across
-          Harbor and Summit. A separate arbitrageur checks both market
-          directions and executes profitable routes atomically. These are real
-          local-chain transactions.
-        </p>
-        <p>
-          Uses existing balances, without automatic top-ups. All accounts need
-          ETH for gas. Account 2 needs 1000 {asset(client.deployment.tokens[0].address)}
-          {" "}for the initial price displacement; Account 20 needs at least one
-          unit of either market token for scanning. Prepare funds in the wallet.
-          Checks cover preparation, not the later random workload.
-        </p>
-        <form
-          className="form"
-          onSubmit={(event) => {
-            event.preventDefault();
-            setSelectedArbitrage(undefined);
-            dispatch({ type: "start" });
-          }}
-        >
-          <div className="markets">
-            <label>
-              Minimum rounds
-              <input
-                aria-label="Simulation rounds"
-                type="number"
-                min="20"
-                max="1000"
-                step="1"
-                value={rounds}
-                disabled={busy}
-                onChange={(event) =>
-                  dispatch({
-                    type: "edit",
-                    draft: { ...draft, rounds: event.target.value },
-                  })
-                }
-              />
-            </label>
-            <label>
-              Minimum duration (seconds)
-              <input
-                aria-label="Simulation duration"
-                type="number"
-                min="0"
-                max="600"
-                step="1"
-                value={duration}
-                disabled={busy}
-                onChange={(event) =>
-                  dispatch({
-                    type: "edit",
-                    draft: { ...draft, duration: event.target.value },
-                  })
-                }
-              />
-            </label>
-            <label>
-              Interval between rounds (ms)
-              <input
-                aria-label="Simulation interval"
-                type="number"
-                min="0"
-                max="5000"
-                step="1"
-                value={interval}
-                disabled={busy}
-                onChange={(event) =>
-                  dispatch({
-                    type: "edit",
-                    draft: { ...draft, interval: event.target.value },
-                  })
-                }
-              />
-            </label>
-            <label>
-              Random seed
-              <input
-                aria-label="Simulation seed"
-                type="number"
-                min="0"
-                max="4294967295"
-                step="1"
-                value={seed}
-                disabled={busy}
-                onChange={(event) =>
-                  dispatch({
-                    type: "edit",
-                    draft: { ...draft, seed: event.target.value },
-                  })
-                }
-              />
-            </label>
-          </div>
-          <small>
-            Runs until both minimums are reached, then redeems its positions and
-            verifies a deliberately unprofitable trade reverts. Do not submit
-            manual trades during the run if you want reproducible results.
-          </small>
-          {invalidOptions && (
-            <p role="alert">
-              Use 20–1000 rounds, 0–600 seconds, 0–5000 ms interval, and a seed
-              from 0 to 4294967295.
-            </p>
-          )}
-          <div className="row">
-            <button disabled={!view.canStart}>Start simulation</button>
-            <button
-              type="button"
-              className="secondary"
-              disabled={!view.canStop}
-              onClick={() => dispatch({ type: "stop" })}
-            >
-              Stop simulation
-            </button>
-            {data?.reportAvailable && (
-              <a
-                href={`/api/simulation/report?jobId=${encodeURIComponent(
-                  data.id ?? "",
-                )}`}
-                download
-              >
-                Download run report
-              </a>
-            )}
-            {data?.id && data.journal && (
-              <a
-                href={`/api/simulation/journal?jobId=${encodeURIComponent(data.id)}`}
-                download
-              >
-                Download transaction journal
-              </a>
-            )}
-          </div>
-        </form>
-        {view.error && <p role="alert">{view.error}</p>}
-        {view.uncertain && (
-          <p role="status">
-            Refresh the service state before starting or stopping a simulation.
-          </p>
-        )}
-        <button
-          type="button"
-          className="text"
-          disabled={!view.canRefresh}
-          onClick={() => dispatch({ type: "poll" })}
-        >
-          Refresh simulation status
-        </button>
         {data && (
           <p role="status" aria-label="Simulation status">
             {stateLabels[data.state]}
             {progress
               ? ` · ${view.active ? phaseLabels[progress.phase] + " · " : ""}${
                   progress.completedRounds
-                } recorded rounds · ${progress.elapsedSeconds.toFixed(1)} seconds at last update`
+                } rounds · ${progress.elapsedSeconds.toFixed(1)} seconds`
               : ""}
           </p>
         )}
-        {data?.error && <p role="alert">{data.error}</p>}
-        {data?.id && data.options && (
-          <dl className="details simulation-run">
-            <dt>Run ID</dt>
-            <dd>
-              <code>{data.id}</code>
-            </dd>
-            <dt>Run settings</dt>
-            <dd>
-              Seed {data.options.seed} · minimum {data.options.rounds} rounds
-              and {data.options.durationSeconds} seconds ·{" "}
-              {data.options.intervalMs} ms interval
-            </dd>
-            {progress && (
-              <>
-                <dt>Started</dt>
-                <dd>
-                  <time dateTime={progress.startedAt}>
-                    {progress.startedAt}
-                  </time>
-                </dd>
-              </>
-            )}
-            {data.finishedAt && (
-              <>
-                <dt>Finished</dt>
-                <dd>
-                  <time dateTime={data.finishedAt}>{data.finishedAt}</time>
-                </dd>
-              </>
-            )}
-          </dl>
-        )}
-        {data?.state === "stopping" && (
-          <p>
-            Finishing the current transaction and redeeming positions created by
-            this run. The stop result is not counted as a completed 20-account
-            test.
-          </p>
-        )}
-        {data?.state === "stopped" && (
-          <p>
-            The run was stopped safely. Confirmed transactions remain on chain;
-            this is a partial run.
-          </p>
-        )}
-        {data?.state === "failed" && (
-          <p>
-            Confirmed transactions remain on chain; final cleanup was not
-            reported. Download the journal and inspect the listed NFTs in
-            Liquidity using their wallet accounts. Missing confirmation
-            responses may require checking the chain too.
-          </p>
-        )}
-      </section>
-      {data?.journal && data.journal.positions.length > 0 && (
-        <details key={data.id} className="card sources simulation-position-records">
-          <summary>
-            Positions created by this run · {data.journal.positions.length}
-          </summary>
-          <p>
-            {data.journal.transactionCount} transaction receipts received,
-            including approvals. These NFTs were minted by this run; existing
-            positions are excluded. Redemption records cover worker receipts,
-            not external transfers or burns. Check Liquidity for current ownership.
-          </p>
-          <div
-            className="table-scroll simulation-evidence-scroll"
-            role="region"
-            aria-label="NFT mint and redemption records"
-            tabIndex={0}
-          >
-            <table className="simulation-position-table">
-              <thead>
-                <tr>
-                  <th scope="col">DEX / pool</th>
-                  <th scope="col" className="simulation-record-id">NFT</th>
-                  <th scope="col">Minted for</th>
-                  <th scope="col">Mint transaction</th>
-                  <th scope="col">Redemption in this run</th>
-                </tr>
-              </thead>
-              <tbody>
-                {data.journal.positions.map((position) => (
-                  <tr key={`${position.exchange}:${position.positionId}`}>
-                    <td><code>{position.exchange}</code> / #{position.poolId}</td>
-                    <td className="simulation-record-id">#{position.positionId}</td>
-                    <td><code>{position.account}</code></td>
-                    <td><code>{position.mintHash}</code></td>
-                    <td>{position.redeemHash
-                      ? <code>{position.redeemHash}</code>
-                      : "No redemption recorded"}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </details>
-      )}
-      {progress && (
-        <>
+        {progress && (
           <dl className="simulation-metrics" aria-label="Simulation metrics">
             <div>
               <dt>Active addresses</dt>
@@ -379,18 +129,177 @@ export function SimulationPage() {
               <dt>Atomic arbitrages</dt>
               <dd>{progress.counts.arbitrage}</dd>
             </div>
-            <div>
-              <dt>Transactions recorded</dt>
-              <dd>{progress.transactionCount}</dd>
-            </div>
           </dl>
+        )}
+        {!progress && (
+          <p>
+            20 funded accounts trade and manage liquidity on Harbor and Summit.
+          </p>
+        )}
+        <form
+          className="form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            setSelectedArbitrage(undefined);
+            dispatch({ type: "start" });
+          }}
+        >
+          <details className="simulation-settings" open={!progress}>
+            <summary>Run settings</summary>
+            <div className="markets">
+              <label>
+                Minimum rounds
+                <input
+                  aria-label="Simulation rounds"
+                  type="number"
+                  min="20"
+                  max="1000"
+                  step="1"
+                  value={rounds}
+                  disabled={busy}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "edit",
+                      draft: { ...draft, rounds: event.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Minimum duration (seconds)
+                <input
+                  aria-label="Simulation duration"
+                  type="number"
+                  min="0"
+                  max="600"
+                  step="1"
+                  value={duration}
+                  disabled={busy}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "edit",
+                      draft: { ...draft, duration: event.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Interval between rounds (ms)
+                <input
+                  aria-label="Simulation interval"
+                  type="number"
+                  min="0"
+                  max="5000"
+                  step="1"
+                  value={interval}
+                  disabled={busy}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "edit",
+                      draft: { ...draft, interval: event.target.value },
+                    })
+                  }
+                />
+              </label>
+              <label>
+                Random seed
+                <input
+                  aria-label="Simulation seed"
+                  type="number"
+                  min="0"
+                  max="4294967295"
+                  step="1"
+                  value={seed}
+                  disabled={busy}
+                  onChange={(event) =>
+                    dispatch({
+                      type: "edit",
+                      draft: { ...draft, seed: event.target.value },
+                    })
+                  }
+                />
+              </label>
+            </div>
+            <small>
+              Both minimums must be reached before cleanup and rollback
+              verification. Leave manual trading paused during the run.
+            </small>
+            <details className="simulation-funding">
+              <summary>Funding requirements</summary>
+              <p>
+                Uses existing balances, without top-ups. All accounts need ETH
+                for gas; Account 2 needs 1000{" "}
+                {asset(client.deployment.tokens[0].address)} and Account 20
+                needs at least one unit of either market token.
+              </p>
+            </details>
+            {invalidOptions && (
+              <p role="alert">
+                Use 20–1000 rounds, 0–600 seconds, 0–5000 ms interval, and a
+                seed from 0 to 4294967295.
+              </p>
+            )}
+            <div className="row">
+              <button disabled={!view.canStart}>Start simulation</button>
+            </div>
+          </details>
+          {view.active && (
+            <button
+              type="button"
+              className="secondary"
+              disabled={!view.canStop}
+              onClick={() => dispatch({ type: "stop" })}
+            >
+              Stop simulation
+            </button>
+          )}
+        </form>
+        {view.error && <p role="alert">{view.error}</p>}
+        {view.uncertain && (
+          <p role="status">
+            Refresh the service state before starting or stopping a simulation.
+          </p>
+        )}
+        {(view.uncertain || view.error || data?.error) && (
+          <button
+            type="button"
+            className="text"
+            disabled={!view.canRefresh}
+            onClick={() => dispatch({ type: "poll" })}
+          >
+            Refresh simulation status
+          </button>
+        )}
+        {data?.error && <p role="alert">{data.error}</p>}
+        {data?.state === "stopping" && (
+          <p>
+            Finishing the current transaction and redeeming this run's
+            positions.
+          </p>
+        )}
+        {data?.state === "stopped" && (
+          <p>
+            Stopped safely. This is a partial run; confirmed transactions remain
+            on chain.
+          </p>
+        )}
+        {data?.state === "failed" && (
+          <p>
+            Confirmed transactions remain on chain; final cleanup was not
+            reported. Download the journal and inspect the listed NFTs in
+            Liquidity using their wallet accounts. Missing confirmation
+            responses may require checking the chain too.
+          </p>
+        )}
+      </section>
+      {progress && (
+        <>
           <div className="workspace">
             <section className="card">
               <h2>Markets</h2>
               <p>
-                Prices are {asset(progress.markets[0].token1)} per{" "}
-                {asset(progress.markets[0].token0)}. Both markets trade the same
-                pair; their reserves and prices evolve independently.
+                {symbol(progress.markets[0].token1)} per{" "}
+                {symbol(progress.markets[0].token0)}
               </p>
               <PriceHistory snapshots={progress.marketHistory} />
               <div className="table-scroll">
@@ -398,8 +307,8 @@ export function SimulationPage() {
                   <thead>
                     <tr>
                       <th>Exchange</th>
-                      <th>Reserve {asset(progress.markets[0].token0)}</th>
-                      <th>Reserve {asset(progress.markets[0].token1)}</th>
+                      <th>Reserve {symbol(progress.markets[0].token0)}</th>
+                      <th>Reserve {symbol(progress.markets[0].token1)}</th>
                       <th>
                         {symbol(progress.markets[0].token1)} per{" "}
                         {symbol(progress.markets[0].token0)}
@@ -431,11 +340,7 @@ export function SimulationPage() {
             </section>
             <section className="card">
               <h2>Arbitrage profit</h2>
-              <p>
-                Realized profit, grouped by its capital token. ETH gas is
-                separate, so amounts in different tokens are never added
-                together.
-              </p>
+              <p>Realized token profit, excluding ETH gas.</p>
               <dl className="details">
                 {progress.profits.map((profit) => (
                   <Fragment key={profit.token}>
@@ -463,7 +368,7 @@ export function SimulationPage() {
                         <option key={item.hash} value={item.hash}>
                           {item.buyExchange} → {item.sellExchange} · +
                           {amount(item.profit, item.capitalToken)}{" "}
-                          {asset(item.capitalToken)} · {shorten(item.hash)}
+                          {symbol(item.capitalToken)} · {shorten(item.hash)}
                         </option>
                       ))}
                     </select>
@@ -475,12 +380,11 @@ export function SimulationPage() {
               )}
             </section>
           </div>
-          <section className="card sources">
-            <h2>Participating accounts</h2>
-            <p>
-              Counts include confirmed swaps, deposits, redemptions and
-              arbitrages; ERC20 approvals do not count as market participation.
-            </p>
+          <details className="card sources simulation-records">
+            <summary>
+              <h2>Participating accounts</h2>
+            </summary>
+            <p>Confirmed market operations; token approvals are excluded.</p>
             <div className="table-scroll">
               <table>
                 <thead>
@@ -504,14 +408,14 @@ export function SimulationPage() {
                 </tbody>
               </table>
             </div>
-          </section>
-          <section className="card sources">
-            <h2>Latest confirmed activity</h2>
+          </details>
+          <details className="card sources simulation-records">
+            <summary>
+              <h2>Latest confirmed activity</h2>
+            </summary>
             <p>
-              The latest 100 transactions from market-progress updates appear
-              here. The transaction journal includes all receipts received by
-              the service, even if the run later fails; a final run report also
-              includes the completed before/after and rollback evidence.
+              Latest 100 receipts. The transaction journal contains the full
+              run.
             </p>
             <div
               className="table-scroll simulation-evidence-scroll"
@@ -524,7 +428,9 @@ export function SimulationPage() {
                   <tr>
                     <th scope="col">Action</th>
                     <th scope="col">Account</th>
-                    <th scope="col" className="simulation-record-id">Block</th>
+                    <th scope="col" className="simulation-record-id">
+                      Block
+                    </th>
                     <th scope="col">Result</th>
                     <th scope="col">Transaction hash</th>
                   </tr>
@@ -536,7 +442,9 @@ export function SimulationPage() {
                       <td title={transaction.account}>
                         {shorten(transaction.account)}
                       </td>
-                      <td className="simulation-record-id">{transaction.blockNumber}</td>
+                      <td className="simulation-record-id">
+                        {transaction.blockNumber}
+                      </td>
                       <td>
                         {transaction.status === 1
                           ? "Confirmed"
@@ -552,27 +460,148 @@ export function SimulationPage() {
                 </tbody>
               </table>
             </div>
-          </section>
+          </details>
         </>
       )}
       {data?.rollback && (
         <section className="card">
           <h2>Atomic rollback verification</h2>
           <p>
-            A real transaction required an impossible profit and reverted with
-            status {data.rollback.status}. Both pool reserves and the
-            caller/contract token balances were compared before and after.
+            Receipt status: {data.rollback.status} · minimum profit was not met.
           </p>
           <strong>
             {data.rollback.reservesAndTokenBalancesUnchanged
               ? "Verified: reserves and token balances unchanged"
               : "Verification failed"}
           </strong>
-          <p>
-            <code>{data.rollback.hash}</code>
-          </p>
-          <p>The failed transaction still pays ETH gas.</p>
+          <details>
+            <summary>Transaction details</summary>
+            <p>
+              <code>{data.rollback.hash}</code>
+            </p>
+            <p>The failed transaction still pays ETH gas.</p>
+          </details>
         </section>
+      )}
+      {data?.journal && data.journal.positions.length > 0 && (
+        <details
+          key={data.id}
+          className="card sources simulation-position-records"
+        >
+          <summary>
+            Positions created by this run · {data.journal.positions.length}
+          </summary>
+          <p>
+            NFTs minted by this run. Use Liquidity to check current ownership or
+            complete a redemption.
+          </p>
+          <div
+            className="table-scroll simulation-evidence-scroll"
+            role="region"
+            aria-label="NFT mint and redemption records"
+            tabIndex={0}
+          >
+            <table className="simulation-position-table">
+              <thead>
+                <tr>
+                  <th scope="col">DEX / pool</th>
+                  <th scope="col" className="simulation-record-id">
+                    NFT
+                  </th>
+                  <th scope="col">Minted for</th>
+                  <th scope="col">Mint transaction</th>
+                  <th scope="col">Redemption in this run</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.journal.positions.map((position) => (
+                  <tr key={`${position.exchange}:${position.positionId}`}>
+                    <td>
+                      <code>{position.exchange}</code> / #{position.poolId}
+                    </td>
+                    <td className="simulation-record-id">
+                      #{position.positionId}
+                    </td>
+                    <td>
+                      <code>{position.account}</code>
+                    </td>
+                    <td>
+                      <code>{position.mintHash}</code>
+                    </td>
+                    <td>
+                      {position.redeemHash ? (
+                        <code>{position.redeemHash}</code>
+                      ) : (
+                        "No redemption recorded"
+                      )}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </details>
+      )}
+      {data?.id && data.options && (
+        <details className="card simulation-run-details">
+          <summary>Run details and exports</summary>
+          <dl className="details simulation-run">
+            <dt>Run ID</dt>
+            <dd>
+              <code>{data.id}</code>
+            </dd>
+            <dt>Settings used</dt>
+            <dd>
+              Seed {data.options.seed} · minimum {data.options.rounds} rounds
+              and {data.options.durationSeconds} seconds ·{" "}
+              {data.options.intervalMs} ms interval
+            </dd>
+            {progress && (
+              <>
+                <dt>Started</dt>
+                <dd>
+                  <time dateTime={progress.startedAt}>
+                    {progress.startedAt}
+                  </time>
+                </dd>
+              </>
+            )}
+            {data.finishedAt && (
+              <>
+                <dt>Finished</dt>
+                <dd>
+                  <time dateTime={data.finishedAt}>{data.finishedAt}</time>
+                </dd>
+              </>
+            )}
+            {progress && (
+              <>
+                <dt>Transaction receipts</dt>
+                <dd>{progress.transactionCount}</dd>
+              </>
+            )}
+          </dl>{" "}
+          <div className="row">
+            {data?.reportAvailable && (
+              <a
+                href={`/api/simulation/report?jobId=${encodeURIComponent(
+                  data.id ?? "",
+                )}`}
+                download
+              >
+                Download run report
+              </a>
+            )}
+            {data?.id && data.journal && (
+              <a
+                href={`/api/simulation/journal?jobId=${encodeURIComponent(data.id)}`}
+                download
+              >
+                Download transaction journal
+              </a>
+            )}
+          </div>
+        </details>
       )}
     </div>
   );
@@ -587,31 +616,35 @@ function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
       <dl className="details">
         <dt title={item.capitalToken}>Capital · {asset(item.capitalToken)}</dt>
         <dd>{amount(item.amountIn, item.capitalToken)}</dd>
-        <dt>Quoted token profit</dt>
-        <dd>
-          {amount(item.expectedProfit, item.capitalToken)}{" "}
-          {asset(item.capitalToken)}
-        </dd>
         <dt>Realized token profit</dt>
         <dd>
-          {amount(item.profit, item.capitalToken)} {asset(item.capitalToken)}
+          {amount(item.profit, item.capitalToken)} {symbol(item.capitalToken)}
         </dd>
-        <dt>Execution fee</dt>
-        <dd>{formatUnits(BigInt(item.gasCostWei), 18)} ETH</dd>
       </dl>
-      <p>
-        The ETH fee covers this atomic transaction. Earlier ERC20 approvals are
-        separate transactions.
-      </p>
-      <code>{item.hash}</code>
+      <details>
+        <summary>Transaction details</summary>
+        <dl className="details">
+          <dt>Quoted token profit</dt>
+          <dd>
+            {amount(item.expectedProfit, item.capitalToken)}{" "}
+            {asset(item.capitalToken)}
+          </dd>
+          <dt>Execution fee</dt>
+          <dd>{formatUnits(BigInt(item.gasCostWei), 18)} ETH</dd>
+          <dt>Transaction</dt>
+          <dd>
+            <code>{item.hash}</code>
+          </dd>
+        </dl>
+      </details>
       <div className="table-scroll">
         <table className="simulation-amounts">
           <thead>
             <tr>
               <th>Pool</th>
               <th>State</th>
-              <th>Reserve {asset(item.before[0].token0)}</th>
-              <th>Reserve {asset(item.before[0].token1)}</th>
+              <th>Reserve {symbol(item.before[0].token0)}</th>
+              <th>Reserve {symbol(item.before[0].token1)}</th>
               <th>
                 {symbol(item.before[0].token1)} per{" "}
                 {symbol(item.before[0].token0)}
@@ -631,8 +664,7 @@ function ArbitrageDetails({ item }: { item: SimulationArbitrage }) {
               ).map(([state, market]) => (
                 <tr key={`${market.address}:${state}`}>
                   <td title={market.address}>
-                    {market.exchange} #{market.poolId} ·{" "}
-                    {shorten(market.address)}
+                    {market.exchange} #{market.poolId}
                   </td>
                   <td>{state}</td>
                   <td>{amount(market.reserve0, market.token0)}</td>
