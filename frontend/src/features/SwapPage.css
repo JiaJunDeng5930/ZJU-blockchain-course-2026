@@ -21,7 +21,7 @@
   letter-spacing: -0.6px;
   font-weight: 600;
 }
-.trade-card .trade-settings-button {
+.trade-heading .trade-settings-button {
   border: none;
   padding: 6px 0 6px 12px;
   background: none;
@@ -201,11 +201,16 @@
 }
 .trade-summary {
   display: flex;
+  flex-wrap: wrap;
   justify-content: space-between;
   gap: 16px;
   margin: 14px 1px 0;
-  font-size: 11px;
-  color: #8992a2;
+  font-size: 12px;
+  color: #5e6a7c;
+}
+.trade-summary > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 .trade-details {
   margin-top: 17px;
@@ -243,12 +248,6 @@
 }
 .trade-details dd.trade-impact-warning {
   color: #bd7024;
-}
-.trade-details p {
-  font-size: 11px;
-  line-height: 1.6;
-  color: #8992a2;
-  margin: 15px 0 0;
 }
 .trade-settings {
   margin: 0 0 16px;

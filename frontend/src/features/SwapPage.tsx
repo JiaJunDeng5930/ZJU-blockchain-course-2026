@@ -87,6 +87,26 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
 
   return (
     <div className="trade-layout">
+      <div className="trade-heading">
+        <h1 id="trade-title">Swap</h1>
+        <button
+          className="trade-settings-button"
+          type="button"
+          aria-expanded={settingsOpen}
+          aria-controls="trade-settings"
+          onClick={() => setSettingsOpen(!settingsOpen)}
+        >
+          Settings
+        </button>
+      </div>
+      {settlement && (
+        <ConfirmedSwapAction
+          key={settlement.receipt.transactionHash}
+          execution={settlement}
+          tokens={tokens}
+          quote={settlement}
+        />
+      )}
       <form
         className="trade-card"
         aria-label="Swap tokens"
@@ -95,19 +115,6 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           dispatch({ kind: "submit" });
         }}
       >
-        <div className="trade-heading">
-          <h1 id="trade-title">Swap</h1>
-          <button
-            className="trade-settings-button"
-            type="button"
-            aria-expanded={settingsOpen}
-            aria-controls="trade-settings"
-            onClick={() => setSettingsOpen(!settingsOpen)}
-          >
-            Settings
-          </button>
-        </div>
-
         <div className="trade-market">
           <select
             aria-label="Active pool"
@@ -266,12 +273,14 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
           {view.canSubmit ? "Review swap" : view.actionLabel}
         </button>
 
-        {view.amount !== undefined && (
+        {view.output !== undefined && (
           <div className="trade-summary">
             <span>
-              {pool.exchange.name} #{String(pool.id)}
+              Minimum received:{" "}
+              {view.minimum === undefined
+                ? "—"
+                : `${formatUnits(view.minimum, precision(outputToken))} ${symbol(outputToken)}`}
             </span>
-            <span>{view.feePercent}% pool fee</span>
             <span>Slippage {view.slippageText}%</span>
           </div>
         )}
@@ -284,20 +293,8 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <span>Trade details</span>
             </summary>
             <dl>
-              <dt>Exchange</dt>
-              <dd>
-                {pool.exchange.name} #{String(pool.id)}
-              </dd>
               <dt>Quote block</dt>
               <dd>{snapshot.data?.block ?? "—"}</dd>
-              <dt>Minimum received</dt>
-              <dd>
-                {view.minimum === undefined
-                  ? "—"
-                  : `${amount(view.minimum, outputToken, 6)} ${symbol(
-                      outputToken,
-                    )}`}
-              </dd>
               <dt>Price impact, including fee</dt>
               <dd
                 className={view.highImpact ? "trade-impact-warning" : undefined}
@@ -313,14 +310,6 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
               <dt>Deadline</dt>
               <dd>{view.deadlineText}</dd>
             </dl>
-            <p>
-              Quotes use the selected pool after pool fees. Network gas is
-              separate.
-            </p>
-            <p>
-              Token approval may require a separate confirmation before the
-              swap. Gas is paid in ETH.
-            </p>
           </details>
         )}
       </form>
@@ -393,9 +382,8 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             </dd>
           </dl>
           <p>
-            Token approval may require a separate wallet confirmation. Both
-            transactions use ETH for gas. The minimum received stays fixed while
-            approval is pending.
+            Approve the token first if requested, then confirm the swap. Both
+            use ETH for gas.
           </p>
           <button
             className="button-primary"
@@ -424,13 +412,6 @@ function SwapForm({ pool, onPoolChange, onOpenWallet }: SwapPageProps) {
             Confirm swap
           </button>
         </ConfirmationDialog>
-      )}
-      {settlement && (
-        <ConfirmedSwapAction
-          execution={settlement}
-          tokens={tokens}
-          quote={settlement}
-        />
       )}
     </div>
   );

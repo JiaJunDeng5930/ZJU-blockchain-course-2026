@@ -229,7 +229,7 @@ test("account-change events update the visible owner and subsequent real transac
   await openWallet(page);
   await page
     .getByRole("button", {
-      name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
+      name: `Claim 10,000 ${deployment.tokens[0].symbol} (${deployment.tokens[0].address})`,
       exact: true,
     })
     .click();
@@ -305,7 +305,7 @@ test("an unsupported wallet network blocks signing and switching back restores t
   await openWallet(page);
   await page
     .getByRole("button", {
-      name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
+      name: `Claim 10,000 ${deployment.tokens[0].symbol} (${deployment.tokens[0].address})`,
       exact: true,
     })
     .click();
@@ -439,7 +439,7 @@ test("a confirmed transaction stays confirmed when the following balance refresh
   await openWallet(page);
   await page
     .getByRole("button", {
-      name: `Claim 10,000 ${deployment.tokens[0].symbol}`,
+      name: `Claim 10,000 ${deployment.tokens[0].symbol} (${deployment.tokens[0].address})`,
       exact: true,
     })
     .click();

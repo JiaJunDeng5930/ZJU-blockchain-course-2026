@@ -8,10 +8,7 @@ export function TransactionsPage() {
       <div className="section-heading">
         <div>
           <h1>Transactions</h1>
-          <p>
-            Activity in this page. Known pending transactions continue to be
-            observed after this tab is refreshed.
-          </p>
+          <p>Transactions in this page session.</p>
         </div>
         <button
           type="button"
@@ -90,10 +87,6 @@ export function TransactionsPage() {
           </table>
         </div>
       )}
-      <p className="muted">
-        Approvals and business transactions confirm separately. Previously
-        confirmed operations are not restored after a refresh.
-      </p>
     </section>
   );
 }

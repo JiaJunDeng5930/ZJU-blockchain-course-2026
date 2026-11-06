@@ -5,21 +5,6 @@
   background: #fff;
   padding: 16px 20px;
 }
-.onboarding summary {
-  cursor: pointer;
-  font-size: 14px;
-  font-weight: 600;
-}
-.onboarding ol {
-  display: grid;
-  gap: 16px;
-  margin: 20px 0 2px;
-  padding-left: 20px;
-}
-.onboarding li {
-  font-size: 13px;
-  padding-left: 3px;
-}
 .onboarding p {
   margin: 8px 0;
   font-size: 12px;

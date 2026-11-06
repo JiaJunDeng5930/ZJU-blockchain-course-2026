@@ -128,7 +128,10 @@ test("refresh preserves a browser wallet without another authorization request",
   expect(await requests(page)).not.toContain("eth_requestAccounts");
   const wallet = await openWallet(page);
   await wallet
-    .getByRole("button", { name: "Claim 10,000 TKA", exact: true })
+    .getByRole("button", {
+      name: `Claim 10,000 TKA (${deployment.tokens[0].address})`,
+      exact: true,
+    })
     .click();
   const transactions = () =>
     page.evaluate(

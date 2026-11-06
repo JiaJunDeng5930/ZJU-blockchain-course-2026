@@ -40,12 +40,12 @@ test("swap stays usable on narrow screens and executes the selected pool and dir
   await expect(pay).toHaveValue(initialReceive);
   await expect(receive).toHaveValue(initialPay);
 
-  await form.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await form.getByLabel("Slippage", { exact: true }).fill("0.75");
   await expect(form.getByLabel("Slippage", { exact: true })).toHaveValue(
     "0.75",
   );
-  await form.getByRole("button", { name: "Settings", exact: true }).click();
+  await page.getByRole("button", { name: "Settings", exact: true }).click();
   await expect(form.getByLabel("Slippage", { exact: true })).toBeHidden();
 
   await amount.fill("10");
@@ -61,9 +61,14 @@ test("swap stays usable on narrow screens and executes the selected pool and dir
   await expect(pay).toHaveValue(initialReceive);
 
   await page.setViewportSize({ width: 390, height: 844 });
-  const readyAction = form.getByRole("button", { name: "Review swap", exact: true });
+  const readyAction = form.getByRole("button", {
+    name: "Review swap",
+    exact: true,
+  });
   await expect(readyAction).toBeEnabled();
-  expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
+  expect(
+    await page.evaluate(() => document.documentElement.scrollWidth),
+  ).toBeLessThanOrEqual(390);
   const account = await page
     .getByLabel("Connected account", { exact: true })
     .first()
@@ -85,16 +90,41 @@ test("swap stays usable on narrow screens and executes the selected pool and dir
   await expect(
     form.getByRole("button", { name: "Review swap", exact: true }),
   ).toBeEnabled();
-  await page.screenshot({ path: testInfo.outputPath("trade-mobile.png"), fullPage: true });
+  await page.screenshot({
+    path: testInfo.outputPath("trade-mobile.png"),
+    fullPage: true,
+  });
   await form.getByRole("button", { name: "Review swap", exact: true }).click();
   await page
     .getByRole("dialog", { name: "Review swap", exact: true })
     .getByRole("button", { name: "Confirm swap", exact: true })
     .click();
   await expectStatus(page, "Swap tokens confirmed", 30_000);
+  const result = page.getByRole("region", {
+    name: "Confirmed swap",
+    exact: true,
+  });
+  await expect(result).toBeFocused();
+  await amount.fill("1");
+  await expect(amount).toBeFocused();
+  const refresh = page.getByRole("button", {
+    name: "Refresh chain data",
+    exact: true,
+  });
+  await refresh.click();
+  await expect(refresh).toBeEnabled();
+  await expect(result).not.toBeFocused();
   expect(await tokenIn.balanceOf(account)).toEqual(beforeIn - parseEther("10"));
   expect(await tokenOut.balanceOf(account)).toBeGreaterThan(beforeOut);
-  const swaps = await selectedDex.queryFilter(selectedDex.filters.Swap(), beforeSwapBlock + 1);
-  expect(swaps.some((event) => "args" in event &&
-    event.args.sender.toLowerCase() === account!.toLowerCase())).toBe(true);
+  const swaps = await selectedDex.queryFilter(
+    selectedDex.filters.Swap(),
+    beforeSwapBlock + 1,
+  );
+  expect(
+    swaps.some(
+      (event) =>
+        "args" in event &&
+        event.args.sender.toLowerCase() === account!.toLowerCase(),
+    ),
+  ).toBe(true);
 });

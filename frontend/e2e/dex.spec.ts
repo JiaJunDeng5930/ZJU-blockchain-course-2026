@@ -70,10 +70,12 @@ test("complete browser workflow uses real local blockchain transactions", async 
     .click();
   await expectStatus(page, "Add liquidity confirmed");
   await expect(page.getByRole("alert")).toHaveCount(0);
-  await page
-    .getByRole("button", { name: /^Manage NFT #/ })
-    .last()
-    .click();
+  const managePosition = page.getByRole("button", {
+    name: `Manage NFT #${positionId}`,
+    exact: true,
+  });
+  if ((await managePosition.getAttribute("aria-expanded")) !== "true")
+    await managePosition.click();
   await expect(
     page.getByRole("button", {
       name: `Burn NFT #${positionId} & redeem`,
@@ -98,28 +100,46 @@ test("complete browser workflow uses real local blockchain transactions", async 
   await expect(page.getByRole("alert")).toHaveCount(0);
 
   await goToWorkspace(page, "Pools & tokens");
+  const customSymbol = `BTT${Date.now().toString().slice(-6)}`;
   await page
     .getByRole("textbox", { name: "Name", exact: true })
     .fill("Browser Test Token");
-  await page.getByRole("textbox", { name: "Symbol", exact: true }).fill("BTT");
+  await page
+    .getByRole("textbox", { name: "Symbol", exact: true })
+    .fill(customSymbol);
   await page.getByRole("button", { name: "Deploy ERC20", exact: true }).click();
   await expectStatus(page, "Deploy ERC20 confirmed");
   await openWallet(page);
-  await page.getByRole("button", { name: "Claim 10,000 BTT" }).click();
-  await expectStatus(page, "Claim BTT confirmed");
+  await page
+    .getByRole("button", { name: `Claim 10,000 ${customSymbol}` })
+    .click();
+  await expectStatus(page, `Claim ${customSymbol} confirmed`);
   await closeWallet(page);
   const newToken = await page
     .getByLabel("Second token")
     .locator("option")
-    .filter({ hasText: "BTT" })
+    .filter({ hasText: customSymbol })
     .getAttribute("value");
   await page.getByLabel("Second token").selectOption(newToken!);
   await page.getByRole("button", { name: "Create pool", exact: true }).click();
   await expectStatus(page, "Create pool confirmed");
+  await expect(
+    page.getByRole("region", { name: "Confirmed pool creation" }),
+  ).toContainText("Pool created");
   await expect(page.getByRole("alert")).toHaveCount(0);
   await page.getByRole("button", { name: "Wrap ETH", exact: true }).click();
+  await page.getByLabel("ETH amount", { exact: true }).fill("1");
+  await page.getByRole("button", { name: "Review wrap", exact: true }).click();
+  await page.getByRole("button", { name: "Confirm wrap", exact: true }).click();
   await expectStatus(page, "Wrap ETH confirmed");
   await page.getByRole("button", { name: "Unwrap WETH", exact: true }).click();
+  await page.getByLabel("WETH amount", { exact: true }).fill("1");
+  await page
+    .getByRole("button", { name: "Review unwrap", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm unwrap", exact: true })
+    .click();
   await expectStatus(page, "Unwrap WETH confirmed");
   await page.screenshot({
     path: testInfo.outputPath("03-pools.png"),
@@ -151,10 +171,25 @@ test("complete browser workflow uses real local blockchain transactions", async 
   await page.getByRole("button", { name: "Refresh", exact: true }).click();
   await closeWallet(page);
   await goToWorkspace(page, "Arbitrage");
-  await page.getByRole("button", { name: "Find profitable route" }).click();
-  await expectStatus(page, "Profitable route found", 60_000);
+  const initialPool = await page
+    .getByLabel("Active pool")
+    .locator("option")
+    .filter({ hasText: `${deployment.exchanges[0].name} #1` })
+    .getAttribute("value");
+  await page.getByLabel("Active pool").selectOption(initialPool!);
+  await page.getByLabel("Capital amount").fill("500");
   await page
-    .getByRole("button", { name: "Approve & execute atomic arbitrage" })
+    .getByRole("textbox", { name: "Minimum profit", exact: true })
+    .fill("0");
+  await page.getByRole("button", { name: "Find profitable route" }).click();
+  await expect(
+    page.getByRole("button", { name: "Review atomic arbitrage", exact: true }),
+  ).toBeEnabled({ timeout: 60_000 });
+  await page
+    .getByRole("button", { name: "Review atomic arbitrage", exact: true })
+    .click();
+  await page
+    .getByRole("button", { name: "Confirm atomic arbitrage", exact: true })
     .click();
   await expect(page.getByTestId("arbitrage-result")).toContainText(
     "Realized token profit",
@@ -166,7 +201,7 @@ test("complete browser workflow uses real local blockchain transactions", async 
   });
   await goToWorkspace(page, "Transactions");
   await expect(
-    page.getByRole("cell", { name: "Atomic arbitrage", exact: true }),
+    page.getByRole("cell", { name: "Execute atomic arbitrage", exact: true }),
   ).toBeVisible();
   await page.screenshot({
     path: testInfo.outputPath("05-transactions.png"),
