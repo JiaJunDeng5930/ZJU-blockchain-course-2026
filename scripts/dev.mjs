@@ -1,4 +1,3 @@
-import "./formal-environment.mjs";
 import { spawn } from "node:child_process";
 import { access, mkdir, readFile } from "node:fs/promises";
 import { openSync, closeSync } from "node:fs";
@@ -173,17 +172,11 @@ async function main() {
     throw error;
   }
   await mkdir(logDirectory, { recursive: true });
-  console.log("Compiling contracts and extracting verified frontend logic…");
+  console.log("Compiling contracts and preparing frontend logic…");
   await start("compile", hardhat, ["build"], contracts);
   await start(
     "frontend-abi",
     join(root, "scripts/generate-frontend-abi.mjs"),
-    [],
-    root,
-  );
-  await start(
-    "frontend-logic",
-    join(root, "scripts/build-formal.mjs"),
     [],
     root,
   );

@@ -8,7 +8,8 @@ frontend/playwright-report/
 .local/
 
 # Rebuilt from the Solidity artifacts and Rocq sources.
-frontend/src/generated/
+frontend/src/generated/*
+!frontend/src/generated/dex_logic.js
 
 .lia.cache
 .nia.cache
