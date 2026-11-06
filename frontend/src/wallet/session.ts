@@ -12,7 +12,6 @@ import {
   BaseError,
   type Hex,
   type TransactionReceipt,
-  TransactionReceiptNotFoundError,
 } from "viem";
 import type { ExchangeClient, Writer } from "../chain/client";
 import { errorMessage } from "../chain/amounts";
@@ -25,7 +24,6 @@ import {
   type WalletIdentity,
   type WalletSource,
   type TransactionDescriptor,
-  type ReceiptSearchEffect,
 } from "./kernel";
 
 declare global {
@@ -72,13 +70,12 @@ export class WalletController {
   private started = false;
   private preferenceKey: string;
   private storage: Storage | null = null;
-  private storageFailure =
-    "History is unavailable. New activity is kept only in this page.";
-  private loadingHistory: Promise<void> | undefined;
+  private pendingStorage: Storage | null = null;
+  private loadingPending: Promise<void> | undefined;
   private observingReceipts = new Set<string>();
   constructor(
     readonly client: ExchangeClient,
-    options?: { storage?: Storage | null },
+    options?: { storage?: Storage | null; pendingStorage?: Storage | null },
   ) {
     this.preferenceKey = `twopool:wallet:${client.deployment.chainId}:${client.deployment.rpcUrl}`;
     let source: string | null = null,
@@ -95,7 +92,15 @@ export class WalletController {
       // DEFENSE: browser privacy settings can deny obtaining or reading localStorage.
       if (!(error instanceof DOMException)) throw error;
       this.storage = null;
-      this.storageFailure = `History is unavailable. New activity is kept only in this page: ${error.message}`;
+    }
+    try {
+      this.pendingStorage =
+        options?.pendingStorage === undefined
+          ? (globalThis.sessionStorage ?? null)
+          : options.pendingStorage;
+    } catch (error) {
+      // DEFENSE: browser privacy settings can deny access to sessionStorage.
+      if (!(error instanceof DOMException)) throw error;
     }
     this.kernel = new WalletKernel({
       chain: client.deployment.chainId.toString(),
@@ -111,15 +116,15 @@ export class WalletController {
     let reply = this.kernel.dispatch<T>(event);
     const effects: WalletEffect[] = [];
     for (const effect of reply.effects) {
-      if (effect.kind === "save-history")
-        reply = this.persist(effect) as KernelReply<T>;
+      if (effect.kind === "save-pending") this.persist(effect);
       else effects.push(effect);
     }
     void this.execute(effects);
-    return { ...reply, effects };
+    return { ...reply, view: this.kernel.getSnapshot(), effects };
   }
 
   async start() {
+    if (!this.started) await this.loadPending();
     const reply = this.started
       ? this.kernel.dispatch({ kind: "invalidate" })
       : this.kernel.start();
@@ -134,82 +139,74 @@ export class WalletController {
       this.kernel.dispatch({ kind: "switch-network" }).effects,
     );
   }
-  private persist(
-    effect: Extract<WalletEffect, { kind: "save-history" }>,
-  ): KernelReply {
-    if (this.storage === null)
-      return this.kernel.dispatch({
-        kind: "history-save-failed",
-        message: this.storageFailure,
+  private persist(effect: Extract<WalletEffect, { kind: "save-pending" }>) {
+    if (!this.pendingStorage) {
+      this.kernel.dispatch({
+        kind: "pending-save-failed",
+        message:
+          "Pending transaction recovery is unavailable. Activity remains in this page only.",
       });
+      return;
+    }
     try {
-      this.storage.setItem(effect.key, effect.archive);
-      return this.kernel.dispatch({ kind: "history-saved" });
+      if (effect.checkpoint === null)
+        this.pendingStorage.removeItem(effect.key);
+      else this.pendingStorage.setItem(effect.key, effect.checkpoint);
     } catch (error) {
-      // DEFENSE: browser privacy settings and quota limits can reject an archive write.
+      // DEFENSE: denied sessionStorage access or a full quota must not block an already requested transaction.
       if (!(error instanceof DOMException)) throw error;
-      return this.kernel.dispatch({
-        kind: "history-save-failed",
-        message: `New activity is kept only in this page because history could not be saved: ${error.message}`,
+      this.kernel.dispatch({
+        kind: "pending-save-failed",
+        message: `Pending transaction recovery is unavailable. Activity remains in this page only: ${error.message}`,
       });
     }
   }
-  private loadHistory(): Promise<void> {
-    if (this.loadingHistory) return this.loadingHistory;
-    this.loadingHistory = this.readHistory().finally(() => {
-      this.loadingHistory = undefined;
-    });
-    return this.loadingHistory;
+  private loadPending(): Promise<void> {
+    this.loadingPending ??= this.readPending();
+    return this.loadingPending;
   }
-  private async readHistory(): Promise<void> {
+  private async readPending(): Promise<void> {
     let key = "";
-    let genesis;
     try {
-      genesis = await this.client.rpc.getBlock({ blockNumber: 0n });
-    } catch (error) {
-      // DEFENSE: an unavailable RPC cannot identify which chain owns saved activity.
-      this.dispatch({
-        kind: "history-load-failed",
-        key,
-        message: `History could not be loaded. New activity is kept only in this page: ${errorMessage(error)}`,
-      });
-      return;
-    }
-    key = this.kernel.historyKey(
-      genesis.hash,
-      this.client.key,
-      keccak256(stringToHex(this.client.deployment.rpcUrl)),
-    );
-    if (this.storage === null) {
-      this.dispatch({
-        kind: "history-load-failed",
-        key,
-        message: this.storageFailure,
-      });
-      return;
-    }
-    try {
-      const snapshots: { owner: string; archive: string }[] = [];
-      const prefix = `${key}:`;
-      const keys = Array.from({ length: this.storage.length }, (_, index) =>
-        this.storage!.key(index),
+      const genesis = await this.client.rpc.getBlock({ blockNumber: 0n });
+      key = this.kernel.pendingKey(
+        genesis.hash,
+        this.client.deployment.exchanges
+          .map((exchange) => exchange.address.toLowerCase())
+          .join(":"),
+        this.client.deployment.rpcUrl,
       );
-      for (const storedKey of keys) {
-        if (storedKey !== null && storedKey.startsWith(prefix)) {
-          const archive = this.storage.getItem(storedKey);
-          // DEFENSE: another tab can remove a key between enumeration and this read.
-          if (archive !== null)
-            snapshots.push({ owner: storedKey.slice(prefix.length), archive });
-        }
-      }
-      this.dispatch({ kind: "history-loaded", key, snapshots });
     } catch (error) {
-      // DEFENSE: browsers can deny Storage reads even when the Storage object exists.
+      // DEFENSE: a failed RPC read cannot establish which local-chain deployment owns a saved pending hash.
+      this.dispatch({
+        kind: "pending-load-failed",
+        key,
+        message: `Pending transaction recovery is unavailable: ${errorMessage(error)}`,
+      });
+      return;
+    }
+    if (!this.pendingStorage) {
+      this.dispatch({
+        kind: "pending-load-failed",
+        key,
+        message:
+          "Pending transaction recovery is unavailable. Activity remains in this page only.",
+      });
+      return;
+    }
+    try {
+      this.dispatch({
+        kind: "pending-loaded",
+        key,
+        checkpoint: this.pendingStorage.getItem(key),
+      });
+    } catch (error) {
+      // DEFENSE: browser privacy settings can deny reading sessionStorage.
       if (!(error instanceof DOMException)) throw error;
       this.dispatch({
-        kind: "history-load-failed",
+        kind: "pending-load-failed",
         key,
-        message: `History could not be loaded. New activity is kept only in this page: ${error.message}`,
+        message: `Pending transaction recovery is unavailable: ${error.message}`,
       });
     }
   }
@@ -273,12 +270,12 @@ export class WalletController {
         block: transaction.blockNumber ?? (await rpc.getBlockNumber()),
       };
     } catch (error) {
-      // DEFENSE: a node can omit a replaced hash or reject its metadata read while its saved nonce remains usable.
+      // DEFENSE: a node can omit a replaced hash or reject its metadata read; the known hash remains an observation target.
       this.dispatch({
         kind: "transaction-metadata-unavailable",
         instance: target.instance,
         transaction: target.transaction,
-        message: `Transaction details are unavailable; checking the known hash and any saved nonce. ${errorMessage(error)}`,
+        message: `Transaction details are unavailable; observing the known hash. ${errorMessage(error)}`,
       });
     }
     if (observation) {
@@ -292,165 +289,28 @@ export class WalletController {
         ),
       });
     }
-    try {
-      return await rpc.getTransactionReceipt({ hash: target.hash });
-    } catch (error) {
-      // DEFENSE: an unmined or replaced hash has no receipt; unrelated RPC failures remain errors.
-      if (!(error instanceof TransactionReceiptNotFoundError)) throw error;
-    }
-    const search = this.kernel.receiptSearch(
-      target.instance,
-      target.transaction,
-      await rpc.getBlockNumber(),
-    );
-    const command = (event: object): ReceiptSearchEffect =>
-      JSON.parse(search.command(JSON.stringify(event)));
-    const nativeWait = () =>
-      rpc.waitForTransactionReceipt({
-        hash: target.hash,
-        timeout: Number(search.timeoutMs),
-        onReplaced: ({
-          replacedTransaction,
-          transaction,
+    return rpc.waitForTransactionReceipt({
+      hash: target.hash,
+      timeout: 180_000,
+      onReplaced: ({
+        replacedTransaction,
+        transaction,
+        transactionReceipt,
+      }) => {
+        this.replacementObserved(
+          target,
+          this.transactionDescriptor(
+            replacedTransaction,
+            transactionReceipt.blockNumber,
+          ),
+          this.transactionDescriptor(
+            transaction,
+            transactionReceipt.blockNumber,
+          ),
           transactionReceipt,
-        }) => {
-          this.replacementObserved(
-            target,
-            this.transactionDescriptor(
-              replacedTransaction,
-              transactionReceipt.blockNumber,
-            ),
-            this.transactionDescriptor(
-              transaction,
-              transactionReceipt.blockNumber,
-            ),
-            transactionReceipt,
-          );
-        },
-      });
-    let request: ReceiptSearchEffect = JSON.parse(search.view());
-    if (request.kind === "original") return nativeWait();
-    let releaseHead: () => void = () => {};
-    let rejectHead: ((error: Error) => void) | undefined;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const work = async (): Promise<TransactionReceipt> => {
-      for (;;) {
-        switch (request.kind) {
-          case "nonce": {
-            try {
-              const count = await rpc.getTransactionCount({
-                address: getAddress(request.owner),
-                blockNumber: BigInt(request.block),
-              });
-              request = command({
-                kind: "nonce",
-                block: request.block,
-                count: count.toString(),
-              });
-            } catch (error) {
-              request = command({
-                kind: "failed",
-                message: errorMessage(error),
-              });
-            }
-            break;
-          }
-          case "block": {
-            try {
-              const block = await rpc.getBlock({
-                blockNumber: BigInt(request.block),
-                includeTransactions: true,
-              });
-              request = command({
-                kind: "block",
-                block: request.block,
-                transactions: block.transactions.map((transaction) =>
-                  this.transactionDescriptor(transaction, block.number),
-                ),
-              });
-            } catch (error) {
-              request = command({
-                kind: "failed",
-                message: errorMessage(error),
-              });
-            }
-            break;
-          }
-          case "waiting": {
-            request = await new Promise<ReceiptSearchEffect>(
-              (resolve, reject) => {
-                rejectHead = reject;
-                const unwatch = rpc.watchBlockNumber({
-                  emitOnBegin: true,
-                  onBlockNumber: (block) => {
-                    const next = command({
-                      kind: "head",
-                      block: block.toString(),
-                    });
-                    if (next.kind !== "waiting") {
-                      unwatch();
-                      releaseHead = () => {};
-                      rejectHead = undefined;
-                      resolve(next);
-                    }
-                  },
-                  onError: (error) => {
-                    unwatch();
-                    releaseHead = () => {};
-                    rejectHead = undefined;
-                    reject(error);
-                  },
-                });
-                releaseHead = unwatch;
-              },
-            );
-            break;
-          }
-          case "receipt":
-            return rpc.getTransactionReceipt({
-              hash: request.candidate.hash as Hex,
-            });
-          case "replacement": {
-            const receipt = await rpc.getTransactionReceipt({
-              hash: request.candidate.hash as Hex,
-            });
-            // DEFENSE: a receipt RPC may finish after the observation timeout.
-            const current: ReceiptSearchEffect = JSON.parse(search.view());
-            if (current.kind === "unavailable")
-              throw new Error(current.message);
-            this.replacementObserved(
-              target,
-              request.original,
-              request.candidate,
-              receipt,
-            );
-            return receipt;
-          }
-          case "original":
-            return nativeWait();
-          case "unavailable":
-            throw new Error(request.message);
-        }
-      }
-    };
-    const timeout = new Promise<never>((_, reject) => {
-      timer = setTimeout(() => {
-        const effect = command({ kind: "expired" }) as Extract<
-          ReceiptSearchEffect,
-          { kind: "unavailable" }
-        >;
-        const error = new Error(effect.message);
-        releaseHead();
-        rejectHead?.(error);
-        reject(error);
-      }, Number(search.timeoutMs));
+        );
+      },
     });
-    try {
-      return await Promise.race([work(), timeout]);
-    } finally {
-      if (timer) clearTimeout(timer);
-      releaseHead();
-    }
   }
   private async observeReceipt(
     effect: Extract<WalletEffect, { kind: "observe-receipt" }>,
@@ -470,7 +330,7 @@ export class WalletController {
       } catch (error) {
         // DEFENSE: a saved hash may remain unmined, be absent after a chain reset, or have an unavailable RPC.
         this.dispatch({
-          kind: "history-observation-failed",
+          kind: "pending-observation-failed",
           instance: effect.instance,
           transaction: effect.transaction,
           message: errorMessage(error),
@@ -478,7 +338,7 @@ export class WalletController {
         return;
       }
       this.dispatch({
-        kind: "history-receipt",
+        kind: "pending-receipt",
         instance: effect.instance,
         transaction: effect.transaction,
         hash: receipt.transactionHash.toLowerCase(),
@@ -625,16 +485,13 @@ export class WalletController {
             // DEFENSE: a denied preference write must not interrupt a wallet observation.
             if (!(error instanceof DOMException)) throw error;
             this.dispatch({
-              kind: "history-preference-warning",
+              kind: "pending-storage-warning",
               message: `Wallet selection could not be saved: ${error.message}`,
             });
           }
           break;
-        case "save-history":
+        case "save-pending":
           this.persist(effect);
-          break;
-        case "load-history":
-          await this.loadHistory();
           break;
         case "observe-receipt":
           void this.observeReceipt(effect);

@@ -1,6 +1,6 @@
 From Coq Require Import ZArith String List Bool Lia.
 From DEXFormal.Spec Require Import Types.
-From DEXFormal.Frontend Require Import Wallet ReplacementSearch ReceiptFees.
+From DEXFormal.Frontend Require Import Wallet TransactionReplacement ReceiptFees.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope string_scope.
@@ -11,7 +11,7 @@ Open Scope Z_scope.
    RPC receipt fields describe the actual transaction; matching hash and sender
    are checked below. A general submission error does not establish rollback. *)
 Module Transactions.
-Module R := ReplacementSearch.
+Module R := TransactionReplacement.
 
 Inductive phase :=
 | AwaitingPreflight

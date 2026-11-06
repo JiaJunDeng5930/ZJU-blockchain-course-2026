@@ -4,7 +4,7 @@ import { QueryClientProvider, useQuery } from "@tanstack/react-query";
 import { createChainQueryClient } from "./chain/queryClient";
 import { ExchangeClient } from "./chain/client";
 import { DexProvider, useDex } from "./chain/DexProvider";
-import { HistoryStatus } from "./components/HistoryStatus";
+import { PendingRecoveryStatus } from "./components/PendingRecoveryStatus";
 import { ChainDataStatus } from "./components/ChainDataStatus";
 import type { Deployment } from "./chain/types";
 import { poolKey } from "./chain/amounts";
@@ -16,7 +16,6 @@ import { LiquidityPage } from "./features/LiquidityPage";
 import { PoolsPage } from "./features/PoolsPage";
 import { ArbitragePage } from "./features/ArbitragePage";
 import { SimulationPage } from "./features/SimulationPage";
-import { AllowancesPage } from "./features/AllowancesPage";
 import { TransactionsPage } from "./features/TransactionsPage";
 import type { Pool } from "./chain/types";
 import "./App.css";
@@ -29,7 +28,6 @@ const workspaces = [
   { name: "Arbitrage", route: "arbitrage" },
   { name: "Simulation", route: "simulation" },
   { name: "Transactions", route: "activity" },
-  { name: "Token approvals", route: "approvals" },
 ] as const;
 type WorkspaceName = (typeof workspaces)[number]["name"];
 export default function App() {
@@ -99,11 +97,11 @@ function Bootstrap() {
   );
 }
 function Workspace() {
-  const { snapshot, history } = useDex();
+  const { snapshot, pendingRecovery } = useDex();
   const [search, setSearch] = useSearchParams();
   const [walletOpen, setWalletOpen] = useState(false);
   const [toolsOpen, setToolsOpen] = useState(false);
-  // History navigation must not carry an open position form to a different pool.
+  // Browser navigation must not carry an open position form to a different pool.
   const [creatingPositionFor, setCreatingPositionFor] = useState<string>();
   const tools = useRef<HTMLDivElement>(null);
   const toolsButton = useRef<HTMLButtonElement>(null);
@@ -258,14 +256,12 @@ function Workspace() {
       <main
         className={`workspace-content ${page === "Swap" ? "swap-workspace" : "tool-workspace"}`}
       >
-        {page !== "Transactions" && <HistoryStatus history={history} quiet />}
+        <PendingRecoveryStatus recovery={pendingRecovery} />
         <ChainDataStatus />
         {page === "Simulation" ? (
           <SimulationPage />
-        ) : page === "Token approvals" ? (
-          <AllowancesPage />
         ) : page === "Transactions" ? (
-          <TransactionsPage onProvideLiquidity={provideLiquidity} />
+          <TransactionsPage />
         ) : !snapshot.data ? (
           <div
             className="workspace-loading"

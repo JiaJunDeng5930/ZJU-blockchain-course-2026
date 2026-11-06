@@ -1,122 +1,29 @@
-import { useEffect, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
-import {
-  activityStep,
-  activityView,
-  type ActivityQuery,
-  type ActivityEvent,
-} from "../logic/activity";
-import { HistoryStatus } from "../components/HistoryStatus";
-import { FundingConfirmation } from "../components/FundingConfirmations";
-import { formatEther, type Hex } from "viem";
-import type { JournalView } from "../wallet/kernel";
-import { shorten } from "../chain/amounts";
 import { useDex } from "../chain/DexProvider";
-import { ConfirmedLiquidityAction } from "../components/ConfirmedLiquidityAction";
-import { ConfirmedArbitrageAction } from "../components/ConfirmedArbitrageAction";
-import { transactionResultAvailable } from "../logic/swapReceipt";
-import { ConfirmedSwapAction } from "../components/ConfirmedSwapAction";
-import { ConfirmedWrappingAction } from "../components/ConfirmedWrappingAction";
-import { ConfirmedPoolCreation } from "../components/ConfirmedPoolCreation";
-import type { Pool } from "../chain/types";
-export function TransactionsPage({ onProvideLiquidity }: { onProvideLiquidity: (pool: Pool) => void }) {
-  const { history, wallet, client } = useDex();
-  const [query, setQuery] = useState<ActivityQuery | null>(null);
-  const context = { kernel: wallet.controller.kernel };
-  const page = activityView(context, query);
-  const { account, status, page: requestedPage, observedAccount } = page.query;
-  useEffect(() => {
-    setQuery({ account, status, page: requestedPage, observedAccount });
-  }, [account, status, requestedPage, observedAccount]);
-  const navigate = (event: ActivityEvent) =>
-    setQuery(activityStep(context, page.query, event).query);
+import { formatAmount } from "../chain/amounts";
+
+export function TransactionsPage() {
+  const { journal, wallet } = useDex();
   return (
-    <section className="card">
-      <h2>Blockchain transactions</h2>
-      <p>
-        Approvals and execution are recorded separately. A rejected step leaves
-        earlier confirmed approvals in place. Activity from this deployment is
-        restored with its original sender; saved hashes are checked again on
-        this chain.
-      </p>
-      <HistoryStatus history={history} />
-      <div className="actions">
-        {history.canRefresh && (
-          <button
-            type="button"
-            onClick={() =>
-              wallet.controller.dispatch({ kind: "history-refresh" })
-            }
-          >
-            Recheck pending receipts
-          </button>
-        )}
-        {history.canRetryLoad && (
-          <button
-            type="button"
-            onClick={() =>
-              wallet.controller.dispatch({ kind: "history-retry-load" })
-            }
-          >
-            Retry loading history
-          </button>
-        )}
-        {history.canRetrySave && (
-          <button
-            type="button"
-            onClick={() =>
-              wallet.controller.dispatch({ kind: "history-retry-save" })
-            }
-          >
-            Retry saving history
-          </button>
-        )}
-      </div>
-      <div className="actions activity-filters">
-        <label>
-          Account
-          <select
-            value={page.query.account}
-            onChange={(event) =>
-              navigate({
-                kind: "account",
-                value: event.target.value as ActivityQuery["account"],
-              })
-            }
-          >
-            <option value="all">All accounts</option>
-            <option value="current" disabled={!page.canCurrentAccount}>
-              Current account
-            </option>
-          </select>
-        </label>
-        <label>
-          Status
-          <select
-            value={page.query.status}
-            onChange={(event) =>
-              navigate({
-                kind: "status",
-                value: event.target.value as ActivityQuery["status"],
-              })
-            }
-          >
-            <option value="all">All statuses</option>
-            <option value="pending">In progress</option>
-            <option value="confirmed">Confirmed</option>
-            <option value="failed">Failed</option>
-            <option value="unknown">Submission unknown</option>
-          </select>
-        </label>
-        <button type="button" onClick={() => navigate({ kind: "reset" })}>
-          Show all
+    <section className="panel transactions-panel">
+      <div className="section-heading">
+        <div>
+          <h1>Transactions</h1>
+          <p>
+            Activity in this page. Known pending transactions continue to be
+            observed after this tab is refreshed.
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={() =>
+            wallet.controller.dispatch({ kind: "pending-refresh" })
+          }
+        >
+          Recheck pending transactions
         </button>
       </div>
-      <p role="status">
-        {page.filteredTotal} of {page.total} transactions
-      </p>
-      {page.entries.length === 0 ? (
-        <p>{page.emptyMessage}</p>
+      {journal.length === 0 ? (
+        <p className="empty-state">No transaction activity in this page.</p>
       ) : (
         <div className="table-scroll">
           <table>
@@ -125,61 +32,56 @@ export function TransactionsPage({ onProvideLiquidity }: { onProvideLiquidity: (
                 <th>Operation</th>
                 <th>Account</th>
                 <th>Status</th>
-                <th>Transaction / message</th>
+                <th>Transaction</th>
                 <th>Block</th>
-                <th>Gas (ETH)</th>
+                <th>Execution fee (ETH)</th>
               </tr>
             </thead>
             <tbody>
-              {page.entries.map((entry) => (
+              {[...journal].reverse().map((entry) => (
                 <tr key={entry.id}>
                   <td>{entry.label}</td>
                   <td>
-                    <code title={entry.account}>{shorten(entry.account)}</code>
-                    {entry.authority === "dev-faucet" && entry.beneficiary && (
-                      <>
-                        {" "}
-                        →{" "}
-                        <code title={entry.beneficiary}>
-                          {shorten(entry.beneficiary)}
-                        </code>
-                      </>
+                    <code title={entry.account}>
+                      {entry.account.slice(0, 8)}…{entry.account.slice(-6)}
+                    </code>
+                    {entry.authority === "dev-faucet" && (
+                      <small>Development faucet for {entry.beneficiary}</small>
                     )}
                   </td>
                   <td>
-                    {entry.state === "submission-unknown"
-                      ? "Submission outcome unavailable"
-                      : entry.state}
+                    {entry.state === "awaiting-wallet"
+                      ? "Awaiting wallet"
+                      : entry.state === "submitted"
+                        ? "Pending"
+                        : entry.state === "confirmed"
+                          ? "Confirmed"
+                          : entry.state === "submission-unknown"
+                            ? "Submission unknown"
+                            : entry.state === "replaced"
+                              ? "Replaced"
+                              : "Failed"}
+                    {"message" in entry && entry.message && (
+                      <small>{entry.message}</small>
+                    )}
                   </td>
                   <td>
-                    {"hash" in entry && entry.hash && <code>{entry.hash}</code>}
-                    {entry.state === "confirmed" &&
-                      transactionResultAvailable(
-                        client.deployment,
-                        entry.descriptor,
-                        entry,
-                      ) && <TransactionReceipt entry={entry} onProvideLiquidity={onProvideLiquidity} />}
-                    {entry.replacements.map((replacement) => (
-                      <p key={replacement.hash}>
-                        {replacement.kind === "repriced"
-                          ? "Fee replacement"
-                          : "Different transaction"}
-                        : <code>{replacement.hash}</code> →{" "}
-                        <code>{replacement.replacementHash}</code>
-                      </p>
-                    ))}
-                    {"message" in entry && entry.message && (
-                      <p>{entry.message}</p>
+                    {"hash" in entry && entry.hash ? (
+                      <code title={entry.hash}>
+                        {entry.hash.slice(0, 12)}…{entry.hash.slice(-8)}
+                      </code>
+                    ) : (
+                      "—"
                     )}
                   </td>
                   <td>
                     {"block" in entry && entry.block !== undefined
-                      ? entry.block
+                      ? entry.block.toString()
                       : "—"}
                   </td>
                   <td>
                     {"gas" in entry && entry.gas !== undefined
-                      ? formatEther(BigInt(entry.gas))
+                      ? formatAmount(entry.gas, 18, 8)
                       : "—"}
                   </td>
                 </tr>
@@ -188,115 +90,10 @@ export function TransactionsPage({ onProvideLiquidity }: { onProvideLiquidity: (
           </table>
         </div>
       )}
-      {page.entries.length > 0 && (
-        <nav className="actions" aria-label="Transaction pages">
-          <button
-            type="button"
-            disabled={!page.canPrevious}
-            onClick={() => navigate({ kind: "previous" })}
-          >
-            Previous
-          </button>
-          <span>
-            Page {page.page} of {page.pages}
-          </span>
-          <button
-            type="button"
-            disabled={!page.canNext}
-            onClick={() => navigate({ kind: "next" })}
-          >
-            Next
-          </button>
-        </nav>
-      )}
+      <p className="muted">
+        Approvals and business transactions confirm separately. Previously
+        confirmed operations are not restored after a refresh.
+      </p>
     </section>
-  );
-}
-
-function TransactionReceipt({
-  entry,
-  onProvideLiquidity,
-}: {
-  entry: Extract<JournalView, { state: "confirmed" }>;
-  onProvideLiquidity: (pool: Pool) => void;
-}) {
-  const { client } = useDex();
-  // Archives have been scoped and re-observed by the wallet kernel before display.
-  const result = useQuery({
-    queryKey: [
-      "transaction-result",
-      client.deployment.rpcUrl,
-      client.key,
-      entry.instance,
-      entry.id,
-      entry.hash,
-      entry.authority,
-      entry.beneficiary,
-    ],
-    queryFn: () => client.transactionResult(entry.hash as Hex, entry),
-    enabled: false,
-    retry: false,
-  });
-  return (
-    <div>
-      {result.data?.kind === "funding" && (
-        <FundingConfirmation confirmation={result.data.details} />
-      )}
-      {result.data?.kind === "swap" && (
-        <ConfirmedSwapAction
-          execution={result.data.details.execution}
-          tokens={result.data.details.tokens}
-        />
-      )}
-      {result.data?.kind === "liquidity" && (
-        <ConfirmedLiquidityAction
-          result={result.data.details.confirmation}
-          tokens={result.data.details.tokens}
-        />
-      )}
-      {result.data?.kind === "arbitrage" && (
-        <ConfirmedArbitrageAction
-          result={result.data.details.result}
-          tokens={result.data.details.tokens}
-        />
-      )}
-      {result.data?.kind === "creation" && (
-        <>
-          <p>
-            Created contract: <code>{result.data.address}</code>
-          </p>
-          <p>
-            Copy this address into Pools &amp; tokens → Import to read its
-            metadata.
-          </p>
-        </>
-      )}
-      {result.data?.kind === "wrapping" && (
-        <ConfirmedWrappingAction result={result.data.details} />
-      )}
-      {result.data?.kind === "pool-creation" && (
-        <ConfirmedPoolCreation result={result.data.details} onProvideLiquidity={onProvideLiquidity} />
-      )}
-      {result.data === null && (
-        <p>
-          No supported operation from this deployment was found in the receipt.
-        </p>
-      )}
-      {result.error && (
-        <p role="alert">
-          Transaction result could not be read: {result.error.message}
-        </p>
-      )}
-      <button
-        className="text"
-        type="button"
-        disabled={result.isFetching}
-        onClick={() => void result.refetch()}
-      >
-        {result.isFetching
-          ? "Reading transaction result…"
-          : "Read transaction result"}
-      </button>
-    </div>
   );
 }

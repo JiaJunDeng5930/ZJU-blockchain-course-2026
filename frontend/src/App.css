@@ -741,13 +741,3 @@ th {
     color: #b84b31;
   }
 }
-
-.history-status {
-  margin: 0 0 16px;
-  color: #7b5928;
-  font-size: 13px;
-  line-height: 1.5;
-}
-.history-status p {
-  margin: 0 0 8px;
-}

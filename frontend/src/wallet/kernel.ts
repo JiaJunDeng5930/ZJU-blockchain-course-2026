@@ -31,23 +31,6 @@ export type TransactionReplacement = {
   replacementHash: string;
   kind: "repriced" | "replaced";
 };
-export type ReceiptSearchEffect =
-  | { kind: "nonce"; owner: string; block: string }
-  | { kind: "block"; block: string }
-  | { kind: "waiting"; block: string }
-  | { kind: "original" }
-  | { kind: "receipt"; candidate: TransactionDescriptor }
-  | {
-      kind: "replacement";
-      original: TransactionDescriptor;
-      candidate: TransactionDescriptor;
-    }
-  | { kind: "unavailable"; message: string };
-export type RawReceiptSearch = {
-  view(): string;
-  command(event: string): string;
-  timeoutMs: string;
-};
 export type JournalView = {
   descriptor: TransactionDescriptor | null;
   originalHash: string | null;
@@ -96,16 +79,13 @@ export type ActivityView =
       label: string;
       message: string;
     };
-export type HistoryView = {
-  kind: "loading" | "ready" | "saving" | "memory";
+export type PendingRecoveryView = {
+  kind: "loading" | "ready" | "memory";
   error: string | null;
-  canRefresh: boolean;
-  canRetryLoad: boolean;
-  canRetrySave: boolean;
 };
 export type KernelView = {
   wallet: WalletView;
-  history: HistoryView;
+  pendingRecovery: PendingRecoveryView;
   journal: JournalView[];
   pending: boolean;
   error: string | null;
@@ -123,8 +103,7 @@ export type WalletEffect =
       kind: "persist";
       preference: { source: WalletSource; address: string | null };
     }
-  | { kind: "load-history" }
-  | { kind: "save-history"; key: string; archive: string }
+  | { kind: "save-pending"; key: string; checkpoint: string | null }
   | {
       kind: "observe-receipt";
       instance: string;
@@ -221,18 +200,13 @@ export type KernelEvent =
       gasPrice: string;
     }
   | { kind: "finish-operation"; operation: string; error: string | null }
+  | { kind: "pending-loaded"; key: string; checkpoint: string | null }
+  | { kind: "pending-load-failed"; key: string; message: string }
+  | { kind: "pending-save-failed"; message: string }
+  | { kind: "pending-storage-warning"; message: string }
+  | { kind: "pending-refresh" }
   | {
-      kind: "history-loaded";
-      key: string;
-      snapshots: { owner: string; archive: string }[];
-    }
-  | { kind: "history-load-failed"; key: string; message: string }
-  | { kind: "history-saved" }
-  | { kind: "history-save-failed"; message: string }
-  | { kind: "history-preference-warning"; message: string }
-  | { kind: "history-retry-save" | "history-retry-load" | "history-refresh" }
-  | {
-      kind: "history-receipt";
+      kind: "pending-receipt";
       instance: string;
       transaction: string;
       hash: string;
@@ -243,17 +217,11 @@ export type KernelEvent =
       gasPrice: string;
     }
   | {
-      kind: "history-observation-failed";
+      kind: "pending-observation-failed";
       instance: string;
       transaction: string;
       message: string;
     };
-export type RawAllowances = {
-  view(): string;
-  command(event: string): string;
-  writePlan(input: string): string;
-  simulation(accepted: boolean): string;
-};
 type RawKernel = {
   view(): string;
   start(): string;
@@ -262,15 +230,11 @@ type RawKernel = {
   fundingPlan(observation: string): string;
   recordFunding(input: string): string;
   fundingPlanAfterConfirmations(input: string): string;
-  historyKey(genesis: string, deployment: string, endpoint: string): string;
-  activity(input: string): string;
-  receiptSearch(input: string): RawReceiptSearch;
-  allowances(configuration: string): RawAllowances;
+  pendingKey(genesis: string, deployment: string, endpoint: string): string;
 };
 declare global {
   var DEXWallet: {
     create(configuration: string): RawKernel;
-    initialActivityQuery(): string;
     planNativeFunding(input: string): string;
   };
 }
@@ -288,12 +252,6 @@ export class WalletKernel {
   }) {
     this.raw = globalThis.DEXWallet.create(JSON.stringify(configuration));
     this.view = JSON.parse(this.raw.view());
-  }
-  createAllowances(configuration: {
-    tokens: string[];
-    spenders: string[];
-  }): RawAllowances {
-    return this.raw.allowances(JSON.stringify(configuration));
   }
   getSnapshot = () => this.view;
   subscribe = (listener: () => void) => {
@@ -314,22 +272,8 @@ export class WalletKernel {
   dispatch<T = unknown>(event: KernelEvent) {
     return this.publish<T>(this.raw.dispatch(JSON.stringify(event)));
   }
-  /** Read-only projection: no dispatch, subscriptions or external effects. */
-  projectActivity(input: string): string {
-    return this.raw.activity(input);
-  }
-  /** @internal RPC interpreter for an already recorded transaction. */
-  receiptSearch(
-    instance: string | null,
-    transaction: string,
-    head: bigint,
-  ): RawReceiptSearch {
-    return this.raw.receiptSearch(
-      JSON.stringify({ instance, transaction, head: head.toString() }),
-    );
-  }
-  historyKey(genesis: string, deployment: string, endpoint: string) {
-    return this.raw.historyKey(genesis, deployment, endpoint);
+  pendingKey(genesis: string, deployment: string, endpoint: string) {
+    return this.raw.pendingKey(genesis, deployment, endpoint);
   }
   retainsSnapshot(identity: WalletIdentity | null) {
     return this.raw.retainsSnapshot(JSON.stringify(identity));
@@ -341,7 +285,11 @@ export class WalletKernel {
     observation: object | null,
     block: string | null,
   ): FundingPlan | { kind: "awaiting-balances" } {
-    return JSON.parse(this.raw.fundingPlanAfterConfirmations(JSON.stringify({ observation, block })));
+    return JSON.parse(
+      this.raw.fundingPlanAfterConfirmations(
+        JSON.stringify({ observation, block }),
+      ),
+    );
   }
   fundingPlan(observation: object | null): FundingPlan {
     return JSON.parse(this.raw.fundingPlan(JSON.stringify(observation)));

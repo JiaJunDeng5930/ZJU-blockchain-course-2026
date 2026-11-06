@@ -165,7 +165,7 @@ function useDexState(client: ExchangeClient) {
     tokens,
     catalogError: catalogDisplay.error,
     journal,
-    history: wallet.view.history,
+    pendingRecovery: wallet.view.pendingRecovery,
     status: renderActivity(wallet.view.activity, client.deployment.chainId),
     pending: wallet.view.pending,
     run: (label: string, perform: (writer: Writer) => Promise<unknown>) =>
