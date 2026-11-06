@@ -8,8 +8,7 @@ let boolean key value = Field.member key value |> Field.to_bool
 let facts value =
   Field.member "facts" value |> Field.to_list |> List.map (fun fact ->
     let fact_type = match text "kind" fact with
-      | "swap" -> Kernel.SwapFact | "liquidity" -> Kernel.LiquidityFact
-      | "transfer" -> Kernel.TransferFact | "arbitrage" -> Kernel.ArbitrageFact
+      | "transfer" -> Kernel.TransferFact
       | "wrapping" -> Kernel.WrappingFact
       | "pool-creation" -> Kernel.PoolCreationFact
       | other -> invalid_arg ("Unknown receipt ABI fact: " ^ other) in
@@ -18,38 +17,6 @@ let facts value =
       fact_from = text "from" fact; fact_to = text "to" fact })
 let value input = Js.to_string input |> Yojson.Basic.from_string
 let encode result = Yojson.Basic.to_string result |> Js.string
-
-let select input =
-  let v = value input in
-  let result = match Kernel.select_swap (boolean "successful" v)
-      (strings "exchanges" v) (text "target" v) (facts v) with
-    | Kernel.NoSwap -> `Assoc ["kind", `String "none"]
-    | Kernel.RevertedSwap -> `Assoc ["kind", `String "reverted"]
-    | Kernel.MultipleSwaps -> `Assoc ["kind", `String "multiple"]
-    | Kernel.SelectedSwap fact -> `Assoc ["kind", `String "selected";
-        "index", `Int fact.Kernel.fact_index] in
-  encode result
-
-let classify input =
-  let v = value input in
-  let kind = match Kernel.result_with_pool_creation (boolean "successful" v) (boolean "creation" v)
-      (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
-      (text "target" v) (text "owner" v) (facts v) with
-    | Kernel.NoResult -> "none" | Kernel.CreationResult -> "creation"
-    | Kernel.SwapResult -> "swap" | Kernel.LiquidityResult -> "liquidity"
-    | Kernel.ArbitrageResult -> "arbitrage" | Kernel.WrappingResult -> "wrapping"
-    | Kernel.PoolCreationResult -> "pool-creation"
-    | Kernel.RevertedResult -> "reverted" in
-  Js.string kind
-
-let available input =
-  let v = value input in
-  let previous = Kernel.available_with_pool_creation (strings "exchanges" v) (text "arbitrage" v) (text "wrapped" v)
-    (boolean "descriptorKnown" v) (boolean "creation" v)
-    (text "target" v) (text "operation" v) in
-  Kernel.available_with_funding previous (boolean "descriptorKnown" v)
-    (text "authority" v) (text "beneficiary" v) (text "target" v)
-    (text "operation" v) |> Js.bool
 
 let select_token_funding input =
   let v = value input in
@@ -60,21 +27,6 @@ let select_token_funding input =
     | Kernel.MultipleTokenFundings -> `Assoc ["kind", `String "multiple"]
     | Kernel.SelectedTokenFunding fact ->
         `Assoc ["kind", `String "selected"; "index", `Int fact.Kernel.fact_index] in
-  encode result
-
-let native_funding_candidate input =
-  let v = value input in
-  Kernel.native_funding_candidate (boolean "successful" v) (text "authority" v)
-    (text "beneficiary" v) (text "target" v) (text "owner" v) |> Js.bool
-
-let native_funding_value input =
-  let v = value input in
-  let result = match Kernel.native_funding_value (boolean "successful" v)
-      (text "authority" v) (text "beneficiary" v) (text "target" v)
-      (text "owner" v) (text "input" v) (text "amount" v |> Z.of_string) with
-    | None -> `Assoc ["kind", `String "none"]
-    | Some amount -> `Assoc ["kind", `String "selected";
-        "amount", `String (Z.to_string amount)] in
   encode result
 
 let output_asset input =
@@ -119,12 +71,8 @@ let continue_created_pool input =
 
 let () =
   Js.Unsafe.set Js.Unsafe.global "DEXSwapReceipt"
-    (Js.Unsafe.obj [|"select", Js.Unsafe.inject (Js.wrap_callback select);
-      "classify", Js.Unsafe.inject (Js.wrap_callback classify);
-      "available", Js.Unsafe.inject (Js.wrap_callback available);
+    (Js.Unsafe.obj [|
       "selectTokenFunding", Js.Unsafe.inject (Js.wrap_callback select_token_funding);
-      "nativeFundingCandidate", Js.Unsafe.inject (Js.wrap_callback native_funding_candidate);
-      "nativeFundingValue", Js.Unsafe.inject (Js.wrap_callback native_funding_value);
       "selectWrapping", Js.Unsafe.inject (Js.wrap_callback select_wrapping);
       "selectPoolCreation", Js.Unsafe.inject (Js.wrap_callback select_pool_creation);
       "continueCreatedPool", Js.Unsafe.inject (Js.wrap_callback continue_created_pool);

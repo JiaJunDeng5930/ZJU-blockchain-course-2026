@@ -1,5 +1,4 @@
 From Coq Require Import List String Bool.
-From DEXFormal.Frontend Require Import ReceiptScope.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -15,8 +14,6 @@ Record reserves_event := ReservesEvent {
   reserves_exchange : string
 }.
 
-Definition available contract descriptor_known target operation :=
-  operation_receipt_available [contract] ["execute"] descriptor_known target operation.
 Definition intermediate_token token0 token1 capital :=
   if String.eqb capital token0 then token1 else token0.
 Definition execution_eligible contract exchanges event :=

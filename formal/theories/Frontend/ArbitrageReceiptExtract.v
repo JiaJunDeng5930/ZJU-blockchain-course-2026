@@ -1,3 +1,3 @@
 From Coq Require Import Extraction ExtrOcamlBasic ExtrOcamlNativeString ExtrOcamlZBigInt ExtrOcamlNatInt.
 From DEXFormal.Frontend Require Import ArbitrageReceipt.
-Extraction "formal/build/arbitragereceipt/ArbitrageReceiptKernel.ml" ArbitrageReceipt.select_receipt ArbitrageReceipt.available ArbitrageReceipt.intermediate_token.
+Extraction "formal/build/arbitragereceipt/ArbitrageReceiptKernel.ml" ArbitrageReceipt.select_receipt ArbitrageReceipt.intermediate_token.

@@ -29,12 +29,6 @@ let select input =
   in
   Yojson.Basic.to_string result |> Js.string
 
-let available input =
-  let value = Js.to_string input |> Yojson.Basic.from_string in
-  let descriptor_known = Field.member "descriptorKnown" value |> Field.to_bool in
-  Kernel.available (string "contract" value) descriptor_known
-    (string "target" value) (string "operation" value) |> Js.bool
-
 let intermediate input =
   let value = Js.to_string input |> Yojson.Basic.from_string in
   Kernel.intermediate_token (string "token0" value) (string "token1" value)
@@ -43,5 +37,4 @@ let intermediate input =
 let () =
   Js.Unsafe.set Js.Unsafe.global "DEXArbitrageReceipt"
     (Js.Unsafe.obj [|"select", Js.Unsafe.inject (Js.wrap_callback select);
-      "available", Js.Unsafe.inject (Js.wrap_callback available);
       "intermediate", Js.Unsafe.inject (Js.wrap_callback intermediate)|])
