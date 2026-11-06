@@ -4,7 +4,7 @@
 
 ## 环境与运行
 
-需要 **Node.js 22.13+（22.x）、24.x 或 26+**、npm，以及[形式化工具链](formal/TOOLCHAIN.md)中的 Coq 8.20.1、OCaml、js_of_ocaml 和 rocq-of-solidity。Coq 是 Rocq 改名前的名称；本项目固定 8.20.1，以使用上游已有 Solidity 语义，不自行移植语义。建议使用 Node.js 24。本项目实际验收使用 Node.js 26.5.0。浏览器无需钱包扩展即可通过本地节点的测试账户操作；也支持 MetaMask 等 EIP-1193 浏览器钱包。
+需要 **Node.js 22.13+（22.x）、24.x 或 26+**、npm，以及[形式化工具链](formal/TOOLCHAIN.md)中的 Coq 8.20.1、OCaml、js_of_ocaml 和 rocq-of-solidity。Coq 是 Rocq 改名前的名称；本项目固定 8.20.1，以使用上游已有 Solidity 语义，不自行移植语义。建议使用 Node.js 24。浏览器无需钱包扩展即可通过本地节点的测试账户操作；也支持 MetaMask 等 EIP-1193 浏览器钱包。
 
 在仓库根目录执行：
 
@@ -14,7 +14,7 @@ npm run formal:bootstrap
 npm run dev
 ```
 
-`npm run dev` 启动本地开发环境。合约 ABI 由实际编译产物生成；前端业务内核由 Rocq 提取并编译为 JavaScript。启动器按需启动本地链、部署合约、启动模拟控制服务和网页。已有的本地链及有效部署会被复用；不会为了启动界面而重置账户或资产。命令会输出网页地址；`Ctrl+C` 只停止本次命令启动的服务。日志位于 `.local/logs/`（不提交仓库）。
+`npm run dev` 启动本地开发环境。合约 ABI 由实际编译产物生成；前端业务内核由 Rocq 提取并编译为 JavaScript。启动器按需启动本地链、部署合约、启动模拟控制服务和网页。已有的本地链及有效部署会被复用；不会为了启动界面而重置账户或资产。命令会输出网页地址；`Ctrl+C` 只停止本次命令启动的服务。日志位于 `.local/logs/`（不提交仓库）。浏览器测试截图保存在 `frontend/test-results/`；临时截图和本地验收记录放入 `.local/`。
 
 如果节点由该命令创建，退出也会停止这条 Hardhat 内存测试链；再次启动会建立新链并重新部署。需要在重启网页时保留链上状态，应按下述方式单独运行节点并保持它运行。
 
@@ -53,7 +53,7 @@ npm --prefix frontend run dev
 4. 关闭钱包窗口，在兑换卡片输入数量。钱包会在需要时请求精确额度批准，再请求实际交换。
 5. 钱包账户变化会同步身份；错误网络下的兑换动作会打开恢复入口，禁止签名交易；切回后恢复。
 
-迁移前的演示版本曾用官方未修改的 MetaMask 13.53.0 与隔离钱包完成连接、加网络、领币、授权和交换，历史收据与余额记录见[迁移前真实钱包演示](docs/wallet-demo.md)。该记录不替代当前提取内核的验证。ETH faucet 由本地开发节点提供，仅用于测试资产。
+连接与首笔交易步骤见[钱包使用指南](docs/wallet-guide.md)。ETH faucet 由本地开发节点提供，仅用于测试资产。
 
 每次领取确认会记录资产、数量、收款地址、区块和交易哈希。ETH 由本地出资账户转入并支付执行费；ERC20 由当前钱包调用 faucet，当前钱包支付执行费。组合准备的后续步骤取消或失败时，已经确认的步骤仍保留。若余额快照尚未追上确认区块，自动准备会等待刷新，避免把旧余额当成未领取；单独的领取按钮仍可用于主动再次领取。详情与验证边界见 [ADR 016](docs/adr/016-keep-funding-confirmation-separate-from-balance-refresh.md)。
 
@@ -202,7 +202,7 @@ Failed 不会撤回此前已确认的交易。**Download transaction journal** �
 
 运行 `npm run test:simulation-failure`，可通过真实 RPC 中断、准备资金不足和实际上链回滚验收故障证据。运行 `npm run test:initial-liquidity`，可验证首存锁定投影与实际 NFT 铸造、赎回和余额变化，包括零精度 `1001/1001` 情形；两条命令均使用隔离链。
 
-### 命令行与持续运行结果
+### 命令行模拟
 
 保持节点运行并完成部署后执行：
 
@@ -221,28 +221,9 @@ SIM_ROUNDS=120 SIM_DURATION_SECONDS=120 SIM_INTERVAL_MS=300 npm run simulate
 
 `SIM_ROUNDS` 至少 20；`SIM_SEED` 指定随机种子；`SIM_DURATION_SECONDS` 指定最短运行时间；`SIM_INTERVAL_MS` 控制操作间隔。节点区块时间会影响部分时间戳，但同一初始状态和种子决定操作选择。复现实验时不要在前端同时提交交易，以免报价竞争；行情变化引起的拒绝属于真实失败，不算成功。
 
-2026-10-27，当前版本通过模拟服务的公开 HTTP 入口完成了一次真实本地链验收：**60 轮、20 个活跃地址、78.033 秒**，完成 32 次交易、24 次添加流动性、24 次撤销流动性和 6 次盈利套利。任务最终状态为 `completed`，完整 JSON 报告可下载。验收还包含一笔收据 `status=0` 的真实失败套利；比较前后储备和代币余额，回滚检查通过。这是对该次外部行为的验收，不是完整 EVM 的形式化证明。
-
-另一次任务运行中主动停止，最终状态为 `stopped`；已添加的流动性安全赎回，停止后的报告仍可下载。记录保存在 `.local/simulation-delivery-acceptance.json`，不提交仓库。本次验收直接使用 HTTP 与链上公开入口，没有使用浏览器查错。
-
-完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。后面的截图分别标明当前页面与历史钱包记录。
+完整运行报告位于 `shared/simulation-report.json`，不提交仓库。网页 Simulation 的 Download complete report 可取得当前运行报告。报告记录交易哈希、套利储备与利润、回滚检查结果；具体价格、收益和哈希取决于运行开始时的链状态。本地链哈希不能通过公共区块浏览器查询。
 
 交易期限使用公开 RPC 的 `pending` 区块时间。`ExchangeClient.transactionTimestamp()` 提供这个外部观测，Rocq 据此构造网页交易的 1200 秒期限；模拟 worker 同样读取 pending 时间，使用 300 秒期限。`latest` 只表示上一已挖区块，浏览器时钟也不代表下一次执行块；最终是否到期由合约按执行块时间检查。
-
-时钟修复后的公开入口验收完成 **20 轮、20 个活跃地址、7.007 秒**，报告可下载，实际失败套利的回滚检查通过。首笔交换的期限比实际执行块时间晚 300 秒；另经公开 SDK 完成交换、添加流动性与赎回，三笔交易的期限均比执行块时间晚 1200 秒。记录保存在 `.local/simulation-clock-acceptance.json`、`.local/swap-clock-acceptance.json` 与 `.local/liquidity-clock-acceptance.json`。这是对时钟接口的运行验收，形式化范围如下文所述。
-
-2026-10-28 在演示链完成了一次最低 20 轮、至少 60 秒、间隔 150 ms、种子 `20261028` 的实际运行，编号为 `ca0f8b20-db6f-4a30-acbc-8f1d6ef6e072`：
-
-| 项目 | 实际结果 |
-| --- | --- |
-| 持续时间 / 完成轮数 | 63.91 秒 / 149 轮 |
-| 参与地址 / 链上交易 | 20 / 210 |
-| 兑换 / 添加 / 撤回流动性 | 79 / 50 / 50 |
-| 成功原子套利 | 9 次 |
-| 成功套利的代币利润 | 40.875148195322438790 TKA |
-| 成功套利交易的 ETH 费用 | 0.000258368033105568 ETH |
-
-210 笔回执均已与实际链上发送者、状态和 gas 用量对应，确认业务操作来自 20 个地址。50 个新铸造的流动性 NFT 均有对应烧毁事件，两个初始 NFT 仍归原持有人。失败套利的回执状态为 `0`；在其区块及父区块读取两池和代币余额，结果完全相同，而发送者实际支付了 `0.000034998680277216 ETH`。代币利润与 ETH 费用分别记录，不进行跨币种相减。当前页面可下载该次运行报告；运行截图见后文。
 
 ## 形式化开发与验证
 
@@ -335,135 +316,25 @@ Best quote 在同一交易对的已知直接池中比较给定输入的实际输
 
 `npm run test:pool-location` 在隔离链验证 URL 池目标到公开 SDK 的绑定、用新快照恢复同一链接，以及拒绝当前部署之外的真实池。选择规则另有四个 Rocq 定理；该验收不把显式池 SDK 调用扩大为浏览器返回操作或 React Best quote 的端到端证明。
 
-## 项目运行截图
+## 界面示例
 
-以下截图来自项目实际运行。钱包、兑换、流动性确认与多用户模拟展示当前界面，其他图片保留既有核心流程记录；截图仅展示界面，不作为形式化证明或浏览器错误发现的依据。
+以下图片展示本地演示链中的界面；具体地址、数量和运行结果随链状态变化。
 
-### 兑换
+### 兑换审阅
 
-选币和交易对选项显示代币符号与合约地址缩写；选池时同时显示 DEX 和池编号。不同代币可以使用相同符号，实际选择以合约地址和池标识为准。
+![兑换前审阅报价与最低收到数量](docs/screenshots/swap-review.jpg)
 
-![带代币地址标识的 Best quote 兑换界面](docs/screenshots/19-asset-choices-swap.jpg)
+### 流动性头寸审阅
 
-当前兑换审阅，使用演示链真实报价，仅打开确认窗口，没有授权或提交交易：
+![实际投入、NFT 份额与赎回报价](docs/screenshots/liquidity-review.jpg)
 
-![兑换前审阅冻结报价与最低收到数量](docs/screenshots/22-swap-review.jpg)
+### 原子套利报价
 
-明确请求当前部署中不存在的池时，页面保留缺失状态，由用户重新选择或清除参数；下图只执行读取及页面导航：
+![定额本金与无盈利报价](docs/screenshots/arbitrage-quote.jpg)
 
-![缺失池目标与显式恢复入口](docs/screenshots/42-missing-pool-target.jpg)
+### 多用户模拟结果
 
-### 流动性与 NFT
-
-![链上数据来源与当前钱包的流动性持仓](docs/screenshots/32-chain-data-and-positions.jpg)
-
-区块 851 的资金来源与当前赎回权利；表格保留完整精度，可横向滚动查看份额：
-
-![池身份、原始投入与当前赎回数量](docs/screenshots/33-pool-provenance-and-claims.jpg)
-
-同一区块的全池交易量、逐笔向下舍入的名义费用估算，以及已退出 NFT 的历史：
-
-![池费用估算及流动性历史](docs/screenshots/34-pool-fee-estimates.jpg)
-
-新建已有池头寸时，将双币余额作为上限，分别显示预计实际投入及未用余额；截图仅填写表单：
-
-![用可用双币余额准备投入上限](docs/screenshots/44-liquidity-balance-limits.jpg)
-
-当前有资金池的投入审阅，展示精确金额、NFT 与总份额、预计立即赎回数量、未使用数量与最低投入；截图仅打开审阅并取消，没有授权或提交交易：
-
-![余额上限下的实际投入、NFT 份额与赎回报价](docs/screenshots/46-liquidity-balance-position-review.jpg)
-
-当前审阅下半部分另列两侧支出上限，并说明未用代币和剩余额度的处理；截图后关闭窗口，没有授权或提交：
-
-![流动性支出上限与剩余额度说明](docs/screenshots/45-liquidity-spending-limit-review.jpg)
-
-NFT 编号只在对应 DEX 合约内唯一。当前赎回确认显示 DEX、池编号和代币地址缩写，悬停代币字段可查看完整地址。
-
-![赎回前确认 DEX、池、NFT 与代币地址](docs/screenshots/18-redemption-review.jpg)
-
-本机实际流程：第一个演示账户在区块 849 获得 Harbor NFT #65，区块 850 转给第二个账户，再由第二个账户于区块 851 赎回。数量、归属与交易哈希均来自对应成功回执；本次创建的临时 NFT 已全部赎回，两个初始 NFT 的持有人保持不变。
-
-![实际投入数量与新铸造NFT的回执](docs/screenshots/29-liquidity-confirmed-mint.jpg)
-
-![NFT转让后的双方地址与回执](docs/screenshots/30-liquidity-confirmed-transfer.jpg)
-
-![新持有人赎回收到的实际资产与回执](docs/screenshots/31-liquidity-confirmed-redemption.jpg)
-
-以下是在刷新页面后，通过 Read transaction result 恢复的同一 NFT #65。截图时演示链仍停在区块 851，仅重新读取已保存的交易哈希：
-
-![恢复区块850的NFT转移事件及双方地址](docs/screenshots/48-restored-liquidity-transfer.jpg)
-
-![恢复区块851的新持有人赎回数量与实际费用](docs/screenshots/47-restored-liquidity-redemption.jpg)
-
-区块 851 的赎回审阅固定报价和观测所有者，滑点修改只作用于该报价。下图仅打开初始 NFT 的窗口并关闭，没有烧毁或提交交易：
-
-![固定报价、所有者观测和最低收到数量的赎回审阅](docs/screenshots/39-position-redemption-review.jpg)
-
-### 资产与交易池
-
-![完整资产身份、当前钱包余额与建池选币入口](docs/screenshots/24-asset-preparation.jpg)
-
-包装审阅固定数量、合约与接收账户；下图只打开确认窗口，没有提交转换交易。
-
-![ETH 与 WETH 转换前的审阅](docs/screenshots/25-wrapping-review.jpg)
-
-### 原子套利
-
-以下为早期演示链的成功执行记录；当前版本在提交前增加上述审阅步骤。
-
-![Arbitrage 运行截图](docs/screenshots/13-formal-arbitrage.jpg)
-
-区块 851 时，按用户输入的 2.75 TKB 查询没有找到扣除池手续费后的盈利路线，页面保留该投入数量并禁用审阅。此截图仅执行读取，没有提交交易：
-
-![定额本金、余额与无盈利报价](docs/screenshots/43-arbitrage-exact-capital.jpg)
-
-### 多用户模拟
-
-以下截图对应上文 63.91 秒的演示链实际运行。
-
-![模拟控制、实际运行参数与完成状态](docs/screenshots/26-simulation-run.jpg)
-
-服务升级后保留了同一任务编号和原始报告；210 笔回执、50 个本次铸造 NFT 的铸造及赎回记录仍可读取。下图只读取已有结果，没有重新运行或提交交易：
-
-![模拟概要与默认收起的本次 NFT 记录](docs/screenshots/40-simulation-result-overview.jpg)
-
-![保留的运行身份、全量交易日志与可滚动 NFT 证据](docs/screenshots/41-simulation-position-records.jpg)
-
-![已执行套利的收益、ETH 费用与两池变化](docs/screenshots/27-simulation-profit.jpg)
-
-![参与账户与已确认业务操作，表格上半部分](docs/screenshots/28-simulation-accounts.jpg)
-
-### 当前钱包与测试资产
-
-ERC20 资产使用单层标识，名称与完整合约地址可悬停查看。下图展示本地测试钱包与读取到的链上余额。
-
-![当前钱包、资产地址与测试币领取入口](docs/screenshots/21-wallet-asset-identity.jpg)
-
-授权撤销审阅标明代币、账户、支出合约、链及额度所属区块；下图只打开窗口后取消，没有提交撤销：
-
-![授权额度所属链、钱包来源与观测区块](docs/screenshots/38-approval-observation-review.jpg)
-
-### 创建代币、交易池与刷新后恢复
-
-以下三图来自上述本地演示链，经用户授权实际创建 RCP、领取测试币并在 Harbor 创建 RCP/TKA 空池。三个操作分别位于区块 852、853、854；原有池的储备、初始 NFT 持有人和已完成的模拟报告保持不变。
-
-在 `Tools → Pools & tokens` 创建 Receipt Evidence Token（RCP）。成功结果包含合约地址、创建账户、区块和交易哈希；元数据确认后，可将它直接选作新池资产。部署时供应量为零。
-
-![演示链：RCP 创建回执与已读取的元数据](docs/screenshots/52-rcp-token-created.jpg)
-
-打开钱包领取 10,000 RCP。展开领取回执，可查看实际铸币数量、代币合约、收款人、手续费付款人和执行费；钱包余额与回执分别读取。
-
-![演示链：钱包中的 RCP 余额与领取回执](docs/screenshots/53-rcp-test-assets-claimed.jpg)
-
-选择 Harbor、RCP 和 TKA 创建池 #2。刷新后，在 `Tools → Transactions` 点击该交易的 `Read transaction result`，恢复原始创建身份与当前池状态。链上核对该池两侧储备和总份额均为零；创建池没有注资或铸造 NFT，`Add liquidity to this pool` 可继续首次注资。本次授权演示只提交上述三笔交易。
-
-![演示链：刷新后恢复 Harbor RCP/TKA 空池的创建结果](docs/screenshots/54-rcp-pool-restored.jpg)
-
-### 历史 MetaMask 确认
-
-下面这张图来自形式化迁移前的真实钱包演示，保留为历史操作记录；它不代表当前提取内核或当前字节码的验收。详细历史记录见[迁移前真实钱包演示](docs/wallet-demo.md)。
-
-![迁移前 MetaMask 交换确认](docs/screenshots/wallet-06-swap-confirm.png)
+![运行状态、参与地址与逐币利润](docs/screenshots/simulation-overview.jpg)
 
 ## 参考资料
 
