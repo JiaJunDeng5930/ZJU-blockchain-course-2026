@@ -256,6 +256,9 @@ export class WalletController {
     transaction: string;
     hash: Hex;
   }): Promise<TransactionReceipt> {
+    // KNOWN LIMITATION: a hash replaced before viem observes the original
+    // transaction can time out. The caller keeps the known hash pending with an
+    // observation error, without inferring rollback or resubmitting it.
     const { rpc } = this.client;
     let observation:
       | {
